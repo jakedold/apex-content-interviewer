@@ -1,0 +1,124 @@
+{
+  "name": "AAC - 03 - Validate Interview Link",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "aac/interview/validate",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -520,
+        80
+      ],
+      "id": "114b3221-b7a9-4b4c-b7c9-358ba93e18af",
+      "name": "Receive Interview Token",
+      "webhookId": "71726ee6-89c4-4ea8-8fe9-01564cc48f51"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "projectId": {
+          "__rl": true,
+          "value": "apex-marketing-n8n",
+          "mode": "id"
+        },
+        "sqlQuery": "-- AAC Phase 1C, step 1\n-- Validate a raw interview token without storing or returning it.\n-- Only SHA-256(token) is compared against BigQuery.\n\nCREATE TEMP TABLE valid_link AS\nSELECT\n  il.link_id,\n  il.campaign_id,\n  il.doctor_id,\n  il.topic_id,\n  il.status,\n  il.created_at,\n  il.expires_at\nFROM\n  `apex-marketing-n8n.automated_article_creation.interview_links` il\nWHERE\n  il.secure_token_hash = TO_HEX(SHA256(@token))\n  AND il.expires_at > CURRENT_TIMESTAMP()\n  AND il.status IN ('READY', 'OPENED')\n  AND il.used_at IS NULL\nQUALIFY\n  ROW_NUMBER() OVER (ORDER BY il.created_at DESC) = 1;\n\nUPDATE\n  `apex-marketing-n8n.automated_article_creation.interview_links`\nSET\n  status = 'OPENED',\n  first_opened_at = COALESCE(first_opened_at, CURRENT_TIMESTAMP())\nWHERE\n  link_id IN (SELECT link_id FROM valid_link);\n\nINSERT INTO\n  `apex-marketing-n8n.automated_article_creation.workflow_events`\n(\n  event_id,\n  entity_type,\n  entity_id,\n  event_type,\n  event_timestamp,\n  source_system,\n  workflow_execution_id,\n  payload\n)\nSELECT\n  GENERATE_UUID(),\n  'interview_link',\n  link_id,\n  'interview.link_validated',\n  CURRENT_TIMESTAMP(),\n  'n8n',\n  NULL,\n  TO_JSON(\n    STRUCT(\n      campaign_id,\n      doctor_id,\n      topic_id\n    )\n  )\nFROM\n  valid_link;\n\nSELECT\n  IF(v.link_id IS NOT NULL, TRUE, FALSE) AS valid,\n  IF(\n    v.link_id IS NOT NULL,\n    'VALID',\n    'INVALID_OR_EXPIRED'\n  ) AS validation_status,\n\n  v.link_id,\n  v.campaign_id,\n  c.campaign_name,\n\n  v.doctor_id,\n  d.doctor_name,\n  d.credentials,\n\n  d.practice_id,\n  p.practice_name,\n\n  v.topic_id,\n  t.topic_title,\n  t.topic_description,\n  t.interview_guidance,\n\n  v.expires_at\n\nFROM\n  (SELECT 1 AS seed) s\nLEFT JOIN\n  valid_link v\n  ON TRUE\nLEFT JOIN\n  `apex-marketing-n8n.automated_article_creation.campaigns` c\n  ON c.campaign_id = v.campaign_id\nLEFT JOIN\n  `apex-marketing-n8n.automated_article_creation.doctors` d\n  ON d.doctor_id = v.doctor_id\nLEFT JOIN\n  `apex-marketing-n8n.automated_article_creation.practices` p\n  ON p.practice_id = d.practice_id\nLEFT JOIN\n  `apex-marketing-n8n.automated_article_creation.campaign_topics` t\n  ON t.topic_id = v.topic_id;",
+        "options": {
+          "location": "US",
+          "queryParameters": {
+            "namedParameters": [
+              {
+                "name": "token",
+                "value": "={{ $json.body.token }}"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [
+        -160,
+        80
+      ],
+      "id": "22157a4e-88c8-49cc-b004-f5f1b033f225",
+      "name": "Validate Token and Load Interview Context"
+    },
+    {
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        220,
+        80
+      ],
+      "id": "67bcac07-c1ae-443d-8b14-ae4d85208148",
+      "name": "Return Interview Context"
+    },
+    {
+      "parameters": {
+        "content": "## AAC Phase 1C - Link Validation Endpoint\n\nThis workflow is the first backend endpoint used by the future interview web app.\n\nIt accepts:\n\n`POST { \"token\": \"...\" }`\n\nThen it:\n- hashes the raw token in BigQuery\n- validates status and expiration\n- marks a valid link as OPENED\n- records first_opened_at\n- logs a workflow event\n- returns doctor + practice + topic context\n\n**After import:** connect the existing BigQuery credential, then test with one raw token from the Phase 1B n8n execution output.",
+        "height": 400,
+        "width": 500
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -520,
+        -380
+      ],
+      "id": "b1d1c989-b984-4d82-958f-7790a3f48803",
+      "name": "Phase 1C Notes"
+    }
+  ],
+  "connections": {
+    "Receive Interview Token": {
+      "main": [
+        [
+          {
+            "node": "Validate Token and Load Interview Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Token and Load Interview Context": {
+      "main": [
+        [
+          {
+            "node": "Return Interview Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

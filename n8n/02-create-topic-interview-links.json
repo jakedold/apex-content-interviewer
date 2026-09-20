@@ -1,0 +1,70 @@
+{
+  "name": "AAC - 02 - Create Topic Interview Links",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -440,
+        80
+      ],
+      "id": "3dcbe1ff-52cf-4a81-b9e3-49e5c2455cae",
+      "name": "Run Test Link Generation"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "projectId": {
+          "__rl": true,
+          "value": "apex-marketing-n8n",
+          "mode": "id"
+        },
+        "sqlQuery": "-- AAC Phase 1B\n-- Test configuration is intentionally embedded here for the POC:\n--   campaign_id: campaign_2026_09_poc\n--   doctor_id:   doctor_test_001\n--   base URL:    https://content.apexdp.com/interview/\n--   expiration:  30 days\n--\n-- Only the SHA-256 hash of each raw token is persisted in BigQuery.\n-- The raw token is returned only in this execution output so it can\n-- later be delivered to the doctor.\n\nCREATE TEMP TABLE generated_links AS\nSELECT\n  GENERATE_UUID() AS link_id,\n  t.campaign_id,\n  'doctor_test_001' AS doctor_id,\n  t.topic_id,\n  CONCAT(\n    REPLACE(GENERATE_UUID(), '-', ''),\n    REPLACE(GENERATE_UUID(), '-', '')\n  ) AS raw_token,\n  CURRENT_TIMESTAMP() AS created_at,\n  TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 30 DAY) AS expires_at,\n  t.topic_sort_order,\n  t.topic_title,\n  t.topic_description,\n  t.interview_guidance\nFROM\n  `apex-marketing-n8n.automated_article_creation.campaign_topics` t\nJOIN\n  `apex-marketing-n8n.automated_article_creation.campaign_doctors` cd\n    ON cd.campaign_id = t.campaign_id\n   AND cd.doctor_id = 'doctor_test_001'\nWHERE\n  t.campaign_id = 'campaign_2026_09_poc'\n  AND t.active = TRUE;\n\nASSERT (\n  SELECT COUNT(*) FROM generated_links\n) = 3\nAS 'Expected exactly three active campaign topics for this doctor.';\n\nUPDATE\n  `apex-marketing-n8n.automated_article_creation.interview_links`\nSET\n  status = 'SUPERSEDED'\nWHERE\n  campaign_id = 'campaign_2026_09_poc'\n  AND doctor_id = 'doctor_test_001'\n  AND status IN ('READY', 'OPENED')\n  AND used_at IS NULL;\n\nINSERT INTO\n  `apex-marketing-n8n.automated_article_creation.interview_links`\n(\n  link_id,\n  campaign_id,\n  doctor_id,\n  topic_id,\n  secure_token_hash,\n  status,\n  created_at,\n  expires_at,\n  first_opened_at,\n  used_at,\n  interview_id\n)\nSELECT\n  link_id,\n  campaign_id,\n  doctor_id,\n  topic_id,\n  TO_HEX(SHA256(raw_token)),\n  'READY',\n  created_at,\n  expires_at,\n  NULL,\n  NULL,\n  NULL\nFROM\n  generated_links;\n\nINSERT INTO\n  `apex-marketing-n8n.automated_article_creation.workflow_events`\n(\n  event_id,\n  entity_type,\n  entity_id,\n  event_type,\n  event_timestamp,\n  source_system,\n  workflow_execution_id,\n  payload\n)\nSELECT\n  GENERATE_UUID(),\n  'campaign_doctor',\n  'campaign_2026_09_poc:doctor_test_001',\n  'interview.links_generated',\n  CURRENT_TIMESTAMP(),\n  'n8n',\n  NULL,\n  TO_JSON(\n    STRUCT(\n      'campaign_2026_09_poc' AS campaign_id,\n      'doctor_test_001' AS doctor_id,\n      COUNT(*) AS link_count\n    )\n  )\nFROM\n  generated_links;\n\nSELECT\n  c.campaign_name,\n  d.doctor_name,\n  p.practice_name,\n  g.topic_sort_order,\n  g.topic_id,\n  g.topic_title,\n  g.topic_description,\n  g.interview_guidance,\n  g.link_id,\n  CONCAT(\n    'https://content.apexdp.com/interview/',\n    g.raw_token\n  ) AS interview_url,\n  g.expires_at,\n  'READY' AS link_status\nFROM\n  generated_links g\nJOIN\n  `apex-marketing-n8n.automated_article_creation.campaigns` c\n    ON c.campaign_id = g.campaign_id\nJOIN\n  `apex-marketing-n8n.automated_article_creation.doctors` d\n    ON d.doctor_id = g.doctor_id\nJOIN\n  `apex-marketing-n8n.automated_article_creation.practices` p\n    ON p.practice_id = d.practice_id\nORDER BY\n  g.topic_sort_order;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [
+        -120,
+        80
+      ],
+      "id": "4fef3223-d3c3-430f-adae-459c2586defa",
+      "name": "Generate and Store Three Secure Links"
+    },
+    {
+      "parameters": {
+        "content": "## AAC Phase 1B - Corrected\n\nThis POC intentionally uses only two executable nodes to maximize import compatibility:\n\n**Manual Trigger \u2192 BigQuery**\n\nAfter import:\n1. Open **Generate and Store Three Secure Links**.\n2. Select your existing Google BigQuery service-account credential.\n3. Execute the workflow.\n\nThe BigQuery node itself should return the three topic-specific links.\n\nThe `content.apexdp.com` URLs remain placeholders until the interview web app exists.",
+        "height": 330,
+        "width": 460
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -440,
+        -300
+      ],
+      "id": "1c93cb34-96f7-4b68-9964-adb38c579ab2",
+      "name": "Phase 1B Notes"
+    }
+  ],
+  "connections": {
+    "Run Test Link Generation": {
+      "main": [
+        [
+          {
+            "node": "Generate and Store Three Secure Links",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

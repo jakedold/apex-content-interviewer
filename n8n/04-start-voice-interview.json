@@ -1,0 +1,229 @@
+{
+  "name": "AAC - 04 - Start Voice Interview",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "aac/interview/start",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -700,
+        80
+      ],
+      "id": "785fc41b-9517-45f9-bc9d-2d89be5969d9",
+      "name": "Receive Voice Session Request",
+      "webhookId": "8d7aa70f-741e-4240-bb78-0bbc4c01c027"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "projectId": {
+          "__rl": true,
+          "value": "apex-marketing-n8n",
+          "mode": "id"
+        },
+        "sqlQuery": "SELECT\n  IF(il.link_id IS NOT NULL, 'true', 'false') AS valid,\n  IF(il.link_id IS NOT NULL, 'VALID', 'INVALID_OR_EXPIRED') AS validation_status,\n  il.link_id,\n  il.campaign_id,\n  il.doctor_id,\n  il.topic_id\nFROM (SELECT 1 AS seed) s\nLEFT JOIN (\n  SELECT\n    link_id,\n    campaign_id,\n    doctor_id,\n    topic_id\n  FROM\n    `apex-marketing-n8n.automated_article_creation.interview_links`\n  WHERE\n    secure_token_hash = TO_HEX(SHA256(@token))\n    AND expires_at > CURRENT_TIMESTAMP()\n    AND status IN ('READY', 'OPENED')\n    AND used_at IS NULL\n  QUALIFY\n    ROW_NUMBER() OVER (ORDER BY created_at DESC) = 1\n) il\nON TRUE;",
+        "options": {
+          "location": "US",
+          "queryParameters": {
+            "namedParameters": [
+              {
+                "name": "token",
+                "value": "={{ $json.body.token }}"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [
+        -420,
+        80
+      ],
+      "id": "0723c2e0-9166-469f-9337-0f412c6a2343",
+      "name": "Validate Interview Token"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "aa1445ff-4d21-4c9c-b92f-8255e9b0f958",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -140,
+        80
+      ],
+      "id": "ac1a9629-5781-448b-9be4-68c2c97fc522",
+      "name": "Is Interview Token Valid?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/realtime/client_secrets",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "{\n  \"session\": {\n    \"type\": \"realtime\",\n    \"model\": \"gpt-realtime-2.1\"\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        180,
+        -40
+      ],
+      "id": "c5131e9a-e395-4b34-b82d-4cfc8c1981ba",
+      "name": "Mint OpenAI Realtime Client Secret"
+    },
+    {
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        500,
+        -40
+      ],
+      "id": "6eadd55f-2a47-493e-af72-8e13f262db3b",
+      "name": "Return Realtime Client Secret"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"valid\": false, \"error\": \"INVALID_OR_EXPIRED\" } }}",
+        "options": {
+          "responseCode": 401,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        180,
+        220
+      ],
+      "id": "f008daf9-77a3-44f4-93ac-fd512355a847",
+      "name": "Reject Invalid Interview Token"
+    },
+    {
+      "parameters": {
+        "content": "## AAC Phase 1C - Realtime Session Bootstrap\n\nCompatibility build for the current n8n instance.\n\nFlow:\nWebhook \u2192 BigQuery validation \u2192 IF \u2192 OpenAI Realtime client secret \u2192 response\n\nAfter import:\n1. Connect the existing BigQuery credential.\n2. In **Mint OpenAI Realtime Client Secret**, select **OpenAi account**.\n3. Do not activate yet. We will test first.\n\nThe OpenAI request uses `POST /v1/realtime/client_secrets` with `gpt-realtime-2.1`.",
+        "height": 380,
+        "width": 520
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -700,
+        -420
+      ],
+      "id": "2d46a9a0-24b5-4024-8bbc-289345416bd9",
+      "name": "Phase 1C Voice Session Notes"
+    }
+  ],
+  "connections": {
+    "Receive Voice Session Request": {
+      "main": [
+        [
+          {
+            "node": "Validate Interview Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Interview Token": {
+      "main": [
+        [
+          {
+            "node": "Is Interview Token Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Interview Token Valid?": {
+      "main": [
+        [
+          {
+            "node": "Mint OpenAI Realtime Client Secret",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reject Invalid Interview Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mint OpenAI Realtime Client Secret": {
+      "main": [
+        [
+          {
+            "node": "Return Realtime Client Secret",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

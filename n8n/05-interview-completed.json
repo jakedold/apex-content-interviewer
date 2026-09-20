@@ -1,0 +1,213 @@
+{
+  "name": "AAC - 05 - Interview Completed",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "aac/interview/complete",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -620,
+        80
+      ],
+      "id": "cc8f447f-4e7c-42b5-9eda-7da839cf8278",
+      "name": "Receive Completed Interview",
+      "webhookId": "9442b131-8417-4818-82b0-4447439846c7"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "projectId": {
+          "__rl": true,
+          "value": "apex-marketing-n8n",
+          "mode": "id"
+        },
+        "sqlQuery": "-- AAC Phase 1D\nCREATE TEMP TABLE valid_link AS\nSELECT\n  il.link_id,\n  il.campaign_id,\n  il.doctor_id,\n  d.practice_id,\n  il.topic_id,\n  CONCAT('interview_', REPLACE(il.link_id, '-', '')) AS interview_id\nFROM `apex-marketing-n8n.automated_article_creation.interview_links` il\nJOIN `apex-marketing-n8n.automated_article_creation.doctors` d\n  ON d.doctor_id = il.doctor_id\nWHERE\n  il.secure_token_hash = TO_HEX(SHA256(@token))\n  AND il.expires_at > CURRENT_TIMESTAMP()\n  AND il.status IN ('READY', 'OPENED')\n  AND il.used_at IS NULL\nQUALIFY ROW_NUMBER() OVER (ORDER BY il.created_at DESC) = 1;\n\nMERGE `apex-marketing-n8n.automated_article_creation.interviews` T\nUSING (\n  SELECT\n    interview_id,\n    campaign_id,\n    doctor_id,\n    practice_id,\n    topic_id,\n    'INTERVIEW_COMPLETED' AS status,\n    COALESCE(SAFE_CAST(@started_at AS TIMESTAMP), CURRENT_TIMESTAMP()) AS started_at,\n    COALESCE(SAFE_CAST(@completed_at AS TIMESTAMP), CURRENT_TIMESTAMP()) AS completed_at,\n    @transcript AS transcript,\n    CAST(NULL AS STRING) AS audio_storage_uri,\n    TO_JSON(STRUCT(\n      SAFE.PARSE_JSON(@history_json) AS realtime_history,\n      'browser_realtime' AS capture_source\n    )) AS interview_metadata\n  FROM valid_link\n) S\nON T.interview_id = S.interview_id\nWHEN MATCHED THEN UPDATE SET\n  status = S.status,\n  started_at = S.started_at,\n  completed_at = S.completed_at,\n  transcript = S.transcript,\n  audio_storage_uri = S.audio_storage_uri,\n  interview_metadata = S.interview_metadata,\n  updated_at = CURRENT_TIMESTAMP()\nWHEN NOT MATCHED THEN\n  INSERT (\n    interview_id, campaign_id, doctor_id, practice_id, topic_id, status,\n    started_at, completed_at, transcript, audio_storage_uri,\n    interview_metadata, created_at, updated_at\n  )\n  VALUES (\n    S.interview_id, S.campaign_id, S.doctor_id, S.practice_id, S.topic_id, S.status,\n    S.started_at, S.completed_at, S.transcript, S.audio_storage_uri,\n    S.interview_metadata, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP()\n  );\n\nUPDATE `apex-marketing-n8n.automated_article_creation.interview_links`\nSET\n  status = 'USED',\n  used_at = CURRENT_TIMESTAMP(),\n  interview_id = (SELECT interview_id FROM valid_link LIMIT 1)\nWHERE link_id IN (SELECT link_id FROM valid_link);\n\nUPDATE `apex-marketing-n8n.automated_article_creation.campaign_doctors`\nSET\n  status = 'INTERVIEW_COMPLETED',\n  interview_completed_at = CURRENT_TIMESTAMP(),\n  updated_at = CURRENT_TIMESTAMP()\nWHERE campaign_id IN (SELECT campaign_id FROM valid_link)\n  AND doctor_id IN (SELECT doctor_id FROM valid_link);\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.workflow_events`\n(\n  event_id, entity_type, entity_id, event_type, event_timestamp,\n  source_system, workflow_execution_id, payload\n)\nSELECT\n  GENERATE_UUID(),\n  'interview',\n  interview_id,\n  'interview.completed',\n  CURRENT_TIMESTAMP(),\n  'browser+n8n',\n  NULL,\n  TO_JSON(STRUCT(\n    campaign_id,\n    doctor_id,\n    topic_id,\n    LENGTH(@transcript) AS transcript_characters\n  ))\nFROM valid_link;\n\nSELECT\n  IF(v.interview_id IS NOT NULL, 'true', 'false') AS valid,\n  IF(v.interview_id IS NOT NULL, 'INTERVIEW_COMPLETED', 'INVALID_OR_ALREADY_USED') AS status,\n  v.interview_id,\n  v.campaign_id,\n  v.doctor_id,\n  v.topic_id\nFROM (SELECT 1 AS seed) s\nLEFT JOIN valid_link v\nON TRUE;",
+        "options": {
+          "location": "US",
+          "queryParameters": {
+            "namedParameters": [
+              {
+                "name": "token",
+                "value": "={{ $json.body.token }}"
+              },
+              {
+                "name": "transcript",
+                "value": "={{ $json.body.transcript }}"
+              },
+              {
+                "name": "history_json",
+                "value": "={{ $json.body.history_json }}"
+              },
+              {
+                "name": "started_at",
+                "value": "={{ $json.body.started_at }}"
+              },
+              {
+                "name": "completed_at",
+                "value": "={{ $json.body.completed_at }}"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [
+        -340,
+        80
+      ],
+      "id": "31bb126f-bd57-4bd0-98ea-dc19e0eedbe1",
+      "name": "Persist Interview and Mark Complete"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "6c6a82bc-f871-4904-9122-b04cc051328d",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -60,
+        80
+      ],
+      "id": "b7e5d9cb-7ed7-43d2-acca-fb233666ffb8",
+      "name": "Was Interview Saved?"
+    },
+    {
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        260,
+        -20
+      ],
+      "id": "3c0d83fd-ec58-45e7-b06a-581330cfc2f3",
+      "name": "Return Completion Success"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"valid\": false, \"error\": \"INVALID_OR_ALREADY_USED\" } }}",
+        "options": {
+          "responseCode": 401,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        260,
+        180
+      ],
+      "id": "5ef1e0e1-8855-41f1-836f-897f1f1ef909",
+      "name": "Reject Invalid Completion"
+    },
+    {
+      "parameters": {
+        "content": "## AAC Phase 1D - Interview Completion\n\nReceives the finished browser voice interview and persists it to BigQuery.\n\nOn success:\n- stores readable transcript + raw Realtime history\n- marks the interview link USED\n- updates campaign_doctors to INTERVIEW_COMPLETED\n- logs `interview.completed`\n\nAfter import, connect the existing BigQuery credential. Test before activating.",
+        "height": 360,
+        "width": 500
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -620,
+        -360
+      ],
+      "id": "e6167d16-1df1-4b35-8b6c-6dbab0dc404e",
+      "name": "Phase 1D Notes"
+    }
+  ],
+  "connections": {
+    "Receive Completed Interview": {
+      "main": [
+        [
+          {
+            "node": "Persist Interview and Mark Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Persist Interview and Mark Complete": {
+      "main": [
+        [
+          {
+            "node": "Was Interview Saved?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Was Interview Saved?": {
+      "main": [
+        [
+          {
+            "node": "Return Completion Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reject Invalid Completion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

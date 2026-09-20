@@ -1,0 +1,17 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "apex-content-interviewer",
+  "main": "./worker/index.ts",
+  "compatibility_date": "2026-09-20",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "vars": {
+    "N8N_BASE_URL": "https://n8n.apexdentalautomation.com"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

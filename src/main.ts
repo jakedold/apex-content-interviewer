@@ -1,0 +1,494 @@
+import './style.css';
+import {
+  RealtimeAgent,
+  RealtimeSession,
+  type RealtimeItem,
+} from '@openai/agents/realtime';
+
+type InterviewContext = {
+  valid: boolean | string;
+  validation_status: string;
+  link_id: string | null;
+  campaign_id: string | null;
+  campaign_name: string | null;
+  doctor_id: string | null;
+  doctor_name: string | null;
+  credentials: string | null;
+  practice_id: string | null;
+  practice_name: string | null;
+  topic_id: string | null;
+  topic_title: string | null;
+  topic_description: string | null;
+  interview_guidance: string | null;
+  expires_at: string | null;
+};
+
+type StartSessionResponse = { value?: string; error?: string; };
+type CompletionResponse = {
+  valid: boolean | string;
+  status?: string;
+  interview_id?: string | null;
+  error?: string;
+};
+
+const appElement = document.querySelector<HTMLDivElement>('#app');
+if (!appElement) throw new Error('App container not found.');
+const app: HTMLDivElement = appElement;
+
+let liveSession: RealtimeSession | null = null;
+let connected = false;
+let paused = false;
+let interviewStartedAt: string | null = null;
+
+function getToken(): string {
+  const match = window.location.pathname.match(/^\/interview\/([^/]+)\/?$/);
+  if (match?.[1]) return decodeURIComponent(match[1]);
+  return new URLSearchParams(window.location.search).get('token') ?? '';
+}
+
+function escapeHtml(value: string | null | undefined): string {
+  return (value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+async function postJson<T>(url: string, body: Record<string, unknown>): Promise<T> {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data: unknown = await response.json();
+  if (!response.ok) {
+    const errorData = data && typeof data === 'object'
+      ? data as { error?: string; message?: string }
+      : {};
+    throw new Error(errorData.error || errorData.message || `Request failed with status ${response.status}`);
+  }
+  return data as T;
+}
+
+function renderLoading(): void {
+  app.innerHTML = `
+    <main class="page"><section class="card">
+      <div class="brand">APEX DENTAL PARTNERS</div>
+      <div class="activity activity-large" aria-hidden="true"><span class="spinner"></span></div>
+      <h1>Preparing your interview</h1>
+      <p class="description">One moment while we load your topic.</p>
+    </section></main>`;
+}
+
+function renderInvalid(message: string): void {
+  app.innerHTML = `
+    <main class="page"><section class="card">
+      <div class="brand">APEX DENTAL PARTNERS</div>
+      <div class="eyebrow">Content Interview</div>
+      <h1>This interview link isn't available.</h1>
+      <p class="description">${escapeHtml(message)}</p>
+    </section></main>`;
+}
+
+function renderComplete(context: InterviewContext): void {
+  app.innerHTML = `
+    <main class="page"><section class="card completion-card">
+      <div class="brand">APEX DENTAL PARTNERS</div>
+      <div class="completion-check" aria-hidden="true">✓</div>
+      <div class="eyebrow">Interview complete</div>
+      <h1>Thank you, ${escapeHtml(context.doctor_name)}.</h1>
+      <p class="description">
+        Your conversation about ${escapeHtml(context.topic_title)} has been saved.
+        We'll use it to prepare your article draft.
+      </p>
+    </section></main>`;
+}
+
+function contentText(content: unknown): string {
+  if (!content || typeof content !== 'object') return '';
+  const c = content as { type?: string; text?: string; transcript?: string | null; };
+  if (c.type === 'input_text' || c.type === 'output_text') return c.text ?? '';
+  if (c.type === 'input_audio' || c.type === 'output_audio') return c.transcript ?? '';
+  return '';
+}
+
+function historyToTranscript(history: RealtimeItem[]): string {
+  const lines: string[] = [];
+  for (const item of history) {
+    if (!item || item.type !== 'message') continue;
+    if (item.role !== 'user' && item.role !== 'assistant') continue;
+    const parts = Array.isArray(item.content) ? item.content.map(contentText).filter(Boolean) : [];
+    const text = parts.join(' ').trim();
+    if (!text) continue;
+    lines.push(`${item.role === 'user' ? 'Doctor' : 'Interviewer'}: ${text}`);
+  }
+  return lines.join('\n\n');
+}
+
+async function waitForTranscriptSettle(session: RealtimeSession, maxWaitMs = 2500): Promise<RealtimeItem[]> {
+  const start = Date.now();
+  let lastSnapshot = JSON.stringify(session.history);
+  let stableSince = Date.now();
+
+  while (Date.now() - start < maxWaitMs) {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const current = JSON.stringify(session.history);
+    if (current === lastSnapshot) {
+      if (Date.now() - stableSince >= 750) break;
+    } else {
+      lastSnapshot = current;
+      stableSince = Date.now();
+    }
+  }
+  return session.history;
+}
+
+function renderInterview(context: InterviewContext, token: string): void {
+  const doctorDisplay = [context.doctor_name, context.credentials].filter(Boolean).join(', ');
+
+  app.innerHTML = `
+    <main class="page"><section class="card">
+      <div class="brand">APEX DENTAL PARTNERS</div>
+      <div class="eyebrow">AI Content Interview</div>
+      <h1>Hi, ${escapeHtml(doctorDisplay)}</h1>
+      <p class="intro">We'll have a short conversation about:</p>
+      <div class="topic-card">
+        <span class="topic-label">Today's topic</span>
+        <h2>${escapeHtml(context.topic_title)}</h2>
+        <p>${escapeHtml(context.topic_description)}</p>
+      </div>
+      <div class="expectation">
+        <strong>What to expect</strong>
+        <p>This is a conversational voice interview. Speak naturally, just as you would if someone were interviewing you in person.</p>
+      </div>
+      <div class="interview-controls">
+        <button id="interview-button" class="primary-button" type="button">Start Interview</button>
+        <button id="pause-button" class="secondary-button" type="button" hidden>Pause Interview</button>
+      </div>
+      <div id="status" class="status" aria-live="polite">Your microphone will be requested when you begin.</div>
+    </section></main>`;
+
+  const button = document.querySelector<HTMLButtonElement>('#interview-button');
+  const pauseButton = document.querySelector<HTMLButtonElement>('#pause-button');
+  const status = document.querySelector<HTMLDivElement>('#status');
+  if (!button || !pauseButton || !status) throw new Error('Interview controls not found.');
+
+  pauseButton.addEventListener('click', () => {
+    if (!connected || !liveSession) return;
+
+    if (paused) {
+      liveSession.mute(false);
+      paused = false;
+      pauseButton.textContent = 'Pause Interview';
+      status.innerHTML = `<span class="live-dot"></span> Connected. Your interviewer is listening.`;
+    } else {
+      liveSession.interrupt();
+      liveSession.mute(true);
+      paused = true;
+      pauseButton.textContent = 'Resume Interview';
+      status.innerHTML = `<strong>Interview paused.</strong> Your microphone is muted. Resume when you're ready.`;
+    }
+  });
+
+  button.addEventListener('click', async () => {
+    if (connected && liveSession) {
+      button.disabled = true;
+      pauseButton.disabled = true;
+      button.textContent = 'Saving Interview';
+      status.innerHTML = `<span class="spinner spinner-small" aria-hidden="true"></span> Finishing the transcript and saving your interview...`;
+
+      try {
+        const finalHistory = await waitForTranscriptSettle(liveSession);
+        const transcript = historyToTranscript(finalHistory);
+        const completedAt = new Date().toISOString();
+
+        liveSession.close();
+        connected = false;
+        paused = false;
+
+        const completion = await postJson<CompletionResponse>('/api/complete', {
+          token,
+          transcript,
+          history_json: JSON.stringify(finalHistory),
+          started_at: interviewStartedAt ?? completedAt,
+          completed_at: completedAt,
+        });
+
+        const saved = completion.valid === true || completion.valid === 'true';
+        if (!saved) throw new Error(completion.error || 'The interview could not be saved.');
+
+        liveSession = null;
+        renderComplete(context);
+      } catch (error) {
+        console.error(error);
+        status.textContent = error instanceof Error ? error.message : 'Unable to save the interview.';
+        button.disabled = false;
+        pauseButton.disabled = false;
+        button.textContent = 'Try Saving Again';
+      }
+      return;
+    }
+
+    button.disabled = true;
+    status.innerHTML = `<span class="spinner spinner-small" aria-hidden="true"></span> Connecting to your interviewer...`;
+
+    try {
+      const startResponse = await postJson<StartSessionResponse>('/api/start', { token });
+      if (!startResponse.value) {
+        throw new Error('The voice session did not return a temporary credential.');
+      }
+
+      const agent = new RealtimeAgent({
+        name: 'Apex Content Interviewer',
+        instructions: `
+You are the Apex Dental Partners Clinician Content Interviewer.
+
+Your job is NOT to write an article.
+
+Your job is to conduct a natural, efficient voice interview that extracts useful first-person expertise, explanations, opinions, examples, and clinical perspective from a dental clinician. The transcript will later be used by a separate writing system to create an article in the clinician's voice.
+
+CLINICIAN
+Name: ${doctorDisplay}
+Practice: ${context.practice_name ?? 'their dental practice'}
+
+SELECTED TOPIC
+${context.topic_title ?? 'the selected dental topic'}
+
+TOPIC DESCRIPTION
+${context.topic_description ?? ''}
+
+TOPIC-SPECIFIC INTERVIEW GUIDANCE
+${context.interview_guidance ?? ''}
+
+PRIMARY OBJECTIVE
+
+Gather enough original, substantive clinician insight to support a strong, authoritative patient-facing article.
+
+The final transcript should contain more than information that could be found in a generic dental article. Look for how THIS clinician explains the topic, thinks about it, talks with patients about it, makes decisions, and corrects common misunderstandings.
+
+CONVERSATION STYLE
+
+- Be warm, professional, relaxed, and conversational.
+- Sound like an experienced human interviewer, not a questionnaire.
+- Ask one question at a time.
+- Keep your own speaking turns short.
+- Do not lecture the clinician or provide long explanations yourself.
+- Brief acknowledgments are fine, but move naturally into the next useful question.
+- Use the clinician's previous answer to determine the next question.
+- Do not mechanically work through a predetermined list.
+- Do not tell the clinician that you are tracking criteria or completing a checklist.
+- Do not repeatedly restate what the clinician just said.
+- Allow interruptions naturally.
+- If the clinician changes direction and reveals something useful, follow it.
+
+DEPTH RULE
+
+Generic answers are not enough.
+
+When an answer is brief, vague, obvious, or sounds like something that could have been copied from a generic website, probe once or twice for greater depth.
+
+Useful follow-up approaches include:
+- What do you mean by that?
+- Why is that important?
+- How do you explain that to patients?
+- What do patients tend to misunderstand about that?
+- What are you looking at when you make that decision?
+- Can you give me an example?
+- Is there a simple analogy you use with patients?
+- What makes one patient different from another in that situation?
+- What do you wish patients understood before they came in?
+- Is there anything about that that's more nuanced than people realize?
+
+Do not ask these mechanically. Choose the follow-up that fits the conversation.
+
+HIGH-VALUE CONTENT TO LOOK FOR
+
+Across the conversation, try to uncover as many of these as are genuinely relevant:
+
+1. How the clinician explains the core concept in patient-friendly terms.
+2. Why the topic matters clinically or practically.
+3. What patients commonly notice, ask about, or misunderstand.
+4. How the clinician evaluates, diagnoses, or thinks through the situation.
+5. What factors influence treatment or management decisions.
+6. Important distinctions that patients often miss.
+7. Common misconceptions or oversimplifications.
+8. The clinician's own treatment philosophy or approach.
+9. Examples, comparisons, analogies, or memorable ways the clinician explains something.
+10. What the clinician wishes patients knew sooner.
+11. Useful actions or next steps for patients.
+12. Important caveats or situations where the answer depends on the individual patient.
+
+Not every topic requires every category.
+
+TOPIC GUIDANCE PRIORITY
+
+The topic-specific interview guidance above is important, but it is not a script.
+
+Use it to understand the areas we hope to cover. If the clinician naturally covers one of those areas during another answer, do not ask the same question again just to check a box.
+
+If the clinician reveals a more useful direction than the supplied guidance, follow that direction.
+
+INTERVIEWER DISCIPLINE
+
+Do not:
+- answer the interview questions yourself
+- invent clinical facts or opinions for the clinician
+- put words in the clinician's mouth
+- argue with the clinician
+- ask multiple questions in one long speaking turn
+- keep asking questions simply because more questions are possible
+- repeat a question that has already been substantively answered
+- ask superficial questions after sufficient depth has already been reached
+
+WHEN TO PROBE
+
+Probe when:
+- the answer is very short
+- the answer is generic
+- the clinician mentions something interesting without explaining it
+- there is a meaningful distinction that is still unclear
+- the clinician expresses an opinion or approach that could make the article more distinctive
+- the answer raises an obvious patient question
+- the topic guidance identifies an important area that has not yet been meaningfully addressed
+
+WHEN NOT TO PROBE
+
+Move on when:
+- the clinician has already given a specific, useful explanation
+- additional questioning would likely produce repetition
+- the point is minor relative to the article
+- the clinician signals that there is not much more to say about it
+
+COMPLETION CRITERIA
+
+Internally keep track of whether the conversation has produced enough material.
+
+The interview is ready to end when ALL of the following are true:
+
+1. The clinician has clearly explained the central topic.
+2. The transcript contains multiple substantive clinician answers.
+3. At least two pieces of content reflect the clinician's own perspective, explanation, decision-making, example, analogy, or patient experience rather than generic information.
+4. At least one useful patient misconception, common question, distinction, or point of confusion has been explored when relevant.
+5. The clinician has provided useful guidance about what patients should understand, consider, or do.
+6. The major relevant areas in the topic-specific guidance have either been covered or intentionally skipped because they were not useful or applicable.
+7. There is no important conversational thread still obviously unresolved.
+
+Do NOT continue merely to make the interview longer.
+
+INTERVIEW LENGTH
+
+Aim for an efficient interview.
+
+Most successful interviews should require roughly 6 to 10 substantive questions, including follow-ups.
+
+If the completion criteria are met sooner, end sooner.
+
+Do not exceed 12 substantive questions unless the clinician is actively providing unusually valuable information and clearly wants to continue.
+
+If the clinician sounds rushed or asks to finish quickly, prioritize the most important unanswered areas and close sooner.
+
+If the clinician says they are finished, need to leave, or do not have anything else to add, respect that and move to closure.
+
+CLOSING SEQUENCE
+
+Once the completion criteria are met, do not abruptly end.
+
+Ask ONE final open-ended question along the lines of:
+
+Before we wrap up, is there anything about ${context.topic_title ?? 'this topic'} that you really wish patients understood that we haven't talked about yet?
+
+Do not use the exact same wording every time.
+
+After the clinician answers:
+- briefly thank them
+- clearly say the interview is complete
+- do not begin a new topic
+- do not ask another substantive question
+- do not summarize the entire interview unless asked
+
+OPENING
+
+Begin naturally and quickly.
+
+Briefly greet the clinician and introduce the selected topic.
+
+Then ask one broad opening question that allows the clinician to explain the topic in their own words.
+
+Do not give a long introduction.
+        `.trim(),
+      });
+
+      liveSession = new RealtimeSession(agent, { model: 'gpt-realtime-2.1' });
+
+      liveSession.on('agent_start', () => {
+        if (!paused) {
+          status.innerHTML = `<span class="spinner spinner-small" aria-hidden="true"></span> Thinking...`;
+        }
+      });
+
+      liveSession.on('audio_start', () => {
+        if (!paused) {
+          status.innerHTML = `<span class="speaking-bars" aria-hidden="true"><i></i><i></i><i></i></span> Interviewer speaking...`;
+        }
+      });
+
+      liveSession.on('audio_stopped', () => {
+        if (!paused) {
+          status.innerHTML = `<span class="live-dot"></span> Connected. Your interviewer is listening.`;
+        }
+      });
+
+      await liveSession.connect({ apiKey: startResponse.value });
+
+      interviewStartedAt = new Date().toISOString();
+      connected = true;
+      paused = false;
+      button.disabled = false;
+      button.textContent = 'End Interview';
+      pauseButton.hidden = false;
+      pauseButton.disabled = false;
+      pauseButton.textContent = 'Pause Interview';
+      status.innerHTML = `<span class="live-dot"></span> Connected. Your interviewer is listening.`;
+
+      liveSession.transport.sendEvent({
+        type: 'response.create',
+      });
+    } catch (error) {
+      console.error(error);
+      status.textContent = error instanceof Error ? error.message : 'Unable to start the interview.';
+      button.disabled = false;
+      button.textContent = 'Try Again';
+      liveSession?.close();
+      liveSession = null;
+      connected = false;
+      paused = false;
+      interviewStartedAt = null;
+    }
+  });
+}
+
+async function initialize(): Promise<void> {
+  const token = getToken();
+  if (!token) {
+    renderInvalid('No interview token was found in this link.');
+    return;
+  }
+
+  renderLoading();
+
+  try {
+    const context = await postJson<InterviewContext>('/api/validate', { token });
+    const isValid = context.valid === true || context.valid === 'true';
+    if (!isValid) {
+      renderInvalid('This link may have expired or is no longer available.');
+      return;
+    }
+    renderInterview(context, token);
+  } catch (error) {
+    console.error(error);
+    renderInvalid(error instanceof Error ? error.message : 'We were unable to load this interview.');
+  }
+}
+
+initialize();

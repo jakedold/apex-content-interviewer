@@ -10,6 +10,12 @@ Version-controlled workflow exports:
 - `03-validate-interview-link.json`
 - `04-start-voice-interview.json`
 - `05-interview-completed.json`
+- `06-generate-article.json`
+
+The article-generation workflow uses the approved prompt preserved at
+`../prompts/article-generation-master-prompt.md`. It is intentionally shipped
+with a manual trigger so a completed interview can be tested and reviewed
+before automatic generation is enabled.
 
 Current browser endpoints:
 

@@ -31,6 +31,28 @@ type CompletionResponse = {
   error?: string;
 };
 
+type ReviewContext = {
+  valid: boolean | string;
+  validation_status: string;
+  review_link_id: string | null;
+  article_id: string | null;
+  doctor_name: string | null;
+  credentials: string | null;
+  practice_name: string | null;
+  article_title: string | null;
+  article_html: string | null;
+  doctor_review_deadline: string | null;
+  review_status: string | null;
+  current_version: number | string | null;
+};
+
+type ReviewResponse = {
+  valid: boolean | string;
+  status?: string;
+  article_id?: string | null;
+  error?: string;
+};
+
 const appElement = document.querySelector<HTMLDivElement>('#app');
 if (!appElement) throw new Error('App container not found.');
 const app: HTMLDivElement = appElement;
@@ -40,8 +62,8 @@ let connected = false;
 let paused = false;
 let interviewStartedAt: string | null = null;
 
-function getToken(): string {
-  const match = window.location.pathname.match(/^\/interview\/([^/]+)\/?$/);
+function getPathToken(route: 'interview' | 'review'): string {
+  const match = window.location.pathname.match(new RegExp(`^/${route}/([^/]+)/?$`));
   if (match?.[1]) return decodeURIComponent(match[1]);
   return new URLSearchParams(window.location.search).get('token') ?? '';
 }
@@ -71,24 +93,181 @@ async function postJson<T>(url: string, body: Record<string, unknown>): Promise<
   return data as T;
 }
 
-function renderLoading(): void {
+function renderLoading(label = 'interview', description = 'One moment while we load your topic.'): void {
   app.innerHTML = `
     <main class="page"><section class="card">
       <div class="brand">APEX DENTAL PARTNERS</div>
       <div class="activity activity-large" aria-hidden="true"><span class="spinner"></span></div>
-      <h1>Preparing your interview</h1>
-      <p class="description">One moment while we load your topic.</p>
+      <h1>Preparing your ${escapeHtml(label)}</h1>
+      <p class="description">${escapeHtml(description)}</p>
     </section></main>`;
 }
 
-function renderInvalid(message: string): void {
+function renderInvalid(message: string, label = 'interview'): void {
   app.innerHTML = `
     <main class="page"><section class="card">
       <div class="brand">APEX DENTAL PARTNERS</div>
-      <div class="eyebrow">Content Interview</div>
-      <h1>This interview link isn't available.</h1>
+      <div class="eyebrow">Content ${escapeHtml(label)}</div>
+      <h1>This ${escapeHtml(label)} link isn't available.</h1>
       <p class="description">${escapeHtml(message)}</p>
     </section></main>`;
+}
+
+function sanitizeArticleHtml(html: string): string {
+  const allowedTags = new Set([
+    'A', 'BLOCKQUOTE', 'BR', 'EM', 'H1', 'H2', 'H3', 'LI', 'OL', 'P', 'STRONG', 'UL',
+  ]);
+  const document = new DOMParser().parseFromString(html, 'text/html');
+
+  for (const element of Array.from(document.body.querySelectorAll('*'))) {
+    if (!allowedTags.has(element.tagName)) {
+      element.replaceWith(document.createTextNode(element.textContent ?? ''));
+      continue;
+    }
+
+    for (const attribute of Array.from(element.attributes)) {
+      if (element.tagName !== 'A' || attribute.name !== 'href') {
+        element.removeAttribute(attribute.name);
+      }
+    }
+
+    if (element.tagName === 'A') {
+      const href = element.getAttribute('href');
+      if (!href) continue;
+      try {
+        const link = new URL(href, window.location.origin);
+        if (link.protocol !== 'https:') element.removeAttribute('href');
+      } catch {
+        element.removeAttribute('href');
+      }
+      if (element.hasAttribute('href')) element.setAttribute('rel', 'noopener noreferrer');
+    }
+  }
+
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_COMMENT);
+  const comments: Comment[] = [];
+  while (walker.nextNode()) comments.push(walker.currentNode as Comment);
+  for (const comment of comments) comment.remove();
+
+  return document.body.innerHTML;
+}
+
+function formatDeadline(value: string | null): string {
+  if (!value) return 'the review deadline';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'long', day: 'numeric', year: 'numeric', timeZoneName: 'short',
+  }).format(date);
+}
+
+function renderReviewComplete(context: ReviewContext, requestedChanges: boolean): void {
+  const message = requestedChanges
+    ? 'Your requested changes have been recorded. We’ll prepare a revised version and send you a new review link.'
+    : 'Your approval has been recorded. The article will now move to the next review step.';
+  app.innerHTML = `
+    <main class="page"><section class="card completion-card">
+      <div class="brand">APEX DENTAL PARTNERS</div>
+      <div class="completion-check" aria-hidden="true">✓</div>
+      <div class="eyebrow">Article review complete</div>
+      <h1>Thank you, ${escapeHtml(context.doctor_name)}.</h1>
+      <p class="description">${escapeHtml(message)}</p>
+    </section></main>`;
+}
+
+function renderReview(context: ReviewContext, token: string): void {
+  const priorStatus = context.review_status ?? '';
+  if (priorStatus === 'APPROVED' || priorStatus === 'CHANGES_REQUESTED') {
+    renderReviewComplete(context, priorStatus === 'CHANGES_REQUESTED');
+    return;
+  }
+
+  const doctorDisplay = [context.doctor_name, context.credentials].filter(Boolean).join(', ');
+  const articleHtml = sanitizeArticleHtml(context.article_html ?? '');
+  app.innerHTML = `
+    <main class="review-page">
+      <header class="review-header">
+        <div class="brand">APEX DENTAL PARTNERS</div>
+        <div class="eyebrow">Article Review</div>
+        <h1>${escapeHtml(context.article_title || 'Your article draft')}</h1>
+        <p class="review-byline">Prepared for ${escapeHtml(doctorDisplay)} at ${escapeHtml(context.practice_name)}</p>
+        <p class="review-deadline">Please respond by <strong>${escapeHtml(formatDeadline(context.doctor_review_deadline))}</strong>. If we do not hear from you, the article will automatically move forward as approved.</p>
+      </header>
+      <article class="article-preview">${articleHtml}</article>
+      <section class="review-actions" aria-labelledby="review-actions-heading">
+        <div>
+          <div class="eyebrow">Your decision</div>
+          <h2 id="review-actions-heading">Is this article ready to move forward?</h2>
+          <p>Approve it as written, or tell us what you would like changed.</p>
+        </div>
+        <div class="review-buttons">
+          <button id="approve-button" class="primary-button" type="button">Approve Article</button>
+          <button id="changes-button" class="secondary-button" type="button">Request Changes</button>
+        </div>
+        <form id="changes-form" class="changes-form" hidden>
+          <label for="feedback">Tell us what you’d like changed.</label>
+          <textarea id="feedback" name="feedback" rows="6" maxlength="4000" required></textarea>
+          <div class="form-buttons">
+            <button class="primary-button" type="submit">Submit Changes</button>
+            <button id="cancel-changes" class="secondary-button" type="button">Cancel</button>
+          </div>
+        </form>
+        <div id="review-status" class="status" aria-live="polite"></div>
+      </section>
+    </main>`;
+
+  const approveButton = document.querySelector<HTMLButtonElement>('#approve-button');
+  const changesButton = document.querySelector<HTMLButtonElement>('#changes-button');
+  const changesForm = document.querySelector<HTMLFormElement>('#changes-form');
+  const feedback = document.querySelector<HTMLTextAreaElement>('#feedback');
+  const cancelChanges = document.querySelector<HTMLButtonElement>('#cancel-changes');
+  const status = document.querySelector<HTMLDivElement>('#review-status');
+  if (!approveButton || !changesButton || !changesForm || !feedback || !cancelChanges || !status) {
+    throw new Error('Article review controls not found.');
+  }
+
+  const setSubmitting = (submitting: boolean): void => {
+    approveButton.disabled = submitting;
+    changesButton.disabled = submitting;
+    feedback.disabled = submitting;
+    cancelChanges.disabled = submitting;
+  };
+
+  const submitDecision = async (action: 'approve' | 'request_changes', response = ''): Promise<void> => {
+    setSubmitting(true);
+    status.innerHTML = `<span class="spinner spinner-small" aria-hidden="true"></span> Saving your response...`;
+    try {
+      const result = await postJson<ReviewResponse>('/api/review/respond', { token, action, response });
+      const saved = result.valid === true || result.valid === 'true';
+      if (!saved) throw new Error(result.error || 'Your response could not be saved.');
+      renderReviewComplete(context, action === 'request_changes');
+    } catch (error) {
+      console.error(error);
+      status.textContent = error instanceof Error ? error.message : 'Unable to save your response.';
+      setSubmitting(false);
+    }
+  };
+
+  approveButton.addEventListener('click', () => void submitDecision('approve'));
+  changesButton.addEventListener('click', () => {
+    changesForm.hidden = false;
+    changesButton.hidden = true;
+    feedback.focus();
+  });
+  cancelChanges.addEventListener('click', () => {
+    changesForm.hidden = true;
+    changesButton.hidden = false;
+    feedback.value = '';
+  });
+  changesForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const response = feedback.value.trim();
+    if (!response) {
+      status.textContent = 'Please describe the change you would like us to make.';
+      return;
+    }
+    void submitDecision('request_changes', response);
+  });
 }
 
 function renderComplete(context: InterviewContext): void {
@@ -468,8 +647,8 @@ Do not give a long introduction.
   });
 }
 
-async function initialize(): Promise<void> {
-  const token = getToken();
+async function initializeInterview(): Promise<void> {
+  const token = getPathToken('interview');
   if (!token) {
     renderInvalid('No interview token was found in this link.');
     return;
@@ -491,4 +670,31 @@ async function initialize(): Promise<void> {
   }
 }
 
-initialize();
+async function initializeReview(): Promise<void> {
+  const token = getPathToken('review');
+  if (!token) {
+    renderInvalid('No review token was found in this link.', 'review');
+    return;
+  }
+
+  document.title = 'Review Your Article | Apex Dental Partners';
+  renderLoading('article review', 'One moment while we load your draft.');
+  try {
+    const context = await postJson<ReviewContext>('/api/review/validate', { token });
+    const isValid = context.valid === true || context.valid === 'true';
+    if (!isValid) {
+      renderInvalid('This link may have expired or is no longer available.', 'review');
+      return;
+    }
+    renderReview(context, token);
+  } catch (error) {
+    console.error(error);
+    renderInvalid(error instanceof Error ? error.message : 'We were unable to load this article.', 'review');
+  }
+}
+
+if (/^\/review\//.test(window.location.pathname)) {
+  void initializeReview();
+} else {
+  void initializeInterview();
+}

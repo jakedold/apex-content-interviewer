@@ -2,6 +2,8 @@ const ROUTES: Readonly<Record<string, string>> = {
   '/api/validate': '/webhook/aac/interview/validate',
   '/api/start': '/webhook/aac/interview/start',
   '/api/complete': '/webhook/aac/interview/complete',
+  '/api/review/validate': '/webhook/aac/review/validate',
+  '/api/review/respond': '/webhook/aac/review/respond',
 };
 
 function jsonError(message: string, status: number): Response {

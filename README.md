@@ -1,8 +1,8 @@
-# Apex Content Interviewer
+# Apex Content Interview and Review App
 
-The clinician-facing voice interview application for the Apex Dental Partners Automated Article Creation system.
+The clinician-facing voice interview and article-review application for the Apex Dental Partners Automated Article Creation system.
 
-Doctors open a secure topic-specific link, complete an OpenAI Realtime voice interview, and save the resulting transcript through n8n to BigQuery. The app is a Vite/TypeScript single-page application deployed with a Cloudflare Worker that proxies the three same-origin API routes.
+Doctors open a secure topic-specific link, complete an OpenAI Realtime voice interview, and save the resulting transcript through n8n to BigQuery. When a draft is ready, a separate secure review link lets the doctor approve it or request changes. The app is a Vite/TypeScript single-page application deployed with a Cloudflare Worker that proxies same-origin API routes to n8n.
 
 ## Application flow
 
@@ -14,9 +14,15 @@ Doctors open a secure topic-specific link, complete an OpenAI Realtime voice int
   -> POST /api/complete
   -> n8n
   -> BigQuery
+
+/review/{secure_token}
+  -> POST /api/review/validate
+  -> review the canonical article version
+  -> POST /api/review/respond
+  -> BigQuery approval state and audit event
 ```
 
-The interview UI includes microphone startup, visible loading/thinking/speaking states, pause/resume, transcript capture, and completion persistence.
+The interview UI includes microphone startup, visible loading/thinking/speaking states, pause/resume, transcript capture, and completion persistence. The review UI sanitizes the stored article HTML with an explicit element and link allowlist before rendering it.
 
 ## Local development
 

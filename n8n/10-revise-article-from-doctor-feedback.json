@@ -1,0 +1,276 @@
+{
+  "name": "AAC - 10 - Revise Article from Doctor Feedback",
+  "nodes": [
+    {
+      "id": "bc76916e-d2aa-40de-aa60-b71d4b5cbfcb",
+      "name": "Run Doctor Revision Test",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -920,
+        100
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "87ef1733-506b-4734-9a88-1b1a3af15a5a",
+      "name": "Load Requested Revision",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [
+        -680,
+        100
+      ],
+      "parameters": {
+        "authentication": "serviceAccount",
+        "projectId": {
+          "__rl": true,
+          "value": "apex-marketing-n8n",
+          "mode": "id"
+        },
+        "sqlQuery": "-- AAC Phase 1G\n-- Load the newest unprocessed doctor revision request and its complete source context.\nWITH latest_change_request AS (\n  SELECT approval_id, article_id, response, responded_at\n  FROM `apex-marketing-n8n.automated_article_creation.approvals`\n  WHERE approval_type = 'DOCTOR_REVIEW'\n    AND status = 'CHANGES_REQUESTED'\n    AND LENGTH(TRIM(response)) > 0\n  QUALIFY ROW_NUMBER() OVER (PARTITION BY article_id ORDER BY responded_at DESC, requested_at DESC) = 1\n)\nSELECT\n  a.article_id,\n  a.interview_id,\n  a.campaign_id,\n  a.doctor_id,\n  a.practice_id,\n  a.current_version,\n  COALESCE(c.doctor_review_days, 5) AS doctor_review_days,\n  r.approval_id,\n  r.response AS revision_instruction,\n  r.responded_at,\n  v.content AS current_package_json,\n  i.transcript,\n  i.topic_id,\n  d.doctor_name,\n  d.credentials,\n  p.practice_name,\n  p.website_domain,\n  p.publisher_config_reference,\n  c.campaign_name,\n  c.campaign_month,\n  t.topic_title,\n  t.topic_description,\n  t.interview_guidance,\n  (\n    SELECT TO_JSON_STRING(ARRAY_AGG(STRUCT(\n      history.version_number,\n      history.version_type,\n      history.revision_instruction,\n      history.created_at\n    ) ORDER BY history.version_number))\n    FROM `apex-marketing-n8n.automated_article_creation.article_versions` history\n    WHERE history.article_id = a.article_id\n  ) AS revision_history_json\nFROM `apex-marketing-n8n.automated_article_creation.articles` a\nJOIN latest_change_request r ON r.article_id = a.article_id\nJOIN `apex-marketing-n8n.automated_article_creation.article_versions` v\n  ON v.article_id = a.article_id AND v.version_number = a.current_version\nJOIN `apex-marketing-n8n.automated_article_creation.interviews` i ON i.interview_id = a.interview_id\nJOIN `apex-marketing-n8n.automated_article_creation.doctors` d ON d.doctor_id = a.doctor_id\nJOIN `apex-marketing-n8n.automated_article_creation.practices` p ON p.practice_id = a.practice_id\nJOIN `apex-marketing-n8n.automated_article_creation.campaigns` c ON c.campaign_id = a.campaign_id\nLEFT JOIN `apex-marketing-n8n.automated_article_creation.campaign_topics` t ON t.topic_id = i.topic_id\nWHERE a.status = 'CHANGES_REQUESTED'\nORDER BY r.responded_at DESC\nLIMIT 1;",
+        "options": {
+          "location": "US"
+        }
+      }
+    },
+    {
+      "id": "2245fd88-1656-4535-9f87-8ac778c85eb8",
+      "name": "Prepare Revision Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        100
+      ],
+      "parameters": {
+        "jsCode": "const revision = $json;\n\nif (!revision.article_id || !revision.current_package_json || !revision.revision_instruction) {\n  throw new Error('No unprocessed doctor revision request is available.');\n}\n\nlet currentPackage;\ntry {\n  currentPackage = typeof revision.current_package_json === 'string'\n    ? JSON.parse(revision.current_package_json)\n    : revision.current_package_json;\n} catch (error) {\n  throw new Error('The current article package is not valid JSON: ' + error.message);\n}\n\nconst schema = {\n  type: 'object',\n  additionalProperties: false,\n  required: ['article_html', 'review_document_markdown', 'metadata'],\n  properties: {\n    article_html: { type: 'string' },\n    review_document_markdown: { type: 'string' },\n    metadata: {\n      type: 'object',\n      additionalProperties: false,\n      required: ['h1', 'seo_title', 'slug', 'meta_description', 'primary_search_intent', 'word_count'],\n      properties: {\n        h1: { type: 'string' },\n        seo_title: { type: 'string' },\n        slug: { type: 'string' },\n        meta_description: { type: 'string' },\n        primary_search_intent: { type: 'string' },\n        word_count: { type: 'integer' }\n      }\n    }\n  }\n};\n\nconst practiceContext = {\n  doctor_name: revision.doctor_name,\n  doctor_credentials: revision.credentials,\n  practice_name: revision.practice_name,\n  website_domain: revision.website_domain,\n  publisher_config_reference: revision.publisher_config_reference,\n  campaign_name: revision.campaign_name,\n  campaign_month: revision.campaign_month,\n  topic_title: revision.topic_title,\n  topic_description: revision.topic_description,\n  interview_guidance: revision.interview_guidance\n};\n\nconst input = [\n  'DOCTOR REVISION REQUEST',\n  revision.revision_instruction,\n  '',\n  'CURRENT ARTICLE VERSION',\n  String(revision.current_version),\n  '',\n  'CURRENT PUBLICATION PACKAGE',\n  JSON.stringify(currentPackage, null, 2),\n  '',\n  'ORIGINAL INTERVIEW TRANSCRIPT',\n  revision.transcript || '',\n  '',\n  'PRIOR REVISION HISTORY',\n  revision.revision_history_json || '[]',\n  '',\n  'PRACTICE CONTEXT',\n  JSON.stringify(practiceContext, null, 2)\n].join('\\n');\n\nreturn [{\n  json: {\n    ...revision,\n    next_version: Number(revision.current_version) + 1,\n    openai_body: {\n      model: 'gpt-6-astra',\n      tools: [{ type: 'web_search' }],\n      include: ['web_search_call.action.sources'],\n      instructions: \"# Article Revision Master Prompt\\n\\nYou are the revision editor for an expert-authored healthcare article.\\n\\nYour task is to revise the current publication package in response to the doctor's written request. Modify the existing article; do not replace it with an unrelated article or restart from a blank page.\\n\\n## Source priority\\n\\nUse the sources in this order:\\n\\n1. The doctor's current revision request.\\n2. The original interview transcript.\\n3. The current article and its review document.\\n4. Prior revision history.\\n5. Current authoritative research when a requested change requires factual verification.\\n\\nThe transcript remains the source of the doctor's experience, professional judgment, examples, and voice. Never invent patient stories, clinical experience, credentials, treatment practices, or personal opinions.\\n\\n## Revision rules\\n\\n- Address every reasonable item in the doctor's request.\\n- Preserve unaffected material whenever it remains accurate and useful.\\n- Keep the article in the doctor's natural first-person voice.\\n- Preserve the central narrative unless the doctor explicitly asks to change it.\\n- Do not silently make unrelated editorial changes.\\n- Do not introduce new clinical claims without checking authoritative sources.\\n- If a requested statement would be inaccurate, unsafe, or unsupported, make the closest defensible revision and explain the limitation in the review document.\\n- Keep all dynamic tokens exactly intact, including `{{DOCTOR_NAME}}`, `{{DOCTOR_CREDENTIALS}}`, `{{PRACTICE_NAME}}`, and `{{APPOINTMENT_URL}}`.\\n- Preserve clean production HTML with no `<html>`, `<head>`, `<body>`, `<script>`, or `<style>` tags.\\n- Preserve the five required metadata comments before the `<h1>`.\\n- The production article must contain no internal review comments.\\n\\n## Required output\\n\\nReturn a complete two-artifact publication package:\\n\\n1. `article_html`: the full revised production HTML, not a diff.\\n2. `review_document_markdown`: the full revised human-readable review document, not a change summary.\\n3. `metadata`: the canonical H1, SEO title, slug, meta description, primary search intent, and word count.\\n\\nThe article shown in the review document must match `article_html` exactly in wording. Update the review document's sourcing, editorial notes, and expert-review checklist when the revision changes them.\\n\\nBefore returning the package, verify that the doctor's request has been addressed, the article remains grounded in the transcript, and the two artifacts are internally consistent.\\n\",\n      input,\n      text: {\n        format: {\n          type: 'json_schema',\n          name: 'revised_article_publication_package',\n          strict: true,\n          schema\n        }\n      },\n      max_output_tokens: 30000\n    }\n  }\n}];"
+      }
+    },
+    {
+      "id": "1650cb39-d75a-4bf6-b1b7-40a4a63372a5",
+      "name": "Revise Article with OpenAI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -100,
+        100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json.openai_body) }}",
+        "options": {
+          "timeout": 900000
+        }
+      }
+    },
+    {
+      "id": "5f5881e5-be21-4fe2-ae39-7a5d40bd3d2b",
+      "name": "Validate Revised Package",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        200,
+        100
+      ],
+      "parameters": {
+        "jsCode": "const response = $json;\nconst context = $('Prepare Revision Request').first().json;\n\nif (response.error) {\n  throw new Error('OpenAI article revision failed: ' + JSON.stringify(response.error));\n}\nif (response.status && response.status !== 'completed') {\n  throw new Error('OpenAI revision response did not complete. Status: ' + response.status);\n}\n\nconst message = (response.output || []).find((item) => item.type === 'message');\nconst outputText = message?.content?.find((item) => item.type === 'output_text')?.text;\nif (!outputText) {\n  throw new Error('OpenAI revision response did not contain structured output text.');\n}\n\nlet publicationPackage;\ntry {\n  publicationPackage = JSON.parse(outputText);\n} catch (error) {\n  throw new Error('Revised article package was not valid JSON: ' + error.message);\n}\n\nconst html = publicationPackage.article_html || '';\nconst review = publicationPackage.review_document_markdown || '';\nif (!html.trim() || !html.startsWith('<!-- SEO_TITLE:') || !html.includes('<h1>')) {\n  throw new Error('Revised production HTML is empty or missing required metadata and H1.');\n}\nif (/<(?:html|head|body|script|style)(?:\\s|>)/i.test(html)) {\n  throw new Error('Revised production HTML contains a forbidden wrapper or executable/style tag.');\n}\nif (/<!--\\s*(?:FACT CHECK|INTERVIEW BASIS|REVIEW NOTE|SOURCE|CLINICAL REVIEW|RESEARCH ADDITION)/i.test(html)) {\n  throw new Error('Revised production HTML contains internal review comments.');\n}\nif (review.length < 1000) {\n  throw new Error('Revised review document is unexpectedly short.');\n}\n\nconst packageForStorage = {\n  article_html: html,\n  review_document_markdown: review,\n  metadata: publicationPackage.metadata,\n  openai_response_id: response.id,\n  generated_at: new Date().toISOString(),\n  revised_from_version: Number(context.current_version),\n  revision_instruction: context.revision_instruction\n};\n\nreturn [{\n  json: {\n    article_id: context.article_id,\n    interview_id: context.interview_id,\n    campaign_id: context.campaign_id,\n    doctor_id: context.doctor_id,\n    practice_id: context.practice_id,\n    approval_id: context.approval_id,\n    current_version: Number(context.current_version),\n    next_version: Number(context.next_version),\n    doctor_review_days: Number(context.doctor_review_days || 5),\n    revision_instruction: context.revision_instruction,\n    package_json: JSON.stringify(packageForStorage),\n    openai_response_id: response.id\n  }\n}];"
+      }
+    },
+    {
+      "id": "9bd8ef1f-b767-4f43-b41f-e83987765725",
+      "name": "Persist New Article Version",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [
+        500,
+        100
+      ],
+      "parameters": {
+        "authentication": "serviceAccount",
+        "projectId": {
+          "__rl": true,
+          "value": "apex-marketing-n8n",
+          "mode": "id"
+        },
+        "sqlQuery": "-- AAC Phase 1G\n-- Preserve the prior version and promote a new canonical AI doctor revision.\nASSERT (\n  SELECT COUNT(*)\n  FROM `apex-marketing-n8n.automated_article_creation.articles`\n  WHERE article_id = @article_id\n    AND status = 'CHANGES_REQUESTED'\n    AND current_version = CAST(@current_version AS INT64)\n) = 1 AS 'The article is no longer awaiting this revision or its version changed.';\n\nMERGE `apex-marketing-n8n.automated_article_creation.article_versions` T\nUSING (\n  SELECT\n    @article_id AS article_id,\n    CAST(@next_version AS INT64) AS version_number,\n    'AI_DOCTOR_REVISION' AS version_type,\n    @package_json AS content,\n    @revision_instruction AS revision_instruction,\n    CURRENT_TIMESTAMP() AS created_at,\n    'n8n:article-revision' AS created_by\n) S\nON T.article_id = S.article_id AND T.version_number = S.version_number\nWHEN NOT MATCHED THEN INSERT\n  (article_id, version_number, version_type, content, revision_instruction, created_at, created_by)\nVALUES\n  (S.article_id, S.version_number, S.version_type, S.content, S.revision_instruction, S.created_at, S.created_by);\n\nUPDATE `apex-marketing-n8n.automated_article_creation.articles`\nSET\n  status = 'DOCTOR_REVIEW_PENDING',\n  current_version = CAST(@next_version AS INT64),\n  doctor_review_deadline = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL CAST(@doctor_review_days AS INT64) DAY),\n  doctor_approved_at = NULL\nWHERE article_id = @article_id;\n\nUPDATE `apex-marketing-n8n.automated_article_creation.campaign_doctors`\nSET status = 'DOCTOR_REVIEW_PENDING', updated_at = CURRENT_TIMESTAMP()\nWHERE campaign_id = @campaign_id AND doctor_id = @doctor_id;\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.workflow_events`\n(event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id, payload)\nVALUES (\n  GENERATE_UUID(), 'article', @article_id, 'article.revised', CURRENT_TIMESTAMP(), 'n8n+openai', NULL,\n  TO_JSON(STRUCT(\n    CAST(@current_version AS INT64) AS previous_version,\n    CAST(@next_version AS INT64) AS version_number,\n    'AI_DOCTOR_REVISION' AS version_type,\n    @approval_id AS approval_id,\n    @openai_response_id AS openai_response_id\n  ))\n);\n\nSELECT\n  @article_id AS article_id,\n  @doctor_id AS doctor_id,\n  @campaign_id AS campaign_id,\n  CAST(@next_version AS INT64) AS current_version,\n  CAST(@doctor_review_days AS INT64) AS doctor_review_days,\n  'DOCTOR_REVIEW_PENDING' AS status;",
+        "options": {
+          "location": "US",
+          "queryParameters": {
+            "namedParameters": [
+              {
+                "name": "article_id",
+                "value": "={{ $json.article_id }}"
+              },
+              {
+                "name": "interview_id",
+                "value": "={{ $json.interview_id }}"
+              },
+              {
+                "name": "campaign_id",
+                "value": "={{ $json.campaign_id }}"
+              },
+              {
+                "name": "doctor_id",
+                "value": "={{ $json.doctor_id }}"
+              },
+              {
+                "name": "approval_id",
+                "value": "={{ $json.approval_id }}"
+              },
+              {
+                "name": "current_version",
+                "value": "={{ $json.current_version }}"
+              },
+              {
+                "name": "next_version",
+                "value": "={{ $json.next_version }}"
+              },
+              {
+                "name": "doctor_review_days",
+                "value": "={{ $json.doctor_review_days }}"
+              },
+              {
+                "name": "revision_instruction",
+                "value": "={{ $json.revision_instruction }}"
+              },
+              {
+                "name": "package_json",
+                "value": "={{ $json.package_json }}"
+              },
+              {
+                "name": "openai_response_id",
+                "value": "={{ $json.openai_response_id }}"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "deb9d19d-8dd8-4eb4-862a-fd09a981e289",
+      "name": "Create Fresh Review Link",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [
+        800,
+        100
+      ],
+      "parameters": {
+        "authentication": "serviceAccount",
+        "projectId": {
+          "__rl": true,
+          "value": "apex-marketing-n8n",
+          "mode": "id"
+        },
+        "sqlQuery": "-- AAC Phase 1G\n-- Issue a fresh one-time link for the newly revised article version.\nUPDATE `apex-marketing-n8n.automated_article_creation.article_review_links`\nSET status = 'SUPERSEDED'\nWHERE article_id = @article_id AND status IN ('READY', 'OPENED');\n\nCREATE TEMP TABLE new_link AS\nSELECT\n  GENERATE_UUID() AS review_link_id,\n  a.article_id,\n  a.doctor_id,\n  a.current_version,\n  CONCAT(REPLACE(GENERATE_UUID(), '-', ''), REPLACE(GENERATE_UUID(), '-', '')) AS raw_token,\n  a.doctor_review_deadline AS expires_at\nFROM `apex-marketing-n8n.automated_article_creation.articles` a\nWHERE a.article_id = @article_id\n  AND a.status = 'DOCTOR_REVIEW_PENDING';\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.article_review_links`\n(review_link_id, article_id, doctor_id, secure_token_hash, status, created_at, expires_at)\nSELECT review_link_id, article_id, doctor_id, TO_HEX(SHA256(raw_token)), 'READY', CURRENT_TIMESTAMP(), expires_at\nFROM new_link;\n\nMERGE `apex-marketing-n8n.automated_article_creation.approvals` T\nUSING (\n  SELECT GENERATE_UUID() AS approval_id, article_id, 'DOCTOR_REVIEW' AS approval_type,\n    'PENDING' AS status, CURRENT_TIMESTAMP() AS requested_at, expires_at AS deadline\n  FROM new_link\n) S\nON T.article_id = S.article_id AND T.approval_type = S.approval_type AND T.status = 'PENDING'\nWHEN MATCHED THEN UPDATE SET requested_at = S.requested_at, deadline = S.deadline, responded_at = NULL, response = NULL\nWHEN NOT MATCHED THEN INSERT\n  (approval_id, article_id, approval_type, status, requested_at, deadline)\n  VALUES (S.approval_id, S.article_id, S.approval_type, S.status, S.requested_at, S.deadline);\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.workflow_events`\n(event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id, payload)\nSELECT GENERATE_UUID(), 'article', article_id, 'doctor.review_requested', CURRENT_TIMESTAMP(), 'n8n', NULL,\n  TO_JSON(STRUCT(review_link_id, current_version AS version_number, expires_at))\nFROM new_link;\n\nSELECT\n  article_id,\n  doctor_id,\n  current_version,\n  review_link_id,\n  expires_at,\n  CONCAT('https://apex-content-interviewer.jdold.workers.dev/review/', raw_token) AS review_url,\n  'READY' AS link_status\nFROM new_link;",
+        "options": {
+          "location": "US",
+          "queryParameters": {
+            "namedParameters": [
+              {
+                "name": "article_id",
+                "value": "={{ $json.article_id }}"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "39d5877e-a78d-4aa8-a661-e1c4c3c3dfc1",
+      "name": "Phase 1G Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -920,
+        -460
+      ],
+      "parameters": {
+        "content": "## AAC Phase 1G - Doctor Revision Loop\\n\\nManual vertical slice:\\nchange request → source context → dedicated revision prompt → OpenAI Responses API → validation → immutable version insert → fresh one-time review link.\\n\\nAfter import:\\n1. Connect the existing BigQuery credential to all three BigQuery nodes.\\n2. Connect **OpenAi account** to **Revise Article with OpenAI**.\\n3. Run manually against a `CHANGES_REQUESTED` article.\\n\\nThe prompt is version-controlled at `prompts/article-revision-master-prompt.md`. Prior versions are never overwritten."
+      }
+    }
+  ],
+  "connections": {
+    "Run Doctor Revision Test": {
+      "main": [
+        [
+          {
+            "node": "Load Requested Revision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Requested Revision": {
+      "main": [
+        [
+          {
+            "node": "Prepare Revision Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Revision Request": {
+      "main": [
+        [
+          {
+            "node": "Revise Article with OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Revise Article with OpenAI": {
+      "main": [
+        [
+          {
+            "node": "Validate Revised Package",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Revised Package": {
+      "main": [
+        [
+          {
+            "node": "Persist New Article Version",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Persist New Article Version": {
+      "main": [
+        [
+          {
+            "node": "Create Fresh Review Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "versionId": null,
+  "meta": null,
+  "tags": []
+}

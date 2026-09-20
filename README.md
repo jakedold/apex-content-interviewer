@@ -2,7 +2,7 @@
 
 The clinician-facing voice interview and article-review application for the Apex Dental Partners Automated Article Creation system.
 
-Doctors open a secure topic-specific link, complete an OpenAI Realtime voice interview, and save the resulting transcript through n8n to BigQuery. When a draft is ready, a separate secure review link lets the doctor approve it or request changes. The app is a Vite/TypeScript single-page application deployed with a Cloudflare Worker that proxies same-origin API routes to n8n.
+Doctors open a secure topic-specific link, complete an OpenAI Realtime voice interview, and save the resulting transcript through n8n to BigQuery. When a draft is ready, a separate secure review link lets the doctor approve it or request changes. A change request creates a new immutable article version and a fresh one-time review link, preserving the full revision history. The app is a Vite/TypeScript single-page application deployed with a Cloudflare Worker that proxies same-origin API routes to n8n.
 
 ## Application flow
 

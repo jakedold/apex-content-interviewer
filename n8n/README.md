@@ -14,11 +14,19 @@ Version-controlled workflow exports:
 - `07-create-doctor-review-link.json`
 - `08-validate-article-review-link.json`
 - `09-record-doctor-review-response.json`
+- `10-revise-article-from-doctor-feedback.json`
 
 The article-generation workflow uses the approved prompt preserved at
 `../prompts/article-generation-master-prompt.md`. It is intentionally shipped
 with a manual trigger so a completed interview can be tested and reviewed
 before automatic generation is enabled.
+
+The article-revision workflow uses the dedicated prompt preserved at
+`../prompts/article-revision-master-prompt.md`. It loads the latest doctor
+change request, revises the current package with the original transcript and
+revision history in context, inserts a new `AI_DOCTOR_REVISION` version, and
+returns a fresh one-time review link. It remains manual until the vertical
+slice has been verified with a real change request.
 
 Current browser endpoints:
 

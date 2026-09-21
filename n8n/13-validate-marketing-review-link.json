@@ -1,0 +1,66 @@
+{
+  "name": "AAC - 13 - Validate Marketing Review Link",
+  "nodes": [
+    {
+      "parameters": { "httpMethod": "POST", "path": "aac/marketing-review/validate", "responseMode": "responseNode", "options": {} },
+      "id": "2eadc7a1-e4b1-422f-9d21-7e130d4c3001",
+      "name": "Receive Marketing Review Token",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [-560, 0],
+      "webhookId": "f2d89813-e98c-470a-ae86-8030ae5c3002"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "projectId": { "__rl": true, "value": "apex-marketing-n8n", "mode": "id" },
+        "sqlQuery": "-- AAC Phase 1I\nCREATE TEMP TABLE valid_link AS\nSELECT\n  ml.marketing_review_link_id AS review_link_id, ml.article_id, ml.status AS link_status, ml.expires_at,\n  a.doctor_id, a.practice_id, a.current_version, a.status AS article_status, v.content\nFROM `apex-marketing-n8n.automated_article_creation.marketing_review_links` ml\nJOIN `apex-marketing-n8n.automated_article_creation.articles` a ON a.article_id = ml.article_id\nJOIN `apex-marketing-n8n.automated_article_creation.article_versions` v\n  ON v.article_id = a.article_id AND v.version_number = a.current_version\nWHERE ml.secure_token_hash = TO_HEX(SHA256(@token))\n  AND ml.expires_at > CURRENT_TIMESTAMP()\n  AND ml.status IN ('READY', 'OPENED', 'RESPONDED')\nQUALIFY ROW_NUMBER() OVER (ORDER BY ml.created_at DESC) = 1;\n\nUPDATE `apex-marketing-n8n.automated_article_creation.marketing_review_links`\nSET status = 'OPENED', first_opened_at = COALESCE(first_opened_at, CURRENT_TIMESTAMP())\nWHERE marketing_review_link_id IN (SELECT review_link_id FROM valid_link WHERE link_status IN ('READY', 'OPENED'));\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.workflow_events`\n(event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id, payload)\nSELECT GENERATE_UUID(), 'article', article_id, 'marketing.review_opened', CURRENT_TIMESTAMP(), 'n8n', NULL,\n  TO_JSON(STRUCT(review_link_id, current_version AS version_number))\nFROM valid_link\nWHERE link_status IN ('READY', 'OPENED');\n\nSELECT\n  IF(v.review_link_id IS NOT NULL, TRUE, FALSE) AS valid,\n  IF(v.review_link_id IS NOT NULL, 'VALID', 'INVALID_OR_EXPIRED') AS validation_status,\n  v.review_link_id, v.article_id, v.current_version,\n  CAST(NULL AS TIMESTAMP) AS doctor_review_deadline,\n  d.doctor_name, d.credentials, p.practice_name,\n  JSON_VALUE(v.content, '$.metadata.h1') AS article_title,\n  REPLACE(REPLACE(REPLACE(REPLACE(\n    JSON_VALUE(v.content, '$.article_html'),\n    '{{DOCTOR_NAME}}', COALESCE(d.doctor_name, '')),\n    '{{DOCTOR_CREDENTIALS}}', COALESCE(d.credentials, '')),\n    '{{PRACTICE_NAME}}', COALESCE(p.practice_name, '')),\n    '{{APPOINTMENT_URL}}', '#') AS article_html,\n  COALESCE(ap.status, IF(v.link_status = 'RESPONDED', 'RESPONDED', 'PENDING')) AS review_status\nFROM (SELECT 1 AS seed) s\nLEFT JOIN valid_link v ON TRUE\nLEFT JOIN `apex-marketing-n8n.automated_article_creation.doctors` d ON d.doctor_id = v.doctor_id\nLEFT JOIN `apex-marketing-n8n.automated_article_creation.practices` p ON p.practice_id = v.practice_id\nLEFT JOIN (\n  SELECT article_id, status\n  FROM `apex-marketing-n8n.automated_article_creation.approvals`\n  WHERE approval_type = 'MARKETING_REVIEW'\n  QUALIFY ROW_NUMBER() OVER (PARTITION BY article_id ORDER BY requested_at DESC) = 1\n) ap ON ap.article_id = v.article_id;",
+        "options": {
+          "location": "US",
+          "queryParameters": { "namedParameters": [{ "name": "token", "value": "={{ $json.body.token }}" }] }
+        }
+      },
+      "id": "20ccf495-30c3-4807-9248-b2fe70fa3003",
+      "name": "Validate Marketing Token and Load Article",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [-280, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": { "responseHeaders": { "entries": [
+          { "name": "Cache-Control", "value": "no-store" },
+          { "name": "Content-Security-Policy", "value": "default-src 'none'" }
+        ] } }
+      },
+      "id": "deac5767-884e-4cb1-87d9-c07eeea33004",
+      "name": "Return Marketing Review Context",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "content": "## AAC Phase 1I - Marketing Validation\n\nValidates only the SHA-256 hash of the supplied one-time token, records the first open, and returns the current canonical article for final quality control.\n\nConnect the existing **Google BigQuery account** credential, then activate the workflow.",
+        "height": 300,
+        "width": 520
+      },
+      "id": "5ad86c34-dd14-4e4a-af39-e26a8ee53005",
+      "name": "Phase 1I Validation Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-520, -360]
+    }
+  ],
+  "connections": {
+    "Receive Marketing Review Token": { "main": [[{ "node": "Validate Marketing Token and Load Article", "type": "main", "index": 0 }]] },
+    "Validate Marketing Token and Load Article": { "main": [[{ "node": "Return Marketing Review Context", "type": "main", "index": 0 }]] }
+  },
+  "pinData": {},
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "versionId": "756735a6-002d-40c9-a49f-6f1de7013006",
+  "meta": { "templateCredsSetupCompleted": false },
+  "tags": []
+}

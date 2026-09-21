@@ -53,6 +53,8 @@ type ReviewResponse = {
   error?: string;
 };
 
+type ReviewKind = 'doctor' | 'marketing';
+
 const appElement = document.querySelector<HTMLDivElement>('#app');
 if (!appElement) throw new Error('App container not found.');
 const app: HTMLDivElement = appElement;
@@ -62,7 +64,7 @@ let connected = false;
 let paused = false;
 let interviewStartedAt: string | null = null;
 
-function getPathToken(route: 'interview' | 'review'): string {
+function getPathToken(route: 'interview' | 'review' | 'marketing-review'): string {
   const match = window.location.pathname.match(new RegExp(`^/${route}/([^/]+)/?$`));
   if (match?.[1]) return decodeURIComponent(match[1]);
   return new URLSearchParams(window.location.search).get('token') ?? '';
@@ -161,24 +163,29 @@ function formatDeadline(value: string | null): string {
   }).format(date);
 }
 
-function renderReviewComplete(context: ReviewContext, requestedChanges: boolean): void {
+function renderReviewComplete(context: ReviewContext, requestedChanges: boolean, kind: ReviewKind): void {
   const message = requestedChanges
-    ? 'Your requested changes have been recorded. We’ll prepare a revised version and send you a new review link.'
-    : 'Your approval has been recorded. The article will now move to the next review step.';
+    ? 'Your requested changes have been recorded. We’ll prepare a revised version and send a new review link.'
+    : kind === 'marketing'
+      ? 'Marketing approval has been recorded. The article will now move to publishing.'
+      : 'Your approval has been recorded. The article will now move to the next review step.';
+  const heading = kind === 'marketing'
+    ? 'Thank you.'
+    : `Thank you, ${escapeHtml(context.doctor_name)}.`;
   app.innerHTML = `
     <main class="page"><section class="card completion-card">
       <div class="brand">APEX DENTAL PARTNERS</div>
       <div class="completion-check" aria-hidden="true">✓</div>
       <div class="eyebrow">Article review complete</div>
-      <h1>Thank you, ${escapeHtml(context.doctor_name)}.</h1>
+      <h1>${heading}</h1>
       <p class="description">${escapeHtml(message)}</p>
     </section></main>`;
 }
 
-function renderReview(context: ReviewContext, token: string): void {
+function renderReview(context: ReviewContext, token: string, kind: ReviewKind): void {
   const priorStatus = context.review_status ?? '';
   if (priorStatus === 'APPROVED' || priorStatus === 'CHANGES_REQUESTED') {
-    renderReviewComplete(context, priorStatus === 'CHANGES_REQUESTED');
+    renderReviewComplete(context, priorStatus === 'CHANGES_REQUESTED', kind);
     return;
   }
 
@@ -188,10 +195,14 @@ function renderReview(context: ReviewContext, token: string): void {
     <main class="review-page">
       <header class="review-header">
         <div class="brand">APEX DENTAL PARTNERS</div>
-        <div class="eyebrow">Article Review</div>
+        <div class="eyebrow">${kind === 'marketing' ? 'Marketing Review' : 'Article Review'}</div>
         <h1>${escapeHtml(context.article_title || 'Your article draft')}</h1>
-        <p class="review-byline">Prepared for ${escapeHtml(doctorDisplay)} at ${escapeHtml(context.practice_name)}</p>
-        <p class="review-deadline">Please respond by <strong>${escapeHtml(formatDeadline(context.doctor_review_deadline))}</strong>. If we do not hear from you, the article will automatically move forward as approved.</p>
+        <p class="review-byline">${kind === 'marketing'
+          ? `Final quality-control review for ${escapeHtml(doctorDisplay)} at ${escapeHtml(context.practice_name)}`
+          : `Prepared for ${escapeHtml(doctorDisplay)} at ${escapeHtml(context.practice_name)}`}</p>
+        ${kind === 'marketing'
+          ? '<p class="review-deadline">Confirm that the final article is ready to publish, or request the specific changes needed before publication.</p>'
+          : `<p class="review-deadline">Please respond by <strong>${escapeHtml(formatDeadline(context.doctor_review_deadline))}</strong>. If we do not hear from you, the article will automatically move forward as approved.</p>`}
       </header>
       <article class="article-preview">${articleHtml}</article>
       <section class="review-actions" aria-labelledby="review-actions-heading">
@@ -237,10 +248,11 @@ function renderReview(context: ReviewContext, token: string): void {
     setSubmitting(true);
     status.innerHTML = `<span class="spinner spinner-small" aria-hidden="true"></span> Saving your response...`;
     try {
-      const result = await postJson<ReviewResponse>('/api/review/respond', { token, action, response });
+      const endpoint = kind === 'marketing' ? '/api/marketing-review/respond' : '/api/review/respond';
+      const result = await postJson<ReviewResponse>(endpoint, { token, action, response });
       const saved = result.valid === true || result.valid === 'true';
       if (!saved) throw new Error(result.error || 'Your response could not be saved.');
-      renderReviewComplete(context, action === 'request_changes');
+      renderReviewComplete(context, action === 'request_changes', kind);
     } catch (error) {
       console.error(error);
       status.textContent = error instanceof Error ? error.message : 'Unable to save your response.';
@@ -686,14 +698,39 @@ async function initializeReview(): Promise<void> {
       renderInvalid('This link may have expired or is no longer available.', 'review');
       return;
     }
-    renderReview(context, token);
+    renderReview(context, token, 'doctor');
   } catch (error) {
     console.error(error);
     renderInvalid(error instanceof Error ? error.message : 'We were unable to load this article.', 'review');
   }
 }
 
-if (/^\/review\//.test(window.location.pathname)) {
+async function initializeMarketingReview(): Promise<void> {
+  const token = getPathToken('marketing-review');
+  if (!token) {
+    renderInvalid('No marketing review token was found in this link.', 'review');
+    return;
+  }
+
+  document.title = 'Marketing Review | Apex Dental Partners';
+  renderLoading('marketing review', 'One moment while we load the final article.');
+  try {
+    const context = await postJson<ReviewContext>('/api/marketing-review/validate', { token });
+    const isValid = context.valid === true || context.valid === 'true';
+    if (!isValid) {
+      renderInvalid('This link may have expired or is no longer available.', 'review');
+      return;
+    }
+    renderReview(context, token, 'marketing');
+  } catch (error) {
+    console.error(error);
+    renderInvalid(error instanceof Error ? error.message : 'We were unable to load this article.', 'review');
+  }
+}
+
+if (/^\/marketing-review\//.test(window.location.pathname)) {
+  void initializeMarketingReview();
+} else if (/^\/review\//.test(window.location.pathname)) {
   void initializeReview();
 } else {
   void initializeInterview();

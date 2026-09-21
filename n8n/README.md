@@ -16,6 +16,9 @@ Version-controlled workflow exports:
 - `09-record-doctor-review-response.json`
 - `10-revise-article-from-doctor-feedback.json`
 - `11-auto-approve-expired-doctor-reviews.json`
+- `12-route-to-marketing-review.json`
+- `13-validate-marketing-review-link.json`
+- `14-record-marketing-review-response.json`
 
 The article-generation workflow uses the approved prompt preserved at
 `../prompts/article-generation-master-prompt.md`. It is intentionally shipped
@@ -35,6 +38,12 @@ active review link, advances the article to `DOCTOR_AUTO_APPROVED`, and records
 an auditable `doctor.auto_approved` event. Its output identifies whether
 marketing review or publishing is the next stage.
 
+The marketing-review workflows route each doctor-approved article according
+to its campaign setting. Required reviews receive a separate hashed one-time
+link, and the marketing portal can either grant final approval or record a
+written change request that blocks publishing. Campaigns that do not require
+marketing approval advance directly to publishing.
+
 Current browser endpoints:
 
 - `POST /webhook/aac/interview/validate`
@@ -42,5 +51,7 @@ Current browser endpoints:
 - `POST /webhook/aac/interview/complete`
 - `POST /webhook/aac/review/validate`
 - `POST /webhook/aac/review/respond`
+- `POST /webhook/aac/marketing-review/validate`
+- `POST /webhook/aac/marketing-review/respond`
 
 The live workflows use credentials configured inside n8n. These exports intentionally omit credential bindings and secret values; reconnect the appropriate BigQuery and OpenAI credentials after importing them into another n8n instance.

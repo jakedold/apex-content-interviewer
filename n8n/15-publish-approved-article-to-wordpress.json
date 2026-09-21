@@ -1,0 +1,140 @@
+{
+  "name": "AAC - 15 - Publish Approved Article to WordPress",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-760, 100],
+      "id": "e4836bf8-d2db-450f-b852-77db602cb101",
+      "name": "Run WordPress Publishing Test"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "projectId": { "__rl": true, "value": "apex-marketing-n8n", "mode": "list", "cachedResultName": "apex-marketing-n8n" },
+        "sqlQuery": "-- AAC Phase 1J\n-- Load one fully approved article whose practice has an explicit WordPress configuration.\nCREATE TABLE IF NOT EXISTS `apex-marketing-n8n.automated_article_creation.publication_records` (\n  publication_id STRING NOT NULL,\n  article_id STRING NOT NULL,\n  version_number INT64 NOT NULL,\n  publisher_type STRING NOT NULL,\n  publisher_config_reference STRING,\n  external_post_id STRING,\n  status STRING NOT NULL,\n  requested_at TIMESTAMP NOT NULL,\n  published_at TIMESTAMP,\n  published_url STRING,\n  last_error STRING\n);\n\nSELECT\n  a.article_id, a.interview_id, a.doctor_id, a.practice_id, a.campaign_id,\n  a.status AS article_status, a.current_version,\n  d.doctor_name, d.credentials,\n  p.practice_name, p.website_domain, p.publisher_type, p.publisher_config_reference,\n  v.content AS publication_package_json\nFROM `apex-marketing-n8n.automated_article_creation.articles` a\nJOIN `apex-marketing-n8n.automated_article_creation.article_versions` v\n  ON v.article_id = a.article_id AND v.version_number = a.current_version\nJOIN `apex-marketing-n8n.automated_article_creation.doctors` d ON d.doctor_id = a.doctor_id\nJOIN `apex-marketing-n8n.automated_article_creation.practices` p ON p.practice_id = a.practice_id\nLEFT JOIN `apex-marketing-n8n.automated_article_creation.publication_records` pr\n  ON pr.article_id = a.article_id\n  AND pr.version_number = a.current_version\n  AND pr.publisher_type = 'WORDPRESS'\n  AND pr.status = 'PUBLISHED'\nWHERE a.status IN ('MARKETING_APPROVED', 'PUBLISHING')\n  AND a.published_at IS NULL\n  AND pr.article_id IS NULL\n  AND UPPER(COALESCE(p.publisher_type, '')) = 'WORDPRESS'\n  AND NULLIF(TRIM(p.publisher_config_reference), '') IS NOT NULL\n  AND NULLIF(TRIM(p.website_domain), '') IS NOT NULL\n  AND NOT ENDS_WITH(LOWER(TRIM(p.website_domain)), '.example.com')\nORDER BY COALESCE(a.marketing_approved_at, a.doctor_approved_at, a.created_at)\nLIMIT 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [-520, 100],
+      "id": "4bfb9e57-5d94-4cd8-a102-c489bd96a2c5",
+      "name": "Load Approved WordPress Article"
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $json;\n\nif (!row.article_id) {\n  throw new Error('No approved article has a complete WordPress practice configuration.');\n}\nif (String(row.publisher_type || '').toUpperCase() !== 'WORDPRESS') {\n  throw new Error('The selected practice is not configured for the WordPress adapter.');\n}\n\nlet config = {};\ntry {\n  config = JSON.parse(row.publisher_config_reference);\n} catch {\n  config = { credential_name: row.publisher_config_reference };\n}\nif (!config.credential_name) {\n  throw new Error('publisher_config_reference must name the n8n WordPress credential or contain JSON with credential_name.');\n}\n\nlet publicationPackage;\ntry {\n  publicationPackage = typeof row.publication_package_json === 'string'\n    ? JSON.parse(row.publication_package_json)\n    : row.publication_package_json;\n} catch (error) {\n  throw new Error('The approved publication package is not valid JSON: ' + error.message);\n}\n\nconst metadata = publicationPackage?.metadata || {};\nlet html = String(publicationPackage?.article_html || '');\nif (!html || !/<h1(?:\\s|>)/i.test(html)) {\n  throw new Error('The approved package does not contain publishable article HTML.');\n}\nif (/<(?:script|style|html|head|body)(?:\\s|>)/i.test(html)) {\n  throw new Error('The approved article contains a forbidden document or executable tag.');\n}\n\nconst rawDomain = String(row.website_domain || '').trim();\nif (!rawDomain || /(^|\\.)example\\.com$/i.test(rawDomain.replace(/^https?:\\/\\//i, '').split('/')[0])) {\n  throw new Error('A real WordPress domain is required; example domains cannot be published.');\n}\nconst siteUrl = (/^https?:\\/\\//i.test(rawDomain) ? rawDomain : `https://${rawDomain}`).replace(/\\/$/, '');\nconst appointmentUrl = String(config.appointment_url || siteUrl);\nconst replacements = {\n  '{{DOCTOR_NAME}}': row.doctor_name || '',\n  '{{DOCTOR_CREDENTIALS}}': row.credentials || '',\n  '{{PRACTICE_NAME}}': row.practice_name || '',\n  '{{APPOINTMENT_URL}}': appointmentUrl\n};\nfor (const [token, value] of Object.entries(replacements)) {\n  html = html.split(token).join(String(value));\n}\nif (/{{[A-Z0-9_]+}}/.test(html)) {\n  throw new Error('The article still contains unresolved publishing tokens.');\n}\n\nhtml = html\n  .replace(/^(?:\\s*<!--[\\s\\S]*?-->\\s*)+/, '')\n  .replace(/\\s*<h1[^>]*>[\\s\\S]*?<\\/h1>\\s*/i, '\\n')\n  .trim();\n\nconst title = String(metadata.h1 || '').trim() || String(publicationPackage.article_html).match(/<h1[^>]*>([\\s\\S]*?)<\\/h1>/i)?.[1]?.replace(/<[^>]+>/g, '').trim();\nconst slug = String(metadata.slug || '').trim();\nconst excerpt = String(metadata.meta_description || '').trim();\nif (!title || !slug || !excerpt) {\n  throw new Error('The approved package is missing its title, slug, or meta description.');\n}\n\nreturn [{ json: {\n  ...row,\n  credential_name: config.credential_name,\n  wordpress_api_url: `${siteUrl}/wp-json/wp/v2`,\n  title, slug, excerpt, content: html,\n  wordpress_body: {\n    title, content: html, slug, excerpt, status: 'publish',\n    comment_status: 'closed', ping_status: 'closed', format: 'standard'\n  }\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-280, 100],
+      "id": "2ab3d4e6-e702-49da-9165-b7de03702042",
+      "name": "Prepare WordPress Publication"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.wordpress_api_url + '/posts?slug=' + encodeURIComponent($json.slug) }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "wordpressApi",
+        "options": { "timeout": 30000 }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-40, 100],
+      "id": "520d626b-57a1-4de1-8575-934ca2024191",
+      "name": "Find Existing WordPress Post",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const context = $('Prepare WordPress Publication').first().json;\nconst existing = $input.all().map((item) => item.json).find((post) => post?.id && post?.slug === context.slug);\nreturn [{ json: {\n  ...context,\n  existing_post_id: existing?.id ? String(existing.id) : null,\n  wordpress_publish_url: existing?.id\n    ? `${context.wordpress_api_url}/posts/${existing.id}`\n    : `${context.wordpress_api_url}/posts`\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, 100],
+      "id": "dbbc4c52-ac9b-4516-86a9-250f0414ca61",
+      "name": "Choose WordPress Create or Update"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.wordpress_publish_url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "wordpressApi",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json.wordpress_body) }}",
+        "options": { "timeout": 30000 }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 100],
+      "id": "7464df81-c4f4-4588-9d77-c7a2d2debc55",
+      "name": "Publish WordPress Post"
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $json;\nconst context = $('Choose WordPress Create or Update').first().json;\nif (!response?.id || response?.status !== 'publish' || !response?.link) {\n  throw new Error('WordPress did not return a published post ID and URL.');\n}\nreturn [{ json: {\n  article_id: context.article_id,\n  doctor_id: context.doctor_id,\n  campaign_id: context.campaign_id,\n  current_version: Number(context.current_version),\n  publisher_config_reference: context.publisher_config_reference,\n  external_post_id: String(response.id),\n  published_url: String(response.link),\n  wordpress_status: response.status,\n  slug: response.slug || context.slug\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 100],
+      "id": "5ad269ea-5fd8-40bd-9709-9f8dde21885a",
+      "name": "Validate WordPress Publication"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "projectId": { "__rl": true, "value": "apex-marketing-n8n", "mode": "list", "cachedResultName": "apex-marketing-n8n" },
+        "sqlQuery": "-- AAC Phase 1J\nMERGE `apex-marketing-n8n.automated_article_creation.publication_records` T\nUSING (\n  SELECT GENERATE_UUID() AS publication_id, @article_id AS article_id,\n    CAST(@current_version AS INT64) AS version_number, 'WORDPRESS' AS publisher_type,\n    @publisher_config_reference AS publisher_config_reference,\n    @external_post_id AS external_post_id, 'PUBLISHED' AS status,\n    CURRENT_TIMESTAMP() AS requested_at, CURRENT_TIMESTAMP() AS published_at,\n    @published_url AS published_url\n) S\nON T.article_id = S.article_id\n  AND T.version_number = S.version_number\n  AND T.publisher_type = S.publisher_type\nWHEN MATCHED THEN UPDATE SET\n  publisher_config_reference = S.publisher_config_reference, external_post_id = S.external_post_id,\n  status = S.status, published_at = S.published_at, published_url = S.published_url, last_error = NULL\nWHEN NOT MATCHED THEN INSERT\n  (publication_id, article_id, version_number, publisher_type, publisher_config_reference,\n   external_post_id, status, requested_at, published_at, published_url, last_error)\nVALUES\n  (S.publication_id, S.article_id, S.version_number, S.publisher_type, S.publisher_config_reference,\n   S.external_post_id, S.status, S.requested_at, S.published_at, S.published_url, NULL);\n\nUPDATE `apex-marketing-n8n.automated_article_creation.articles`\nSET status = 'PUBLISHED', published_at = CURRENT_TIMESTAMP(), published_url = @published_url\nWHERE article_id = @article_id;\n\nUPDATE `apex-marketing-n8n.automated_article_creation.campaign_doctors`\nSET status = 'PUBLISHED', updated_at = CURRENT_TIMESTAMP()\nWHERE campaign_id = @campaign_id AND doctor_id = @doctor_id;\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.workflow_events`\n(event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id, payload)\nSELECT GENERATE_UUID(), 'article', @article_id, 'article.published', CURRENT_TIMESTAMP(),\n  'n8n:wordpress-publisher', NULL,\n  TO_JSON(STRUCT(CAST(@current_version AS INT64) AS version_number, @external_post_id AS external_post_id, @published_url AS published_url))\nWHERE NOT EXISTS (\n  SELECT 1 FROM `apex-marketing-n8n.automated_article_creation.workflow_events`\n  WHERE entity_type = 'article' AND entity_id = @article_id AND event_type = 'article.published'\n    AND JSON_VALUE(payload, '$.external_post_id') = @external_post_id\n);\n\nSELECT @article_id AS article_id, 'PUBLISHED' AS status, @external_post_id AS external_post_id, @published_url AS published_url;",
+        "options": {
+          "queryParameters": {
+            "namedParameters": [
+              { "name": "article_id", "value": "={{ $json.article_id }}" },
+              { "name": "doctor_id", "value": "={{ $json.doctor_id }}" },
+              { "name": "campaign_id", "value": "={{ $json.campaign_id }}" },
+              { "name": "current_version", "value": "={{ $json.current_version }}" },
+              { "name": "publisher_config_reference", "value": "={{ $json.publisher_config_reference }}" },
+              { "name": "external_post_id", "value": "={{ $json.external_post_id }}" },
+              { "name": "published_url", "value": "={{ $json.published_url }}" }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [920, 100],
+      "id": "f464cfe3-4584-4c24-b918-da87f8f47e24",
+      "name": "Record Successful Publication"
+    },
+    {
+      "parameters": {
+        "content": "## AAC Phase 1J - WordPress Publisher\n\nLoads only fully approved articles whose practice explicitly specifies `publisher_type = WORDPRESS`, a real non-example domain, and a `publisher_config_reference`. It resolves publishing tokens, reuses an existing post with the same slug, publishes through WordPress REST, then records the post ID, URL, article state, campaign state, and audit event in BigQuery.\n\nBefore running:\n1. Connect **Google BigQuery account** to both BigQuery nodes.\n2. Create/select the WordPress API credential named by the practice's `publisher_config_reference` on both HTTP nodes.\n3. Confirm that the credential URL matches the practice domain.\n\nThe current AAC test practice is intentionally excluded because `test.example.com` is not a real publishing destination.",
+        "height": 390,
+        "width": 470
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-760, -380],
+      "id": "07a12d84-b25b-4d87-be10-2e04d84bd6c1",
+      "name": "Phase 1J Publishing Notes"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Run WordPress Publishing Test": { "main": [[{ "node": "Load Approved WordPress Article", "type": "main", "index": 0 }]] },
+    "Load Approved WordPress Article": { "main": [[{ "node": "Prepare WordPress Publication", "type": "main", "index": 0 }]] },
+    "Prepare WordPress Publication": { "main": [[{ "node": "Find Existing WordPress Post", "type": "main", "index": 0 }]] },
+    "Find Existing WordPress Post": { "main": [[{ "node": "Choose WordPress Create or Update", "type": "main", "index": 0 }]] },
+    "Choose WordPress Create or Update": { "main": [[{ "node": "Publish WordPress Post", "type": "main", "index": 0 }]] },
+    "Publish WordPress Post": { "main": [[{ "node": "Validate WordPress Publication", "type": "main", "index": 0 }]] },
+    "Validate WordPress Publication": { "main": [[{ "node": "Record Successful Publication", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "15e3752b-b534-44c9-b4a1-1a3593cf8c8a",
+  "meta": { "templateCredsSetupCompleted": false },
+  "tags": []
+}

@@ -19,6 +19,7 @@ Version-controlled workflow exports:
 - `12-route-to-marketing-review.json`
 - `13-validate-marketing-review-link.json`
 - `14-record-marketing-review-response.json`
+- `15-publish-approved-article-to-wordpress.json`
 
 The article-generation workflow uses the approved prompt preserved at
 `../prompts/article-generation-master-prompt.md`. It is intentionally shipped
@@ -43,6 +44,14 @@ to its campaign setting. Required reviews receive a separate hashed one-time
 link, and the marketing portal can either grant final approval or record a
 written change request that blocks publishing. Campaigns that do not require
 marketing approval advance directly to publishing.
+
+The WordPress publishing workflow is the first publishing adapter. It only
+loads approved articles for practices with an explicit WordPress publisher,
+a real non-example domain, and a configured credential reference. It resolves
+the approved package's publishing tokens, performs an idempotent slug-based
+create or update, and records the external post ID, final URL, lifecycle state,
+and audit event in BigQuery. The proof-of-concept test practice is intentionally
+excluded until it is replaced with a real WordPress practice configuration.
 
 Current browser endpoints:
 

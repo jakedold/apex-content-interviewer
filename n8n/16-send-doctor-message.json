@@ -1,0 +1,152 @@
+{
+  "name": "AAC - 16 - Send Doctor Message",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "aac/doctor-message/send",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-760, 80],
+      "id": "9b772223-1168-4bb3-b9a0-dffd9fd40101",
+      "name": "Receive Doctor Message",
+      "webhookId": "5df190a2-86e8-4935-aec2-760307ee0d45"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "projectId": { "__rl": true, "value": "apex-marketing-n8n", "mode": "list", "cachedResultName": "apex-marketing-n8n" },
+        "sqlQuery": "-- AAC Phase 1K\n-- Resolve one centralized doctor-message route. Email is the V1 adapter; SMS and Empower remain pluggable.\nSELECT\n  @doctor_id AS doctor_id,\n  NULLIF(@article_id, '') AS article_id,\n  NULLIF(@campaign_id, '') AS campaign_id,\n  @communication_type AS communication_type,\n  LOWER(COALESCE(NULLIF(d.preferred_communication_channel, ''), 'email')) AS requested_channel,\n  CASE\n    WHEN LOWER(COALESCE(NULLIF(d.preferred_communication_channel, ''), 'email')) = 'email'\n      AND NULLIF(TRIM(d.email), '') IS NOT NULL THEN 'email'\n    WHEN LOWER(COALESCE(NULLIF(d.fallback_communication_channel, ''), 'email')) = 'email'\n      AND NULLIF(TRIM(d.email), '') IS NOT NULL THEN 'email'\n    ELSE LOWER(COALESCE(NULLIF(d.preferred_communication_channel, ''), 'email'))\n  END AS channel,\n  CASE\n    WHEN (LOWER(COALESCE(NULLIF(d.preferred_communication_channel, ''), 'email')) = 'email'\n      OR LOWER(COALESCE(NULLIF(d.fallback_communication_channel, ''), 'email')) = 'email')\n      AND NULLIF(TRIM(d.email), '') IS NOT NULL THEN d.email\n    WHEN LOWER(COALESCE(NULLIF(d.preferred_communication_channel, ''), 'email')) = 'sms' THEN d.mobile_phone\n    ELSE NULL\n  END AS recipient,\n  CASE\n    WHEN (LOWER(COALESCE(NULLIF(d.preferred_communication_channel, ''), 'email')) = 'email'\n      OR LOWER(COALESCE(NULLIF(d.fallback_communication_channel, ''), 'email')) = 'email')\n      AND NULLIF(TRIM(d.email), '') IS NOT NULL THEN 'READY'\n    WHEN LOWER(COALESCE(NULLIF(d.preferred_communication_channel, ''), 'email')) IN ('sms', 'empower_chat') THEN 'ADAPTER_UNAVAILABLE'\n    ELSE 'NO_RECIPIENT'\n  END AS routing_status,\n  @subject AS subject,\n  @message_text AS message_text,\n  NULLIF(@action_url, '') AS action_url\nFROM `apex-marketing-n8n.automated_article_creation.doctors` d\nWHERE d.doctor_id = @doctor_id AND d.active = TRUE;",
+        "options": {
+          "queryParameters": {
+            "namedParameters": [
+              { "name": "doctor_id", "value": "={{ $json.body.doctor_id }}" },
+              { "name": "article_id", "value": "={{ $json.body.article_id || '' }}" },
+              { "name": "campaign_id", "value": "={{ $json.body.campaign_id || '' }}" },
+              { "name": "communication_type", "value": "={{ $json.body.communication_type }}" },
+              { "name": "subject", "value": "={{ $json.body.subject }}" },
+              { "name": "message_text", "value": "={{ $json.body.message_text }}" },
+              { "name": "action_url", "value": "={{ $json.body.action_url || '' }}" }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [-520, 80],
+      "id": "1af09149-3a85-4ee4-9b68-dbe7b20e3438",
+      "name": "Resolve Doctor Message Route"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+          "conditions": [
+            {
+              "id": "d758b298-8c68-4aa0-99f7-f15e1b5a22e9",
+              "leftValue": "={{ $json.routing_status }}",
+              "rightValue": "READY",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-280, 80],
+      "id": "85df2fc5-a14b-4c92-a27a-68661e60e1f0",
+      "name": "Is Email Delivery Available?"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.recipient }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "text",
+        "message": "={{ $json.message_text + ($json.action_url ? '\\n\\n' + $json.action_url : '') }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [-40, -20],
+      "id": "50dbd848-3fd1-4f76-8ad0-d0d72ca2e14f",
+      "name": "Send Doctor Email",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const route = $('Resolve Doctor Message Route').first().json;\nconst response = $json;\nconst errorMessage = response.error?.message || response.error || null;\nconst providerMessageId = response.id || response.messageId || response.threadId || null;\nreturn [{ json: {\n  ...route,\n  delivery_status: errorMessage ? 'FAILED' : 'SENT',\n  provider_message_id: providerMessageId ? String(providerMessageId) : null,\n  error_message: errorMessage ? String(errorMessage) : null\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, -20],
+      "id": "3285f048-818e-4efd-b8c9-81071da10226",
+      "name": "Normalize Email Result"
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().map(({ json }) => ({ json: {\n  ...json,\n  delivery_status: 'FAILED',\n  provider_message_id: null,\n  error_message: json.routing_status === 'ADAPTER_UNAVAILABLE'\n    ? `The ${json.channel} communication adapter is not configured.`\n    : 'No deliverable recipient was found for this doctor.'\n} }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, 180],
+      "id": "f283b180-47cb-4452-adfc-91d00eed21d5",
+      "name": "Normalize Routing Failure"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "projectId": { "__rl": true, "value": "apex-marketing-n8n", "mode": "list", "cachedResultName": "apex-marketing-n8n" },
+        "sqlQuery": "-- AAC Phase 1K\nINSERT INTO `apex-marketing-n8n.automated_article_creation.communications`\n(communication_id, doctor_id, article_id, campaign_id, communication_type, channel, recipient, status, sent_at, delivered_at, provider_message_id)\nVALUES\n(GENERATE_UUID(), @doctor_id, NULLIF(@article_id, ''), NULLIF(@campaign_id, ''), @communication_type, @channel, NULLIF(@recipient, ''), @delivery_status, IF(@delivery_status = 'SENT', CURRENT_TIMESTAMP(), NULL), NULL, NULLIF(@provider_message_id, ''));\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.workflow_events`\n(event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id, payload)\nVALUES\n(GENERATE_UUID(), 'doctor', @doctor_id, IF(@delivery_status = 'SENT', 'communication.sent', 'communication.failed'), CURRENT_TIMESTAMP(), 'n8n:send-doctor-message', NULL,\n TO_JSON(STRUCT(@communication_type AS communication_type, @requested_channel AS requested_channel, @channel AS channel, NULLIF(@error_message, '') AS error_message)));\n\nSELECT @doctor_id AS doctor_id, @communication_type AS communication_type, @channel AS channel, @recipient AS recipient, @delivery_status AS status, NULLIF(@error_message, '') AS error;",
+        "options": {
+          "queryParameters": {
+            "namedParameters": [
+              { "name": "doctor_id", "value": "={{ $json.doctor_id }}" },
+              { "name": "article_id", "value": "={{ $json.article_id || '' }}" },
+              { "name": "campaign_id", "value": "={{ $json.campaign_id || '' }}" },
+              { "name": "communication_type", "value": "={{ $json.communication_type }}" },
+              { "name": "requested_channel", "value": "={{ $json.requested_channel }}" },
+              { "name": "channel", "value": "={{ $json.channel }}" },
+              { "name": "recipient", "value": "={{ $json.recipient || '' }}" },
+              { "name": "delivery_status", "value": "={{ $json.delivery_status }}" },
+              { "name": "provider_message_id", "value": "={{ $json.provider_message_id || '' }}" },
+              { "name": "error_message", "value": "={{ $json.error_message || '' }}" }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [460, 80],
+      "id": "1b461d65-e5c3-4149-8130-bf127aed4db7",
+      "name": "Record Doctor Communication"
+    },
+    {
+      "parameters": {
+        "content": "## AAC Phase 1K - SEND_DOCTOR_MESSAGE\n\nCentral communication router for all doctor-facing messages. It reads the doctor's preferred and fallback channels from BigQuery, uses Gmail for V1 email delivery, and records every success or routing failure in `communications` and `workflow_events`.\n\nSMS and Empower are represented as adapters but intentionally remain unavailable until credentials/APIs are approved. If email is configured as the fallback, those preferences route safely to email.\n\nBefore activation, connect **Google BigQuery account** to both BigQuery nodes and **Gmail account** to the Gmail node. Keep inactive until a non-patient test recipient is confirmed.",
+        "height": 390,
+        "width": 520
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-760, -420],
+      "id": "36949f70-2203-40c4-a62e-0f986114755f",
+      "name": "Phase 1K Message Routing Notes"
+    }
+  ],
+  "connections": {
+    "Receive Doctor Message": { "main": [[{ "node": "Resolve Doctor Message Route", "type": "main", "index": 0 }]] },
+    "Resolve Doctor Message Route": { "main": [[{ "node": "Is Email Delivery Available?", "type": "main", "index": 0 }]] },
+    "Is Email Delivery Available?": { "main": [[{ "node": "Send Doctor Email", "type": "main", "index": 0 }], [{ "node": "Normalize Routing Failure", "type": "main", "index": 0 }]] },
+    "Send Doctor Email": { "main": [[{ "node": "Normalize Email Result", "type": "main", "index": 0 }]] },
+    "Normalize Email Result": { "main": [[{ "node": "Record Doctor Communication", "type": "main", "index": 0 }]] },
+    "Normalize Routing Failure": { "main": [[{ "node": "Record Doctor Communication", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "timezone": "America/Chicago" },
+  "active": false,
+  "versionId": "f96d97fd-2fdd-47c8-adf8-b1c764ec70a5"
+}

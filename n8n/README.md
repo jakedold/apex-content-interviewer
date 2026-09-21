@@ -20,6 +20,8 @@ Version-controlled workflow exports:
 - `13-validate-marketing-review-link.json`
 - `14-record-marketing-review-response.json`
 - `15-publish-approved-article-to-wordpress.json`
+- `16-send-doctor-message.json`
+- `17-doctor-review-reminders.json`
 
 The article-generation workflow uses the approved prompt preserved at
 `../prompts/article-generation-master-prompt.md`. It is intentionally shipped
@@ -52,6 +54,13 @@ the approved package's publishing tokens, performs an idempotent slug-based
 create or update, and records the external post ID, final URL, lifecycle state,
 and audit event in BigQuery. The proof-of-concept test practice is intentionally
 excluded until it is replaced with a real WordPress practice configuration.
+
+The Phase 1K communication workflows centralize doctor-message routing and
+deadline reminders. Email is the V1 delivery adapter, with preference-aware
+fallback behavior and durable communication logging. SMS and Empower remain
+explicit adapter slots for a later phase. The reminder workflow creates a
+fresh hashed one-time review link for a single 48-hour reminder and delegates
+delivery to the centralized router.
 
 Current browser endpoints:
 

@@ -1,0 +1,72 @@
+{
+  "name": "AAC - 17 - Doctor Review Reminders",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "15 * * * *" }] }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-620, 20],
+      "id": "bdc55742-1d63-445e-a922-acd0d11c8bb0",
+      "name": "Check Review Reminders Hourly"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-620, 160],
+      "id": "89c51a78-f599-4fd4-a381-d911e60df4af",
+      "name": "Run Reminder Check Manually"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "projectId": { "__rl": true, "value": "apex-marketing-n8n", "mode": "list", "cachedResultName": "apex-marketing-n8n" },
+        "sqlQuery": "-- AAC Phase 1K\n-- Create one fresh one-time review link for each pending review entering its final 48 hours.\nCREATE TEMP TABLE reminder_candidates AS\nSELECT\n  ap.article_id, a.doctor_id, a.campaign_id, COALESCE(ap.deadline, a.doctor_review_deadline) AS deadline,\n  d.doctor_name, JSON_VALUE(v.content, '$.metadata.h1') AS article_title,\n  GENERATE_UUID() AS review_link_id,\n  CONCAT(REPLACE(GENERATE_UUID(), '-', ''), REPLACE(GENERATE_UUID(), '-', '')) AS raw_token\nFROM `apex-marketing-n8n.automated_article_creation.approvals` ap\nJOIN `apex-marketing-n8n.automated_article_creation.articles` a ON a.article_id = ap.article_id\nJOIN `apex-marketing-n8n.automated_article_creation.doctors` d ON d.doctor_id = a.doctor_id\nJOIN `apex-marketing-n8n.automated_article_creation.article_versions` v\n  ON v.article_id = a.article_id AND v.version_number = a.current_version\nWHERE ap.approval_type = 'DOCTOR_REVIEW'\n  AND ap.status = 'PENDING'\n  AND a.status = 'DOCTOR_REVIEW_PENDING'\n  AND COALESCE(ap.deadline, a.doctor_review_deadline) > CURRENT_TIMESTAMP()\n  AND COALESCE(ap.deadline, a.doctor_review_deadline) <= TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 48 HOUR)\n  AND d.active = TRUE\n  AND NOT EXISTS (\n    SELECT 1 FROM `apex-marketing-n8n.automated_article_creation.communications` c\n    WHERE c.article_id = ap.article_id\n      AND c.communication_type = 'DOCTOR_REVIEW_REMINDER_48H'\n      AND c.status = 'SENT'\n  )\nQUALIFY ROW_NUMBER() OVER (PARTITION BY ap.article_id ORDER BY ap.requested_at DESC) = 1;\n\nUPDATE `apex-marketing-n8n.automated_article_creation.article_review_links`\nSET status = 'SUPERSEDED'\nWHERE article_id IN (SELECT article_id FROM reminder_candidates)\n  AND status IN ('READY', 'OPENED');\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.article_review_links`\n(review_link_id, article_id, doctor_id, secure_token_hash, status, created_at, expires_at, first_opened_at, responded_at)\nSELECT review_link_id, article_id, doctor_id, TO_HEX(SHA256(raw_token)), 'READY', CURRENT_TIMESTAMP(), deadline, NULL, NULL\nFROM reminder_candidates;\n\nSELECT\n  doctor_id, article_id, campaign_id,\n  'DOCTOR_REVIEW_REMINDER_48H' AS communication_type,\n  CONCAT('Reminder: article review due for ', article_title) AS subject,\n  CONCAT('Hello ', doctor_name, ',\\n\\nThis is a reminder that your review of “', article_title, '” is due by ', FORMAT_TIMESTAMP('%B %e at %l:%M %p %Z', deadline, 'America/Chicago'), '. Please use the secure link below to approve the article or request changes. After the deadline, the article may be approved automatically.\\n\\nThank you,\\nApex Dental Partners') AS message_text,\n  CONCAT('https://apex-content-interviewer.jdold.workers.dev/review/', raw_token) AS action_url\nFROM reminder_candidates;",
+        "options": { "location": "US" }
+      },
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [-340, 90],
+      "id": "f2739891-d592-46d5-8e5b-0418dd748878",
+      "name": "Prepare 48-Hour Review Reminders"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://n8n.apexdentalautomation.com/webhook/aac/doctor-message/send",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ doctor_id: $json.doctor_id, article_id: $json.article_id, campaign_id: $json.campaign_id, communication_type: $json.communication_type, subject: $json.subject, message_text: $json.message_text, action_url: $json.action_url }) }}",
+        "options": { "timeout": 30000 }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-80, 90],
+      "id": "4d07a2d7-ab92-4b76-b825-d78b5303b2d0",
+      "name": "Send Through Doctor Message Router"
+    },
+    {
+      "parameters": {
+        "content": "## AAC Phase 1K - Doctor Review Reminders\n\nRuns hourly at minute 15 and finds pending doctor reviews entering their final 48 hours. Each article receives at most one successful 48-hour reminder.\n\nThe workflow rotates the one-time review link before delivery, stores only its SHA-256 hash, and sends the raw URL directly to the centralized `AAC - 16 - Send Doctor Message` router. No token is stored in the communications log.\n\nActivate workflow 16 first, then connect **Google BigQuery account** here. Keep this workflow inactive until the routing workflow has been tested with a non-patient recipient.",
+        "height": 360,
+        "width": 540
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-620, -420],
+      "id": "b607d78d-5ed0-4974-a931-24aa8dc9bf4e",
+      "name": "Phase 1K Reminder Notes"
+    }
+  ],
+  "connections": {
+    "Check Review Reminders Hourly": { "main": [[{ "node": "Prepare 48-Hour Review Reminders", "type": "main", "index": 0 }]] },
+    "Run Reminder Check Manually": { "main": [[{ "node": "Prepare 48-Hour Review Reminders", "type": "main", "index": 0 }]] },
+    "Prepare 48-Hour Review Reminders": { "main": [[{ "node": "Send Through Doctor Message Router", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "timezone": "America/Chicago" },
+  "active": false,
+  "versionId": "e824c56f-fb5a-43cd-8b59-97622e2135e8"
+}

@@ -15,6 +15,7 @@ Version-controlled workflow exports:
 - `08-validate-article-review-link.json`
 - `09-record-doctor-review-response.json`
 - `10-revise-article-from-doctor-feedback.json`
+- `11-auto-approve-expired-doctor-reviews.json`
 
 The article-generation workflow uses the approved prompt preserved at
 `../prompts/article-generation-master-prompt.md`. It is intentionally shipped
@@ -27,6 +28,12 @@ change request, revises the current package with the original transcript and
 revision history in context, inserts a new `AI_DOCTOR_REVISION` version, and
 returns a fresh one-time review link. It remains manual until the vertical
 slice has been verified with a real change request.
+
+The doctor-review deadline workflow runs hourly, finds pending reviews whose
+configured deadline has expired, marks the approval as automatic, expires the
+active review link, advances the article to `DOCTOR_AUTO_APPROVED`, and records
+an auditable `doctor.auto_approved` event. Its output identifies whether
+marketing review or publishing is the next stage.
 
 Current browser endpoints:
 

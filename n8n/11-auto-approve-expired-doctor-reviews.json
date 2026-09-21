@@ -1,0 +1,80 @@
+{
+  "name": "AAC - 11 - Auto-Approve Expired Doctor Reviews",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "3747a95d-7b95-4a2e-a4f9-70d950e3d4dc",
+      "name": "Check Doctor Review Deadlines Hourly",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-520, -80]
+    },
+    {
+      "parameters": {},
+      "id": "1ceed08c-d5ae-4efe-b3ce-ec636bd9c4a6",
+      "name": "Run Deadline Check Manually",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-520, 80]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "projectId": {
+          "__rl": true,
+          "value": "apex-marketing-n8n",
+          "mode": "id"
+        },
+        "sqlQuery": "-- AAC Phase 1H\n-- Auto-approve doctor reviews whose configured deadline has expired.\nCREATE TEMP TABLE expired_reviews AS\nSELECT\n  ap.approval_id,\n  ap.article_id,\n  ap.deadline,\n  a.doctor_id,\n  a.campaign_id,\n  a.current_version,\n  c.require_marketing_approval\nFROM `apex-marketing-n8n.automated_article_creation.approvals` ap\nJOIN `apex-marketing-n8n.automated_article_creation.articles` a\n  ON a.article_id = ap.article_id\nJOIN `apex-marketing-n8n.automated_article_creation.campaigns` c\n  ON c.campaign_id = a.campaign_id\nWHERE ap.approval_type = 'DOCTOR_REVIEW'\n  AND ap.status = 'PENDING'\n  AND COALESCE(ap.deadline, a.doctor_review_deadline) <= CURRENT_TIMESTAMP()\n  AND a.status = 'DOCTOR_REVIEW_PENDING'\nQUALIFY ROW_NUMBER() OVER (PARTITION BY ap.article_id ORDER BY ap.requested_at DESC) = 1;\n\nMERGE `apex-marketing-n8n.automated_article_creation.approvals` T\nUSING expired_reviews S\nON T.approval_id = S.approval_id\nWHEN MATCHED THEN UPDATE SET\n  status = 'AUTO_APPROVED',\n  responded_at = CURRENT_TIMESTAMP(),\n  response = 'Automatically approved after the doctor review deadline expired.';\n\nMERGE `apex-marketing-n8n.automated_article_creation.article_review_links` T\nUSING expired_reviews S\nON T.article_id = S.article_id AND T.status IN ('READY', 'OPENED')\nWHEN MATCHED THEN UPDATE SET\n  status = 'EXPIRED',\n  responded_at = CURRENT_TIMESTAMP();\n\nMERGE `apex-marketing-n8n.automated_article_creation.articles` T\nUSING expired_reviews S\nON T.article_id = S.article_id\nWHEN MATCHED THEN UPDATE SET\n  status = 'DOCTOR_AUTO_APPROVED',\n  doctor_approved_at = CURRENT_TIMESTAMP();\n\nMERGE `apex-marketing-n8n.automated_article_creation.campaign_doctors` T\nUSING expired_reviews S\nON T.campaign_id = S.campaign_id AND T.doctor_id = S.doctor_id\nWHEN MATCHED THEN UPDATE SET\n  status = 'DOCTOR_AUTO_APPROVED',\n  updated_at = CURRENT_TIMESTAMP();\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.workflow_events`\n(event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id, payload)\nSELECT\n  GENERATE_UUID(),\n  'article',\n  article_id,\n  'doctor.auto_approved',\n  CURRENT_TIMESTAMP(),\n  'n8n:doctor-review-deadline',\n  NULL,\n  TO_JSON(STRUCT(\n    approval_id,\n    deadline,\n    current_version AS version_number,\n    IF(require_marketing_approval, 'MARKETING_REVIEW', 'PUBLISHING') AS next_stage\n  ))\nFROM expired_reviews;\n\nSELECT\n  article_id,\n  doctor_id,\n  campaign_id,\n  current_version,\n  deadline,\n  'DOCTOR_AUTO_APPROVED' AS status,\n  IF(require_marketing_approval, 'MARKETING_REVIEW', 'PUBLISHING') AS next_stage\nFROM expired_reviews;",
+        "options": {
+          "location": "US"
+        }
+      },
+      "id": "e770dbfd-991c-4d4e-b8db-b3d0c6b07fe6",
+      "name": "Auto-Approve Expired Doctor Reviews",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [-220, 0]
+    },
+    {
+      "parameters": {
+        "content": "## AAC Phase 1H - Five-Day Auto-Approval\n\nRuns hourly and converts expired pending doctor reviews to `DOCTOR_AUTO_APPROVED`. The workflow expires active review links, records an explicit `AUTO_APPROVED` approval result, updates campaign state, and writes a `doctor.auto_approved` audit event.\n\nThe output identifies whether Phase 1I marketing review or Phase 1J publishing is next. Connect the existing **Google BigQuery account** credential before publishing this workflow.",
+        "height": 320,
+        "width": 560
+      },
+      "id": "8c34c43a-bd2c-48aa-bba1-a69be50cfb74",
+      "name": "Phase 1H Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-520, -440]
+    }
+  ],
+  "connections": {
+    "Check Doctor Review Deadlines Hourly": {
+      "main": [[{ "node": "Auto-Approve Expired Doctor Reviews", "type": "main", "index": 0 }]]
+    },
+    "Run Deadline Check Manually": {
+      "main": [[{ "node": "Auto-Approve Expired Doctor Reviews", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Chicago"
+  },
+  "active": false,
+  "versionId": "90c6db41-ebf0-44f4-9d19-5a6f3f646eca",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

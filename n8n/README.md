@@ -27,20 +27,25 @@ Version-controlled workflow exports:
 - `18-send-marketing-review-invitation.json`
 
 Campaign launch is a separate step from publishing. The administrator enters a
-campaign name, month, practice profile ID, three distinct topics, and doctors
-as `Name,email` lines. The form validates these inputs, rejects a duplicate
-campaign name/month, and records the campaign and its doctors in BigQuery. The
+campaign name, month, exact location/practice name, matching HTTPS website URL,
+three distinct topics, and doctors as `Name,email` lines. The form validates
+these inputs against one active practice profile, rejects a duplicate campaign
+name/month, and blocks silent reassignment or duplication of existing doctors.
+Each campaign currently targets one location and one website. The form records
+the campaign and its doctors in BigQuery. The
 invitation dispatcher checks for READY doctors every five minutes and sends
 one email containing three secure interview links to each doctor. Each link
 expires after 30 days. Failed deliveries can be retried, while successful
 deliveries are not repeated. The older `02-create-topic-interview-links.json`
 is a legacy test workflow and should remain inactive.
 
-The launch form currently remains inactive. Its first version accepted only a
-practice profile ID and did not show or validate the doctor-to-location and
-location-to-website mapping. Do not reactivate it for real campaigns until
-those mappings have been entered in BigQuery, surfaced on the form, and
-validated before a campaign can be created. Keep the dedicated Basic Auth
+The live launch form currently remains inactive. Its first version accepted
+only a practice profile ID. The revised export includes explicit location and
+website fields plus mapping validation; it is not yet installed in live n8n.
+Do not reactivate it for real campaigns until authoritative location/website
+and doctor assignments are entered in BigQuery, the revised export is installed
+and tested, and any doctors who work across multiple websites have an explicit
+publishing-site choice. Keep the dedicated Basic Auth
 credential attached to its Form Trigger; do not put that credential or the form
 URL in this repository. The form starts campaigns; it does not publish articles
 or trigger the Headless Hostman static-site release.

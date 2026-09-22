@@ -28,11 +28,12 @@ const launch = {
       parameters: {
         authentication: 'basicAuth',
         formTitle: 'Start an article campaign',
-        formDescription: 'Enter three topics and the doctors to invite. One invitation with three secure topic links will be sent to each doctor. This does not publish an article.',
+        formDescription: 'Choose one configured location and its website, then enter three topics and the doctors to invite. One invitation with three secure topic links will be sent to each doctor. This does not publish an article.',
         formFields: { values: [
           formField('campaign_name', 'Campaign name', 'text', { placeholder: 'October 2026 Test Campaign' }),
           formField('campaign_month', 'Campaign month', 'date'),
-          formField('practice_id', 'Practice profile ID', 'text', { placeholder: 'practice_test_001', defaultValue: 'practice_test_001' }),
+          formField('practice_name', 'Location / practice name', 'text', { placeholder: 'Exact name of the configured location' }),
+          formField('website_url', 'Website URL for this location', 'text', { placeholder: 'https://example.com' }),
           formField('topic_1', 'Topic 1', 'text'),
           formField('topic_2', 'Topic 2', 'text'),
           formField('topic_3', 'Topic 3', 'text'),
@@ -49,10 +50,19 @@ const launch = {
 const value = (name, label) => String(input[name] ?? input[label] ?? '').trim();
 const campaignName = value('campaign_name', 'Campaign name');
 const month = value('campaign_month', 'Campaign month').slice(0, 7);
-const practiceId = value('practice_id', 'Practice profile ID');
+const practiceName = value('practice_name', 'Location / practice name');
+const websiteInput = value('website_url', 'Website URL for this location');
+let websiteUrl;
+try {
+  const parsed = new URL(websiteInput);
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.search || parsed.hash) throw new Error('invalid URL');
+  websiteUrl = parsed.href.replace(/\\/$/, '').toLowerCase();
+} catch {
+  throw new Error('Enter the configured HTTPS website URL for this location, without query parameters or fragments.');
+}
 const topics = [1, 2, 3].map((number) => value('topic_' + number, 'Topic ' + number));
 const lines = value('doctors', 'Doctors (one Name,email per line)').split(/\\r?\\n/).map((line) => line.trim()).filter(Boolean);
-if (!campaignName || !/^\\d{4}-\\d{2}$/.test(month) || !practiceId || topics.some((topic) => !topic) || !lines.length) throw new Error('Complete the campaign, month, practice, three topics, and at least one doctor.');
+if (!campaignName || !/^\\d{4}-\\d{2}$/.test(month) || !practiceName || topics.some((topic) => !topic) || !lines.length) throw new Error('Complete the campaign, month, location, website, three topics, and at least one doctor.');
 if (new Set(topics.map((topic) => topic.toLowerCase())).size !== 3) throw new Error('The three topics must be distinct.');
 const doctors = lines.map((line) => {
   const comma = line.lastIndexOf(',');
@@ -66,13 +76,37 @@ if (new Set(doctors.map((doctor) => doctor.email)).size !== doctors.length) thro
 const slug = campaignName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 48);
 if (!slug) throw new Error('Campaign name must contain letters or numbers.');
 const campaignId = 'campaign_' + month.replace('-', '') + '_' + slug;
-const payload = { campaign_id: campaignId, campaign_name: campaignName, campaign_month: month + '-01', practice_id: practiceId, topics, doctors };
+const payload = { campaign_id: campaignId, campaign_name: campaignName, campaign_month: month + '-01', practice_name: practiceName, website_url: websiteUrl, topics, doctors };
 return { json: { payload_json: JSON.stringify(payload), campaign_id: campaignId, doctor_count: doctors.length } };` },
     },
     bq('aac-store-campaign', 'Store campaign and invitees', `DECLARE p JSON DEFAULT PARSE_JSON(@payload);
 DECLARE v_campaign_id STRING DEFAULT JSON_VALUE(p, '$.campaign_id');
-DECLARE v_practice_id STRING DEFAULT JSON_VALUE(p, '$.practice_id');
-ASSERT EXISTS (SELECT 1 FROM \`apex-marketing-n8n.automated_article_creation.practices\` WHERE practice_id = v_practice_id AND active = TRUE) AS 'The practice profile does not exist or is inactive.';
+DECLARE v_practice_id STRING;
+ASSERT (
+  SELECT COUNT(*) FROM \`apex-marketing-n8n.automated_article_creation.practices\`
+  WHERE active = TRUE
+    AND LOWER(TRIM(practice_name)) = LOWER(JSON_VALUE(p, '$.practice_name'))
+    AND REGEXP_REPLACE(LOWER(TRIM(website_domain)), r'/$', '') = JSON_VALUE(p, '$.website_url')
+) = 1 AS 'Location and website must match exactly one active, configured practice profile.';
+SET v_practice_id = (
+  SELECT practice_id FROM \`apex-marketing-n8n.automated_article_creation.practices\`
+  WHERE active = TRUE
+    AND LOWER(TRIM(practice_name)) = LOWER(JSON_VALUE(p, '$.practice_name'))
+    AND REGEXP_REPLACE(LOWER(TRIM(website_domain)), r'/$', '') = JSON_VALUE(p, '$.website_url')
+  LIMIT 1
+);
+ASSERT NOT EXISTS (
+  SELECT 1 FROM \`apex-marketing-n8n.automated_article_creation.doctors\` d
+  JOIN UNNEST(JSON_QUERY_ARRAY(p, '$.doctors')) AS doctor
+    ON LOWER(d.email) = LOWER(JSON_VALUE(doctor, '$.email'))
+  WHERE d.practice_id IS NOT NULL AND d.practice_id != v_practice_id
+) AS 'A doctor is already mapped to a different location. Resolve the doctor-to-website mapping before launch.';
+ASSERT NOT EXISTS (
+  SELECT 1 FROM \`apex-marketing-n8n.automated_article_creation.doctors\` d
+  JOIN UNNEST(JSON_QUERY_ARRAY(p, '$.doctors')) AS doctor
+    ON LOWER(d.email) = LOWER(JSON_VALUE(doctor, '$.email'))
+  WHERE d.doctor_id != JSON_VALUE(doctor, '$.doctor_id')
+) AS 'A doctor email already uses a different profile ID. Reconcile duplicate doctor profiles before launch.';
 ASSERT NOT EXISTS (SELECT 1 FROM \`apex-marketing-n8n.automated_article_creation.campaigns\` WHERE campaign_id = v_campaign_id) AS 'This campaign name and month have already been launched.';
 ASSERT ARRAY_LENGTH(JSON_QUERY_ARRAY(p, '$.topics')) = 3 AS 'Exactly three topics are required.';
 BEGIN TRANSACTION;
@@ -106,7 +140,7 @@ SELECT v_campaign_id AS campaign_id, 'LAUNCHED' AS status, ARRAY_LENGTH(JSON_QUE
     {
       id: 'aac-campaign-form-notes', name: 'Campaign Launch Notes',
       type: 'n8n-nodes-base.stickyNote', typeVersion: 1, position: [-620, -340],
-      parameters: { content: '## Campaign launch interface\n\nConnect a dedicated n8n Basic Auth credential to this form before activation. Keep it inactive until then. It creates one campaign, exactly three topics, doctor records under the selected practice profile, and READY invitation work. Workflow 02 sends the invitations. A campaign name and month may be launched only once.', height: 280, width: 640 },
+      parameters: { content: '## Campaign launch interface\n\nKeep this form inactive until real locations, websites, and doctor assignments are verified. A dedicated n8n Basic Auth credential is required. The entered location name and HTTPS website must match one active practice profile; existing doctors cannot be silently reassigned to another location. Each campaign currently targets one location and website. Workflow 02 sends invitations. A campaign name and month may be launched only once.', height: 280, width: 640 },
     },
   ],
   connections: {

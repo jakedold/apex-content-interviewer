@@ -6,6 +6,8 @@ The deployed n8n instance remains the runtime source for credentials and environ
 
 Version-controlled workflow exports:
 
+- `01-launch-campaign.json` — private administrator form for one campaign, three topics, and a list of doctors
+- `02-dispatch-campaign-invitations.json` — scheduled invitation delivery through the private message router
 - `02-create-topic-interview-links.json`
 - `03-validate-interview-link.json`
 - `04-start-voice-interview.json`
@@ -23,6 +25,21 @@ Version-controlled workflow exports:
 - `16-send-doctor-message.json`
 - `17-doctor-review-reminders.json`
 - `18-send-marketing-review-invitation.json`
+
+Campaign launch is a separate step from publishing. The administrator enters a
+campaign name, month, practice profile ID, three distinct topics, and doctors
+as `Name,email` lines. The form validates these inputs, rejects a duplicate
+campaign name/month, and records the campaign and its doctors in BigQuery. The
+invitation dispatcher checks for READY doctors every five minutes and sends
+one email containing three secure interview links to each doctor. Each link
+expires after 30 days. Failed deliveries can be retried, while successful
+deliveries are not repeated. The older `02-create-topic-interview-links.json`
+is a legacy test workflow and should remain inactive.
+
+The launch form must remain inactive until a dedicated Basic Auth credential
+has been created inside n8n and attached to its Form Trigger. Do not put that
+credential or the form URL in this repository. The form starts campaigns; it
+does not publish articles or trigger the Headless Hostman static-site release.
 
 The article-generation workflow uses the approved prompt preserved at
 `../prompts/article-generation-master-prompt.md`. It checks hourly at minute 5

@@ -1,0 +1,166 @@
+{
+  "name": "AAC - 01 - Launch Article Campaign",
+  "nodes": [
+    {
+      "id": "aac-launch-campaign-form",
+      "name": "Start a campaign",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        -620,
+        80
+      ],
+      "webhookId": "aac-launch-article-campaign",
+      "parameters": {
+        "authentication": "basicAuth",
+        "formTitle": "Start an article campaign",
+        "formDescription": "Enter three topics and the doctors to invite. One invitation with three secure topic links will be sent to each doctor. This does not publish an article.",
+        "formFields": {
+          "values": [
+            {
+              "fieldName": "campaign_name",
+              "fieldLabel": "Campaign name",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "October 2026 Test Campaign"
+            },
+            {
+              "fieldName": "campaign_month",
+              "fieldLabel": "Campaign month",
+              "fieldType": "date",
+              "requiredField": true
+            },
+            {
+              "fieldName": "practice_id",
+              "fieldLabel": "Practice profile ID",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "practice_test_001",
+              "defaultValue": "practice_test_001"
+            },
+            {
+              "fieldName": "topic_1",
+              "fieldLabel": "Topic 1",
+              "fieldType": "text",
+              "requiredField": true
+            },
+            {
+              "fieldName": "topic_2",
+              "fieldLabel": "Topic 2",
+              "fieldType": "text",
+              "requiredField": true
+            },
+            {
+              "fieldName": "topic_3",
+              "fieldLabel": "Topic 3",
+              "fieldType": "text",
+              "requiredField": true
+            },
+            {
+              "fieldName": "doctors",
+              "fieldLabel": "Doctors (one Name,email per line)",
+              "fieldType": "textarea",
+              "requiredField": true,
+              "placeholder": "Dr. Example One,example1@apexdp.com\nDr. Example Two,example2@apexdp.com"
+            }
+          ]
+        },
+        "responseMode": "lastNode",
+        "options": {
+          "path": "aac-launch-article-campaign",
+          "buttonLabel": "Launch campaign",
+          "ignoreBots": true
+        }
+      }
+    },
+    {
+      "id": "aac-validate-campaign",
+      "name": "Validate campaign details",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -340,
+        80
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const input = $json;\nconst value = (name, label) => String(input[name] ?? input[label] ?? '').trim();\nconst campaignName = value('campaign_name', 'Campaign name');\nconst month = value('campaign_month', 'Campaign month').slice(0, 7);\nconst practiceId = value('practice_id', 'Practice profile ID');\nconst topics = [1, 2, 3].map((number) => value('topic_' + number, 'Topic ' + number));\nconst lines = value('doctors', 'Doctors (one Name,email per line)').split(/\\r?\\n/).map((line) => line.trim()).filter(Boolean);\nif (!campaignName || !/^\\d{4}-\\d{2}$/.test(month) || !practiceId || topics.some((topic) => !topic) || !lines.length) throw new Error('Complete the campaign, month, practice, three topics, and at least one doctor.');\nif (new Set(topics.map((topic) => topic.toLowerCase())).size !== 3) throw new Error('The three topics must be distinct.');\nconst doctors = lines.map((line) => {\n  const comma = line.lastIndexOf(',');\n  if (comma < 1) throw new Error('Each doctor line must be Name,email.');\n  const name = line.slice(0, comma).trim();\n  const email = line.slice(comma + 1).trim().toLowerCase();\n  if (!name || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) throw new Error('Invalid doctor name or email: ' + line);\n  return { doctor_id: 'doctor_' + email.replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''), name, email };\n});\nif (new Set(doctors.map((doctor) => doctor.email)).size !== doctors.length) throw new Error('Each doctor email must appear only once.');\nconst slug = campaignName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 48);\nif (!slug) throw new Error('Campaign name must contain letters or numbers.');\nconst campaignId = 'campaign_' + month.replace('-', '') + '_' + slug;\nconst payload = { campaign_id: campaignId, campaign_name: campaignName, campaign_month: month + '-01', practice_id: practiceId, topics, doctors };\nreturn { json: { payload_json: JSON.stringify(payload), campaign_id: campaignId, doctor_count: doctors.length } };"
+      }
+    },
+    {
+      "id": "aac-store-campaign",
+      "name": "Store campaign and invitees",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        80
+      ],
+      "parameters": {
+        "authentication": "serviceAccount",
+        "projectId": {
+          "__rl": true,
+          "value": "apex-marketing-n8n",
+          "mode": "id"
+        },
+        "sqlQuery": "DECLARE p JSON DEFAULT PARSE_JSON(@payload);\nDECLARE v_campaign_id STRING DEFAULT JSON_VALUE(p, '$.campaign_id');\nDECLARE v_practice_id STRING DEFAULT JSON_VALUE(p, '$.practice_id');\nASSERT EXISTS (SELECT 1 FROM `apex-marketing-n8n.automated_article_creation.practices` WHERE practice_id = v_practice_id AND active = TRUE) AS 'The practice profile does not exist or is inactive.';\nASSERT NOT EXISTS (SELECT 1 FROM `apex-marketing-n8n.automated_article_creation.campaigns` WHERE campaign_id = v_campaign_id) AS 'This campaign name and month have already been launched.';\nASSERT ARRAY_LENGTH(JSON_QUERY_ARRAY(p, '$.topics')) = 3 AS 'Exactly three topics are required.';\nBEGIN TRANSACTION;\nINSERT INTO `apex-marketing-n8n.automated_article_creation.campaigns`\n(campaign_id, campaign_name, campaign_month, status, doctor_review_days, require_marketing_approval, created_at, launched_at)\nVALUES (v_campaign_id, JSON_VALUE(p, '$.campaign_name'), DATE(JSON_VALUE(p, '$.campaign_month')), 'LAUNCHED', 5, TRUE, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP());\nINSERT INTO `apex-marketing-n8n.automated_article_creation.campaign_topics`\n(topic_id, campaign_id, topic_title, topic_description, interview_guidance, topic_sort_order, active, created_at)\nSELECT CONCAT(v_campaign_id, '_topic_', CAST(sort_order AS STRING)), v_campaign_id, JSON_VALUE(topic), JSON_VALUE(topic), NULL, sort_order, TRUE, CURRENT_TIMESTAMP()\nFROM UNNEST(JSON_QUERY_ARRAY(p, '$.topics')) AS topic WITH OFFSET AS zero_order\nCROSS JOIN UNNEST([zero_order + 1]) AS sort_order;\nMERGE `apex-marketing-n8n.automated_article_creation.doctors` T\nUSING (SELECT JSON_VALUE(doctor, '$.doctor_id') AS doctor_id, JSON_VALUE(doctor, '$.name') AS doctor_name, JSON_VALUE(doctor, '$.email') AS email\n  FROM UNNEST(JSON_QUERY_ARRAY(p, '$.doctors')) AS doctor) S\nON T.doctor_id = S.doctor_id\nWHEN MATCHED THEN UPDATE SET doctor_name = S.doctor_name, email = S.email, practice_id = v_practice_id, active = TRUE, updated_at = CURRENT_TIMESTAMP()\nWHEN NOT MATCHED THEN INSERT (doctor_id, doctor_name, email, practice_id, preferred_communication_channel, fallback_communication_channel, active, created_at, updated_at)\n  VALUES (S.doctor_id, S.doctor_name, S.email, v_practice_id, 'email', 'email', TRUE, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP());\nINSERT INTO `apex-marketing-n8n.automated_article_creation.campaign_doctors`\n(campaign_id, doctor_id, status, invited_at, created_at, updated_at)\nSELECT v_campaign_id, JSON_VALUE(doctor, '$.doctor_id'), 'READY', NULL, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP()\nFROM UNNEST(JSON_QUERY_ARRAY(p, '$.doctors')) AS doctor;\nINSERT INTO `apex-marketing-n8n.automated_article_creation.workflow_events`\n(event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id, payload)\nVALUES (GENERATE_UUID(), 'campaign', v_campaign_id, 'campaign.started', CURRENT_TIMESTAMP(), 'n8n:campaign-form', NULL,\n  TO_JSON(STRUCT(ARRAY_LENGTH(JSON_QUERY_ARRAY(p, '$.topics')) AS topic_count, ARRAY_LENGTH(JSON_QUERY_ARRAY(p, '$.doctors')) AS doctor_count)));\nCOMMIT TRANSACTION;\nSELECT v_campaign_id AS campaign_id, 'LAUNCHED' AS status, ARRAY_LENGTH(JSON_QUERY_ARRAY(p, '$.doctors')) AS doctor_count;",
+        "options": {
+          "location": "US",
+          "queryParameters": {
+            "namedParameters": [
+              {
+                "name": "payload",
+                "value": "={{ $json.payload_json }}"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "aac-campaign-form-notes",
+      "name": "Campaign Launch Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -620,
+        -340
+      ],
+      "parameters": {
+        "content": "## Campaign launch interface\n\nConnect a dedicated n8n Basic Auth credential to this form before activation. Keep it inactive until then. It creates one campaign, exactly three topics, doctor records under the selected practice profile, and READY invitation work. Workflow 02 sends the invitations. A campaign name and month may be launched only once.",
+        "height": 280,
+        "width": 640
+      }
+    }
+  ],
+  "connections": {
+    "Start a campaign": {
+      "main": [
+        [
+          {
+            "node": "Validate campaign details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate campaign details": {
+      "main": [
+        [
+          {
+            "node": "Store campaign and invitees",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Chicago"
+  },
+  "active": false,
+  "tags": []
+}

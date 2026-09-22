@@ -19,6 +19,19 @@
       "parameters": {
         "operation": "executeQuery",
         "projectId": { "__rl": true, "value": "apex-marketing-n8n", "mode": "list", "cachedResultName": "apex-marketing-n8n" },
+        "sqlQuery": "-- AAC Phase 1K\nCREATE TABLE IF NOT EXISTS `apex-marketing-n8n.automated_article_creation.communications` (\n  communication_id STRING NOT NULL,\n  doctor_id STRING NOT NULL,\n  article_id STRING,\n  campaign_id STRING,\n  communication_type STRING NOT NULL,\n  channel STRING NOT NULL,\n  recipient STRING,\n  status STRING NOT NULL,\n  sent_at TIMESTAMP,\n  delivered_at TIMESTAMP,\n  provider_message_id STRING\n);\n\nSELECT 1 AS ready;",
+        "options": { "location": "US" }
+      },
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [-560, 80],
+      "id": "e9083a87-5298-45d9-8ce2-108d83c7cbcb",
+      "name": "Ensure Communications Table"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "projectId": { "__rl": true, "value": "apex-marketing-n8n", "mode": "list", "cachedResultName": "apex-marketing-n8n" },
         "sqlQuery": "-- AAC Phase 1K\n-- Resolve one centralized doctor-message route. Email is the V1 adapter; SMS and Empower remain pluggable.\nSELECT\n  @doctor_id AS doctor_id,\n  NULLIF(@article_id, '') AS article_id,\n  NULLIF(@campaign_id, '') AS campaign_id,\n  @communication_type AS communication_type,\n  LOWER(COALESCE(NULLIF(d.preferred_communication_channel, ''), 'email')) AS requested_channel,\n  CASE\n    WHEN LOWER(COALESCE(NULLIF(d.preferred_communication_channel, ''), 'email')) = 'email'\n      AND NULLIF(TRIM(d.email), '') IS NOT NULL THEN 'email'\n    WHEN LOWER(COALESCE(NULLIF(d.fallback_communication_channel, ''), 'email')) = 'email'\n      AND NULLIF(TRIM(d.email), '') IS NOT NULL THEN 'email'\n    ELSE LOWER(COALESCE(NULLIF(d.preferred_communication_channel, ''), 'email'))\n  END AS channel,\n  CASE\n    WHEN (LOWER(COALESCE(NULLIF(d.preferred_communication_channel, ''), 'email')) = 'email'\n      OR LOWER(COALESCE(NULLIF(d.fallback_communication_channel, ''), 'email')) = 'email')\n      AND NULLIF(TRIM(d.email), '') IS NOT NULL THEN d.email\n    WHEN LOWER(COALESCE(NULLIF(d.preferred_communication_channel, ''), 'email')) = 'sms' THEN d.mobile_phone\n    ELSE NULL\n  END AS recipient,\n  CASE\n    WHEN (LOWER(COALESCE(NULLIF(d.preferred_communication_channel, ''), 'email')) = 'email'\n      OR LOWER(COALESCE(NULLIF(d.fallback_communication_channel, ''), 'email')) = 'email')\n      AND NULLIF(TRIM(d.email), '') IS NOT NULL THEN 'READY'\n    WHEN LOWER(COALESCE(NULLIF(d.preferred_communication_channel, ''), 'email')) IN ('sms', 'empower_chat') THEN 'ADAPTER_UNAVAILABLE'\n    ELSE 'NO_RECIPIENT'\n  END AS routing_status,\n  @subject AS subject,\n  @message_text AS message_text,\n  NULLIF(@action_url, '') AS action_url\nFROM `apex-marketing-n8n.automated_article_creation.doctors` d\nWHERE d.doctor_id = @doctor_id AND d.active = TRUE;",
         "options": {
           "queryParameters": {
@@ -127,7 +140,7 @@
     },
     {
       "parameters": {
-        "content": "## AAC Phase 1K - SEND_DOCTOR_MESSAGE\n\nCentral communication router for all doctor-facing messages. It reads the doctor's preferred and fallback channels from BigQuery, uses Gmail for V1 email delivery, and records every success or routing failure in `communications` and `workflow_events`.\n\nSMS and Empower are represented as adapters but intentionally remain unavailable until credentials/APIs are approved. If email is configured as the fallback, those preferences route safely to email.\n\nBefore activation, connect **Google BigQuery account** to both BigQuery nodes and **Gmail account** to the Gmail node. Keep inactive until a non-patient test recipient is confirmed.",
+        "content": "## AAC Phase 1K - SEND_DOCTOR_MESSAGE\n\nCentral communication router for all doctor-facing messages. It reads the doctor's preferred and fallback channels from BigQuery, uses Gmail for V1 email delivery, and records every success or routing failure in `communications` and `workflow_events`.\n\nSMS and Empower are represented as adapters but intentionally remain unavailable until credentials/APIs are approved. If email is configured as the fallback, those preferences route safely to email.\n\nBefore activation, connect **Google BigQuery account** to all BigQuery nodes and **Gmail account** to the Gmail node. Keep inactive until a non-patient test recipient is confirmed.",
         "height": 390,
         "width": 520
       },
@@ -139,7 +152,8 @@
     }
   ],
   "connections": {
-    "Receive Doctor Message": { "main": [[{ "node": "Resolve Doctor Message Route", "type": "main", "index": 0 }]] },
+    "Receive Doctor Message": { "main": [[{ "node": "Ensure Communications Table", "type": "main", "index": 0 }]] },
+    "Ensure Communications Table": { "main": [[{ "node": "Resolve Doctor Message Route", "type": "main", "index": 0 }]] },
     "Resolve Doctor Message Route": { "main": [[{ "node": "Is Email Delivery Available?", "type": "main", "index": 0 }]] },
     "Is Email Delivery Available?": { "main": [[{ "node": "Send Doctor Email", "type": "main", "index": 0 }], [{ "node": "Normalize Routing Failure", "type": "main", "index": 0 }]] },
     "Send Doctor Email": { "main": [[{ "node": "Normalize Email Result", "type": "main", "index": 0 }]] },

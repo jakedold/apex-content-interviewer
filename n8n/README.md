@@ -36,10 +36,14 @@ expires after 30 days. Failed deliveries can be retried, while successful
 deliveries are not repeated. The older `02-create-topic-interview-links.json`
 is a legacy test workflow and should remain inactive.
 
-The launch form must remain inactive until a dedicated Basic Auth credential
-has been created inside n8n and attached to its Form Trigger. Do not put that
-credential or the form URL in this repository. The form starts campaigns; it
-does not publish articles or trigger the Headless Hostman static-site release.
+The launch form currently remains inactive. Its first version accepted only a
+practice profile ID and did not show or validate the doctor-to-location and
+location-to-website mapping. Do not reactivate it for real campaigns until
+those mappings have been entered in BigQuery, surfaced on the form, and
+validated before a campaign can be created. Keep the dedicated Basic Auth
+credential attached to its Form Trigger; do not put that credential or the form
+URL in this repository. The form starts campaigns; it does not publish articles
+or trigger the Headless Hostman static-site release.
 
 The article-generation workflow uses the approved prompt preserved at
 `../prompts/article-generation-master-prompt.md`. It checks hourly at minute 5

@@ -45,6 +45,10 @@ The Cloudflare Vite plugin runs the Worker locally, so `/api/validate`, `/api/st
 npm run build
 ```
 
+## Prompt editing
+
+The voice interviewer prompt and the separate article-writing and revision prompts are documented in [prompts/README.md](prompts/README.md), including where to view their Git history and which live component uses each file.
+
 ## Deployment
 
 The repository is designed for Cloudflare Workers Builds connected to the `main` branch. The Worker configuration is in `wrangler.jsonc`; the deploy command is:

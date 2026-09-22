@@ -34,23 +34,47 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "https://n8n.apexdentalautomation.com/webhook/aac/doctor-message/send",
-        "sendBody": true,
-        "contentType": "raw",
-        "rawContentType": "application/json",
-        "body": "={{ JSON.stringify({ doctor_id: $json.doctor_id, article_id: $json.article_id, campaign_id: $json.campaign_id, communication_type: $json.communication_type, subject: $json.subject, message_text: $json.message_text, action_url: $json.action_url }) }}",
-        "options": { "timeout": 30000 }
+        "workflowId": {
+          "__rl": true,
+          "value": "cZtS9x6kbI46Q2Bi",
+          "mode": "list",
+          "cachedResultName": "AAC - 16 - Send Doctor Message"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "doctor_id": "={{ $json.doctor_id }}",
+            "article_id": "={{ $json.article_id }}",
+            "campaign_id": "={{ $json.campaign_id }}",
+            "communication_type": "={{ $json.communication_type }}",
+            "subject": "={{ $json.subject }}",
+            "message_text": "={{ $json.message_text }}",
+            "action_url": "={{ $json.action_url }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            { "id": "doctor_id", "displayName": "doctor_id", "type": "string" },
+            { "id": "article_id", "displayName": "article_id", "type": "string" },
+            { "id": "campaign_id", "displayName": "campaign_id", "type": "string" },
+            { "id": "communication_type", "displayName": "communication_type", "type": "string" },
+            { "id": "subject", "displayName": "subject", "type": "string" },
+            { "id": "message_text", "displayName": "message_text", "type": "string" },
+            { "id": "action_url", "displayName": "action_url", "type": "string" }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": { "waitForSubWorkflow": true }
       },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
       "position": [-80, 90],
       "id": "4d07a2d7-ab92-4b76-b825-d78b5303b2d0",
-      "name": "Send Through Doctor Message Router"
+      "name": "Call Private Doctor Message Router"
     },
     {
       "parameters": {
-        "content": "## AAC Phase 1K - Doctor Review Reminders\n\nRuns hourly at minute 15 and finds pending doctor reviews entering their final 48 hours. Each article receives at most one successful 48-hour reminder.\n\nThe workflow rotates the one-time review link before delivery, stores only its SHA-256 hash, and sends the raw URL directly to the centralized `AAC - 16 - Send Doctor Message` router. No token is stored in the communications log.\n\nActivate workflow 16 first, then connect **Google BigQuery account** here. Keep this workflow inactive until the routing workflow has been tested with a non-patient recipient.",
+        "content": "## AAC Phase 1K - Doctor Review Reminders\n\nRuns hourly at minute 15 and finds pending doctor reviews entering their final 48 hours. Each article receives at most one successful 48-hour reminder.\n\nThe workflow rotates the one-time review link before delivery, stores only its SHA-256 hash, and calls the private `AAC - 16 - Send Doctor Message` sub-workflow. No public message-sending webhook exists, and no token is stored in the communications log.\n\nConnect **Google BigQuery account** here. Keep this workflow inactive until production reminder timing is approved.",
         "height": 360,
         "width": 540
       },
@@ -64,7 +88,7 @@
   "connections": {
     "Check Review Reminders Hourly": { "main": [[{ "node": "Prepare 48-Hour Review Reminders", "type": "main", "index": 0 }]] },
     "Run Reminder Check Manually": { "main": [[{ "node": "Prepare 48-Hour Review Reminders", "type": "main", "index": 0 }]] },
-    "Prepare 48-Hour Review Reminders": { "main": [[{ "node": "Send Through Doctor Message Router", "type": "main", "index": 0 }]] }
+    "Prepare 48-Hour Review Reminders": { "main": [[{ "node": "Call Private Doctor Message Router", "type": "main", "index": 0 }]] }
   },
   "settings": { "executionOrder": "v1", "timezone": "America/Chicago" },
   "active": false,

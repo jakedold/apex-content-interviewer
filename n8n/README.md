@@ -60,7 +60,8 @@ deadline reminders. Email is the V1 delivery adapter, with preference-aware
 fallback behavior and durable communication logging. SMS and Empower remain
 explicit adapter slots for a later phase. The reminder workflow creates a
 fresh hashed one-time review link for a single 48-hour reminder and delegates
-delivery to the centralized router.
+delivery to the centralized router through a private n8n sub-workflow call;
+there is no public message-sending webhook.
 
 Current browser endpoints:
 

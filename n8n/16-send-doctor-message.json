@@ -3,17 +3,23 @@
   "nodes": [
     {
       "parameters": {
-        "httpMethod": "POST",
-        "path": "aac/doctor-message/send",
-        "responseMode": "lastNode",
-        "options": {}
+        "workflowInputs": {
+          "values": [
+            { "name": "doctor_id" },
+            { "name": "article_id" },
+            { "name": "campaign_id" },
+            { "name": "communication_type" },
+            { "name": "subject" },
+            { "name": "message_text" },
+            { "name": "action_url" }
+          ]
+        }
       },
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
       "position": [-760, 80],
       "id": "9b772223-1168-4bb3-b9a0-dffd9fd40101",
-      "name": "Receive Doctor Message",
-      "webhookId": "5df190a2-86e8-4935-aec2-760307ee0d45"
+      "name": "Receive Doctor Message Internally"
     },
     {
       "parameters": {
@@ -36,13 +42,13 @@
         "options": {
           "queryParameters": {
             "namedParameters": [
-              { "name": "doctor_id", "value": "={{ $json.body.doctor_id }}" },
-              { "name": "article_id", "value": "={{ $json.body.article_id || '' }}" },
-              { "name": "campaign_id", "value": "={{ $json.body.campaign_id || '' }}" },
-              { "name": "communication_type", "value": "={{ $json.body.communication_type }}" },
-              { "name": "subject", "value": "={{ $json.body.subject }}" },
-              { "name": "message_text", "value": "={{ $json.body.message_text }}" },
-              { "name": "action_url", "value": "={{ $json.body.action_url || '' }}" }
+              { "name": "doctor_id", "value": "={{ $json.doctor_id }}" },
+              { "name": "article_id", "value": "={{ $json.article_id || '' }}" },
+              { "name": "campaign_id", "value": "={{ $json.campaign_id || '' }}" },
+              { "name": "communication_type", "value": "={{ $json.communication_type }}" },
+              { "name": "subject", "value": "={{ $json.subject }}" },
+              { "name": "message_text", "value": "={{ $json.message_text }}" },
+              { "name": "action_url", "value": "={{ $json.action_url || '' }}" }
             ]
           }
         }
@@ -140,7 +146,7 @@
     },
     {
       "parameters": {
-        "content": "## AAC Phase 1K - SEND_DOCTOR_MESSAGE\n\nCentral communication router for all doctor-facing messages. It reads the doctor's preferred and fallback channels from BigQuery, uses Gmail for V1 email delivery, and records every success or routing failure in `communications` and `workflow_events`.\n\nSMS and Empower are represented as adapters but intentionally remain unavailable until credentials/APIs are approved. If email is configured as the fallback, those preferences route safely to email.\n\nBefore activation, connect **Google BigQuery account** to all BigQuery nodes and **Gmail account** to the Gmail node. Keep inactive until a non-patient test recipient is confirmed.",
+        "content": "## AAC Phase 1K - SEND_DOCTOR_MESSAGE\n\nPrivate sub-workflow for all doctor-facing messages. It can only be called by another workflow in this n8n instance; no public webhook can trigger email delivery. It reads the doctor's preferred and fallback channels from BigQuery, uses Gmail for V1 email delivery, and records every success or routing failure in `communications` and `workflow_events`.\n\nSMS and Empower are represented as adapters but intentionally remain unavailable until credentials/APIs are approved. If email is configured as the fallback, those preferences route safely to email.\n\nConnect **Google BigQuery account** to all BigQuery nodes and **Gmail account** to the Gmail node before using this sub-workflow.",
         "height": 390,
         "width": 520
       },
@@ -152,7 +158,7 @@
     }
   ],
   "connections": {
-    "Receive Doctor Message": { "main": [[{ "node": "Ensure Communications Table", "type": "main", "index": 0 }]] },
+    "Receive Doctor Message Internally": { "main": [[{ "node": "Ensure Communications Table", "type": "main", "index": 0 }]] },
     "Ensure Communications Table": { "main": [[{ "node": "Resolve Doctor Message Route", "type": "main", "index": 0 }]] },
     "Resolve Doctor Message Route": { "main": [[{ "node": "Is Email Delivery Available?", "type": "main", "index": 0 }]] },
     "Is Email Delivery Available?": { "main": [[{ "node": "Send Doctor Email", "type": "main", "index": 0 }], [{ "node": "Normalize Routing Failure", "type": "main", "index": 0 }]] },

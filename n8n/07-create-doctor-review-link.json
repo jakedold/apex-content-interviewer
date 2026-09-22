@@ -7,20 +7,32 @@
       "name": "Run Review Link Test",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
-      "position": [-520, 0]
+      "position": [
+        -520,
+        0
+      ]
     },
     {
       "parameters": {
         "authentication": "serviceAccount",
-        "projectId": { "__rl": true, "value": "apex-marketing-n8n", "mode": "id" },
-        "sqlQuery": "-- AAC Phase 1F\nCREATE TABLE IF NOT EXISTS `apex-marketing-n8n.automated_article_creation.article_review_links` (\n  review_link_id STRING NOT NULL,\n  article_id STRING NOT NULL,\n  doctor_id STRING NOT NULL,\n  secure_token_hash STRING NOT NULL,\n  status STRING NOT NULL,\n  created_at TIMESTAMP NOT NULL,\n  expires_at TIMESTAMP NOT NULL,\n  first_opened_at TIMESTAMP,\n  responded_at TIMESTAMP\n);\n\nCREATE TABLE IF NOT EXISTS `apex-marketing-n8n.automated_article_creation.approvals` (\n  approval_id STRING NOT NULL,\n  article_id STRING NOT NULL,\n  approval_type STRING NOT NULL,\n  status STRING NOT NULL,\n  requested_at TIMESTAMP NOT NULL,\n  deadline TIMESTAMP,\n  responded_at TIMESTAMP,\n  response STRING\n);\n\nCREATE TEMP TABLE article_for_review AS\nSELECT\n  a.article_id,\n  a.doctor_id,\n  a.campaign_id,\n  a.doctor_review_deadline,\n  d.doctor_name,\n  d.credentials,\n  p.practice_name,\n  JSON_VALUE(v.content, '$.metadata.h1') AS article_title\nFROM `apex-marketing-n8n.automated_article_creation.articles` a\nJOIN `apex-marketing-n8n.automated_article_creation.article_versions` v\n  ON v.article_id = a.article_id AND v.version_number = a.current_version\nJOIN `apex-marketing-n8n.automated_article_creation.doctors` d\n  ON d.doctor_id = a.doctor_id\nJOIN `apex-marketing-n8n.automated_article_creation.practices` p\n  ON p.practice_id = a.practice_id\nWHERE a.status = 'DOCTOR_REVIEW_PENDING'\nORDER BY a.created_at DESC\nLIMIT 1;\n\nUPDATE `apex-marketing-n8n.automated_article_creation.article_review_links`\nSET status = 'SUPERSEDED'\nWHERE article_id IN (SELECT article_id FROM article_for_review)\n  AND status IN ('READY', 'OPENED');\n\nCREATE TEMP TABLE new_link AS\nSELECT\n  GENERATE_UUID() AS review_link_id,\n  article_id,\n  doctor_id,\n  CONCAT(REPLACE(GENERATE_UUID(), '-', ''), REPLACE(GENERATE_UUID(), '-', '')) AS raw_token,\n  COALESCE(doctor_review_deadline, TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 5 DAY)) AS expires_at\nFROM article_for_review;\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.article_review_links`\n(review_link_id, article_id, doctor_id, secure_token_hash, status, created_at, expires_at)\nSELECT review_link_id, article_id, doctor_id, TO_HEX(SHA256(raw_token)), 'READY', CURRENT_TIMESTAMP(), expires_at\nFROM new_link;\n\nMERGE `apex-marketing-n8n.automated_article_creation.approvals` T\nUSING (\n  SELECT GENERATE_UUID() AS approval_id, article_id, 'DOCTOR_REVIEW' AS approval_type,\n    'PENDING' AS status, CURRENT_TIMESTAMP() AS requested_at, expires_at AS deadline\n  FROM new_link\n) S\nON T.article_id = S.article_id AND T.approval_type = S.approval_type AND T.status = 'PENDING'\nWHEN MATCHED THEN UPDATE SET requested_at = S.requested_at, deadline = S.deadline\nWHEN NOT MATCHED THEN INSERT\n  (approval_id, article_id, approval_type, status, requested_at, deadline)\n  VALUES (S.approval_id, S.article_id, S.approval_type, S.status, S.requested_at, S.deadline);\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.workflow_events`\n(event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id, payload)\nSELECT GENERATE_UUID(), 'article', article_id, 'doctor.review_requested', CURRENT_TIMESTAMP(), 'n8n', NULL,\n  TO_JSON(STRUCT(review_link_id, expires_at))\nFROM new_link;\n\nSELECT\n  a.article_id, a.doctor_id, a.doctor_name, a.credentials, a.practice_name, a.article_title,\n  n.review_link_id, n.expires_at,\n  CONCAT('https://content.apexdp.com/review/', n.raw_token) AS review_url,\n  'READY' AS link_status\nFROM article_for_review a\nJOIN new_link n USING (article_id, doctor_id);",
-        "options": { "location": "US" }
+        "projectId": {
+          "__rl": true,
+          "value": "apex-marketing-n8n",
+          "mode": "id"
+        },
+        "sqlQuery": "-- AAC Phase 1F\nCREATE TABLE IF NOT EXISTS `apex-marketing-n8n.automated_article_creation.article_review_links` (\n  review_link_id STRING NOT NULL,\n  article_id STRING NOT NULL,\n  doctor_id STRING NOT NULL,\n  secure_token_hash STRING NOT NULL,\n  status STRING NOT NULL,\n  created_at TIMESTAMP NOT NULL,\n  expires_at TIMESTAMP NOT NULL,\n  first_opened_at TIMESTAMP,\n  responded_at TIMESTAMP\n);\n\nCREATE TABLE IF NOT EXISTS `apex-marketing-n8n.automated_article_creation.approvals` (\n  approval_id STRING NOT NULL,\n  article_id STRING NOT NULL,\n  approval_type STRING NOT NULL,\n  status STRING NOT NULL,\n  requested_at TIMESTAMP NOT NULL,\n  deadline TIMESTAMP,\n  responded_at TIMESTAMP,\n  response STRING\n);\n\nCREATE TEMP TABLE article_for_review AS\nSELECT\n  a.article_id,\n  a.doctor_id,\n  a.campaign_id,\n  a.doctor_review_deadline, a.current_version,\n  d.doctor_name,\n  d.credentials,\n  p.practice_name,\n  JSON_VALUE(v.content, '$.metadata.h1') AS article_title\nFROM `apex-marketing-n8n.automated_article_creation.articles` a\nJOIN `apex-marketing-n8n.automated_article_creation.article_versions` v\n  ON v.article_id = a.article_id AND v.version_number = a.current_version\nJOIN `apex-marketing-n8n.automated_article_creation.doctors` d\n  ON d.doctor_id = a.doctor_id\nJOIN `apex-marketing-n8n.automated_article_creation.practices` p\n  ON p.practice_id = a.practice_id\nWHERE a.status = 'DOCTOR_REVIEW_PENDING'\n  AND NOT EXISTS (\n    SELECT 1\n    FROM `apex-marketing-n8n.automated_article_creation.communications` cm\n    WHERE cm.article_id = a.article_id\n      AND cm.communication_type IN ('DOCTOR_REVIEW_REQUEST', 'DOCTOR_REVISED_DRAFT')\n      AND cm.status = 'SENT'\n      AND cm.sent_at >= v.created_at\n  )\nORDER BY v.created_at ASC\nLIMIT 1;\n\nUPDATE `apex-marketing-n8n.automated_article_creation.article_review_links`\nSET status = 'SUPERSEDED'\nWHERE article_id IN (SELECT article_id FROM article_for_review)\n  AND status IN ('READY', 'OPENED');\n\nCREATE TEMP TABLE new_link AS\nSELECT\n  GENERATE_UUID() AS review_link_id,\n  article_id,\n  doctor_id,\n  CONCAT(REPLACE(GENERATE_UUID(), '-', ''), REPLACE(GENERATE_UUID(), '-', '')) AS raw_token,\n  COALESCE(doctor_review_deadline, TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 5 DAY)) AS expires_at\nFROM article_for_review;\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.article_review_links`\n(review_link_id, article_id, doctor_id, secure_token_hash, status, created_at, expires_at)\nSELECT review_link_id, article_id, doctor_id, TO_HEX(SHA256(raw_token)), 'READY', CURRENT_TIMESTAMP(), expires_at\nFROM new_link;\n\nMERGE `apex-marketing-n8n.automated_article_creation.approvals` T\nUSING (\n  SELECT GENERATE_UUID() AS approval_id, article_id, 'DOCTOR_REVIEW' AS approval_type,\n    'PENDING' AS status, CURRENT_TIMESTAMP() AS requested_at, expires_at AS deadline\n  FROM new_link\n) S\nON T.article_id = S.article_id AND T.approval_type = S.approval_type AND T.status = 'PENDING'\nWHEN MATCHED THEN UPDATE SET requested_at = S.requested_at, deadline = S.deadline\nWHEN NOT MATCHED THEN INSERT\n  (approval_id, article_id, approval_type, status, requested_at, deadline)\n  VALUES (S.approval_id, S.article_id, S.approval_type, S.status, S.requested_at, S.deadline);\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.workflow_events`\n(event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id, payload)\nSELECT GENERATE_UUID(), 'article', article_id, 'doctor.review_requested', CURRENT_TIMESTAMP(), 'n8n', NULL,\n  TO_JSON(STRUCT(review_link_id, expires_at))\nFROM new_link;\n\nSELECT\n  a.article_id, a.doctor_id, a.campaign_id, a.current_version, a.doctor_name, a.credentials, a.practice_name, a.article_title,\n  n.review_link_id, n.expires_at,\n  CONCAT('https://apex-content-interviewer.jdold.workers.dev/review/', n.raw_token) AS review_url,\n  'READY' AS link_status\nFROM article_for_review a\nJOIN new_link n USING (article_id, doctor_id);",
+        "options": {
+          "location": "US"
+        }
       },
       "id": "8e90ea0c-4e40-4f83-bb27-e620a1b76002",
       "name": "Generate and Store Secure Review Link",
       "type": "n8n-nodes-base.googleBigQuery",
       "typeVersion": 2.1,
-      "position": [-240, 0]
+      "position": [
+        -240,
+        0
+      ]
     },
     {
       "parameters": {
@@ -32,16 +44,173 @@
       "name": "Phase 1F Link Notes",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
-      "position": [-500, -360]
+      "position": [
+        -500,
+        -360
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "20 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "aac-check-for-drafts-awaiting-review-hourly",
+      "name": "Check for Drafts Awaiting Review Hourly",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -520,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const title = $json.article_title || 'your article';\nconst name = $json.doctor_name || 'Doctor';\nconst revised = Number($json.current_version) > 1;\nreturn { json: {\n  doctor_id: $json.doctor_id,\n  article_id: $json.article_id,\n  campaign_id: $json.campaign_id,\n  communication_type: revised ? 'DOCTOR_REVISED_DRAFT' : 'DOCTOR_REVIEW_REQUEST',\n  subject: revised ? 'Your revised article is ready for review' : 'Your article is ready for review',\n  message_text: ['Hello ' + name + ',', '', (revised ? 'The revised article' : 'A draft article') + ' \"' + title + '\" is ready for your review. Please use the secure link below to approve it or request changes.', '', 'This review link expires at the review deadline.', '', 'Apex Dental Partners'].join(String.fromCharCode(10)),\n  action_url: $json.review_url,\n} };"
+      },
+      "id": "aac-prepare-doctor-review-message",
+      "name": "Prepare Doctor Review Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        40,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "cZtS9x6kbI46Q2Bi",
+          "mode": "list",
+          "cachedResultName": "AAC - 16 - Send Doctor Message"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "doctor_id": "={{ $json.doctor_id }}",
+            "article_id": "={{ $json.article_id }}",
+            "campaign_id": "={{ $json.campaign_id }}",
+            "communication_type": "={{ $json.communication_type }}",
+            "subject": "={{ $json.subject }}",
+            "message_text": "={{ $json.message_text }}",
+            "action_url": "={{ $json.action_url }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "doctor_id",
+              "displayName": "doctor_id",
+              "type": "string"
+            },
+            {
+              "id": "article_id",
+              "displayName": "article_id",
+              "type": "string"
+            },
+            {
+              "id": "campaign_id",
+              "displayName": "campaign_id",
+              "type": "string"
+            },
+            {
+              "id": "communication_type",
+              "displayName": "communication_type",
+              "type": "string"
+            },
+            {
+              "id": "subject",
+              "displayName": "subject",
+              "type": "string"
+            },
+            {
+              "id": "message_text",
+              "displayName": "message_text",
+              "type": "string"
+            },
+            {
+              "id": "action_url",
+              "displayName": "action_url",
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        320,
+        0
+      ],
+      "id": "aac-call-private-doctor-review-router",
+      "name": "Send Doctor Review Invitation Privately"
     }
   ],
   "connections": {
-    "Run Review Link Test": { "main": [[{ "node": "Generate and Store Secure Review Link", "type": "main", "index": 0 }]] }
+    "Run Review Link Test": {
+      "main": [
+        [
+          {
+            "node": "Generate and Store Secure Review Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check for Drafts Awaiting Review Hourly": {
+      "main": [
+        [
+          {
+            "node": "Generate and Store Secure Review Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate and Store Secure Review Link": {
+      "main": [
+        [
+          {
+            "node": "Prepare Doctor Review Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Doctor Review Message": {
+      "main": [
+        [
+          {
+            "node": "Send Doctor Review Invitation Privately",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
   "pinData": {},
-  "settings": { "executionOrder": "v1" },
+  "settings": {
+    "executionOrder": "v1"
+  },
   "active": false,
   "versionId": "8f733d0c-4bb7-474b-b4c4-aad706276004",
-  "meta": { "templateCredsSetupCompleted": false },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
   "tags": []
 }

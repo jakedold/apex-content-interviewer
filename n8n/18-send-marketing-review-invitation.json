@@ -1,0 +1,209 @@
+{
+  "name": "AAC - 18 - Send Marketing Review Invitation",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "aac-marketing-invitation-schedule",
+      "name": "Check for Unsent Marketing Reviews Hourly",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -720,
+        80
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "aac-marketing-invitation-manual",
+      "name": "Run Marketing Invitation Check Manually",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -720,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "projectId": {
+          "__rl": true,
+          "value": "apex-marketing-n8n",
+          "mode": "id"
+        },
+        "sqlQuery": "-- Send one marketing review invitation for each pending article version.\nCREATE TEMP TABLE candidate AS\nSELECT a.article_id, a.current_version, ap.deadline,\n  COALESCE(JSON_VALUE(v.content, '$.metadata.h1'), 'Article draft') AS article_title\nFROM `apex-marketing-n8n.automated_article_creation.articles` a\nJOIN `apex-marketing-n8n.automated_article_creation.approvals` ap\n  ON ap.article_id = a.article_id AND ap.approval_type = 'MARKETING_REVIEW' AND ap.status = 'PENDING'\nJOIN `apex-marketing-n8n.automated_article_creation.article_versions` v\n  ON v.article_id = a.article_id AND v.version_number = a.current_version\nWHERE a.status = 'MARKETING_REVIEW'\n  AND COALESCE(ap.deadline, TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)) > CURRENT_TIMESTAMP()\n  AND NOT EXISTS (\n    SELECT 1 FROM `apex-marketing-n8n.automated_article_creation.workflow_events` e\n    WHERE e.entity_type = 'article' AND e.entity_id = a.article_id\n      AND e.event_type = 'marketing.review_invitation_sent'\n      AND SAFE_CAST(JSON_VALUE(e.payload, '$.version_number') AS INT64) = a.current_version\n  )\nORDER BY ap.requested_at ASC\nLIMIT 1;\n\nUPDATE `apex-marketing-n8n.automated_article_creation.marketing_review_links`\nSET status = 'SUPERSEDED'\nWHERE article_id IN (SELECT article_id FROM candidate) AND status IN ('READY', 'OPENED');\n\nCREATE TEMP TABLE new_link AS\nSELECT GENERATE_UUID() AS marketing_review_link_id, article_id, current_version, article_title,\n  CONCAT(REPLACE(GENERATE_UUID(), '-', ''), REPLACE(GENERATE_UUID(), '-', '')) AS raw_token,\n  COALESCE(deadline, TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)) AS expires_at\nFROM candidate;\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.marketing_review_links`\n(marketing_review_link_id, article_id, secure_token_hash, status, created_at, expires_at)\nSELECT marketing_review_link_id, article_id, TO_HEX(SHA256(raw_token)), 'READY', CURRENT_TIMESTAMP(), expires_at\nFROM new_link;\n\nSELECT article_id, current_version, article_title, marketing_review_link_id,\n  CONCAT('https://apex-content-interviewer.jdold.workers.dev/marketing-review/', raw_token) AS review_url\nFROM new_link;",
+        "options": {
+          "location": "US"
+        }
+      },
+      "id": "aac-marketing-invitation-link",
+      "name": "Prepare Fresh Marketing Review Link",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [
+        -440,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return { json: {\n  article_id: $json.article_id,\n  current_version: $json.current_version,\n  recipient: 'jdold@apexdp.com',\n  subject: 'Article ready for marketing review',\n  message_text: ['An article is ready for marketing review:', '', $json.article_title || 'Article draft', '', 'Approve it or request changes using this secure link:', $json.review_url, '', 'Apex Dental Partners'].join(String.fromCharCode(10)),\n} };"
+      },
+      "id": "aac-marketing-invitation-message",
+      "name": "Prepare Marketing Review Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -160,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.recipient }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "text",
+        "message": "={{ $json.message_text }}",
+        "options": {}
+      },
+      "id": "aac-marketing-invitation-gmail",
+      "name": "Email Marketing Reviewer",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        120,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "projectId": {
+          "__rl": true,
+          "value": "apex-marketing-n8n",
+          "mode": "id"
+        },
+        "sqlQuery": "INSERT INTO `apex-marketing-n8n.automated_article_creation.workflow_events`\n(event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id, payload)\nVALUES (GENERATE_UUID(), 'article', @article_id, 'marketing.review_invitation_sent', CURRENT_TIMESTAMP(),\n  'n8n:gmail', NULL, TO_JSON(STRUCT(CAST(@version_number AS INT64) AS version_number,\n  @recipient AS recipient, NULLIF(@provider_message_id, '') AS provider_message_id)));\nSELECT @article_id AS article_id, 'SENT' AS status;",
+        "options": {
+          "location": "US",
+          "queryParameters": {
+            "namedParameters": [
+              {
+                "name": "article_id",
+                "value": "={{ $('Prepare Marketing Review Email').item.json.article_id }}"
+              },
+              {
+                "name": "version_number",
+                "value": "={{ $('Prepare Marketing Review Email').item.json.current_version }}"
+              },
+              {
+                "name": "recipient",
+                "value": "={{ $('Prepare Marketing Review Email').item.json.recipient }}"
+              },
+              {
+                "name": "provider_message_id",
+                "value": "={{ $json.id || $json.messageId || '' }}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "aac-marketing-invitation-log",
+      "name": "Record Marketing Invitation Delivery",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [
+        400,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## AAC Phase 1L - Marketing invitation\n\nAt minute 30 each hour, find one marketing review that has no successful email for its current article version. Rotate its secure link, email the designated Apex reviewer, then record successful delivery. A failed send remains eligible for a later retry. Static-site publication remains a separate step.",
+        "height": 300,
+        "width": 600
+      },
+      "id": "aac-marketing-invitation-notes",
+      "name": "Marketing Invitation Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -720,
+        -300
+      ]
+    }
+  ],
+  "connections": {
+    "Check for Unsent Marketing Reviews Hourly": {
+      "main": [
+        [
+          {
+            "node": "Prepare Fresh Marketing Review Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Marketing Invitation Check Manually": {
+      "main": [
+        [
+          {
+            "node": "Prepare Fresh Marketing Review Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Fresh Marketing Review Link": {
+      "main": [
+        [
+          {
+            "node": "Prepare Marketing Review Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Marketing Review Email": {
+      "main": [
+        [
+          {
+            "node": "Email Marketing Reviewer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Marketing Reviewer": {
+      "main": [
+        [
+          {
+            "node": "Record Marketing Invitation Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "tags": []
+}

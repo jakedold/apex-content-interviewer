@@ -1,0 +1,98 @@
+{
+  "name": "AAC - 19 - Prestonwood WordPress Draft Pilot",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-600, 0],
+      "id": "df2c137e-7f59-4559-b0c6-74684064f67a",
+      "name": "Run Draft Pilot Manually"
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = 'https://apexparent.hostmanpowered.com/dfw-03';\nconst slug = 'aac-wordpress-connection-pilot-2026-09-23';\nreturn [{ json: { wordpress_api_url: `${base}/wp-json/wp/v2`, wordpress_base_url: base, slug, wordpress_body: { title: 'AAC WordPress Connection Pilot — Internal Draft', slug, content: '<p>Internal integration test for Prestonwood Family Dentistry. This is not patient-facing clinical content. Do not publish or include in a static-site build.</p>', excerpt: 'Internal integration test only.', status: 'draft', comment_status: 'closed', ping_status: 'closed', format: 'standard' } } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-360, 0],
+      "id": "0b1556ab-9287-4fdc-aea5-3792e7e661d8",
+      "name": "Prepare Exact Draft Target"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.wordpress_api_url + '/posts?slug=' + encodeURIComponent($json.slug) + '&status=any&context=edit' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "wordpressApi",
+        "options": { "timeout": 30000 }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-120, 0],
+      "id": "2ae6ec49-88cd-462e-a5c2-b5233f5c6869",
+      "name": "Check for Existing Pilot Draft",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const context = $('Prepare Exact Draft Target').first().json;\nconst existing = $input.all().map(item => item.json).find(post => post?.id && post?.slug === context.slug);\nif (existing) throw new Error(`Pilot post already exists (ID ${existing.id}); refusing to create a duplicate.`);\nreturn [{ json: context }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [120, 0],
+      "id": "96c657ec-bd75-4c24-b497-9ef07fc6220a",
+      "name": "Reject Duplicate Pilot"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.wordpress_api_url + '/posts' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "wordpressApi",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json.wordpress_body) }}",
+        "options": { "timeout": 30000 }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [360, 0],
+      "id": "19031589-ec2f-481a-97a8-9f6965276864",
+      "name": "Create Prestonwood Draft"
+    },
+    {
+      "parameters": {
+        "jsCode": "const post = $json;\nconst context = $('Prepare Exact Draft Target').first().json;\nif (!post?.id || post.status !== 'draft' || post.slug !== context.slug || !String(post.link || '').startsWith(context.wordpress_base_url + '/')) {\n  throw new Error('WordPress did not return the expected Prestonwood draft post.');\n}\nreturn [{ json: { result: 'PRESTONWOOD_DRAFT_VERIFIED', post_id: post.id, status: post.status, slug: post.slug, url: post.link } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 0],
+      "id": "dfe560e1-d49d-43cd-9a18-1b518861202a",
+      "name": "Verify Prestonwood Draft"
+    },
+    {
+      "parameters": {
+        "content": "Manual, draft-only credential and subsite pilot. It cannot send invitations, write BigQuery state, publish a post, or start a Headless Hostman build. Both WordPress HTTP nodes must use the existing `Wordpress account` credential before execution. The fixed slug and duplicate check prevent creating the same pilot twice.",
+        "height": 180,
+        "width": 470
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-600, -300],
+      "id": "e1c0276b-6901-4998-a19e-a6befd4797b6",
+      "name": "Pilot Scope"
+    }
+  ],
+  "connections": {
+    "Run Draft Pilot Manually": { "main": [[{ "node": "Prepare Exact Draft Target", "type": "main", "index": 0 }]] },
+    "Prepare Exact Draft Target": { "main": [[{ "node": "Check for Existing Pilot Draft", "type": "main", "index": 0 }]] },
+    "Check for Existing Pilot Draft": { "main": [[{ "node": "Reject Duplicate Pilot", "type": "main", "index": 0 }]] },
+    "Reject Duplicate Pilot": { "main": [[{ "node": "Create Prestonwood Draft", "type": "main", "index": 0 }]] },
+    "Create Prestonwood Draft": { "main": [[{ "node": "Verify Prestonwood Draft", "type": "main", "index": 0 }]] }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "tags": []
+}

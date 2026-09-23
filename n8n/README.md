@@ -27,6 +27,17 @@ Version-controlled workflow exports:
 - `16-send-doctor-message.json`
 - `17-doctor-review-reminders.json`
 - `18-send-marketing-review-invitation.json`
+- `19-prestonwood-wordpress-draft-pilot.json` — isolated manual credential/subsite check; creates only a fixed internal draft at Prestonwood and is not part of the article pipeline
+
+On September 23, 2026, the [inactive Prestonwood draft pilot](https://n8n.apexdentalautomation.com/workflow/x8P9o3fLDyDMxJ4s)
+ran manually using the existing `Wordpress account` credential. Its
+authenticated lookup found no earlier post with the fixed pilot slug. The
+workflow then created and verified WordPress post `9987` as a **draft** on
+`/dfw-03/`; the WordPress editor independently showed the same title, slug,
+draft status, and `jdold` author. This internal integration text is not a
+clinical article. The workflow has no email, BigQuery write, publication, or
+Headless Hostman step and remains inactive. It does not remove the TEST001-only
+guard from the production publisher or enable DFW-03 campaigns.
 
 On September 23, 2026, the protected [test-only campaign launcher](https://n8n.apexdentalautomation.com/workflow/KvuBYWElqsvKx8lf)
 was activated. Its [form](https://n8n.apexdentalautomation.com/form/aac-test-campaign-launch)

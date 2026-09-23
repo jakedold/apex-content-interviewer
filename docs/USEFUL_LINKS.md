@@ -22,11 +22,17 @@ in this file.
 | [Test emails](https://n8n.apexdentalautomation.com/projects/XtX0LN69PLAISkda/datatables/UVcspQQJPdgtgf9q) | Separate n8n list with email and practice name | Use **Add Row** and match the practice name to the test-practices list. This list is not connected to invitations. |
 | [Master Location List](https://docs.google.com/spreadsheets/d/1fAP9gu66_rwZ9xUCjmxdql-FznlG-PQvepVaH6ThmnE/edit) | Current location list and public websites (`Master List` tab) | Working location source for the staging selection preview. Public static websites are **not** WordPress editing-site URLs. |
 | [Employee Census / doctor list](https://docs.google.com/spreadsheets/d/1M0arM4jnZzalySGUKq60Hp1yhTDz2RQTXqMeOWfaOUA/edit) | Dentist names, primary locations, employment type, and work emails (`Sheet1` tab) | Working doctor source for the staging selection preview. Only full- and part-time general dentists at eligible locations are selected. |
+| [WordPress site map](https://docs.google.com/spreadsheets/d/1eP8YmH9vwCFXQ80_VjPXrGj6SGa1k3d2Ux00Xfcbw6A/edit) | Separate working sheet with 58 eligible practice codes, names, and public websites | Fill the yellow **WordPress editing URL** column. Do not enter passwords or application credentials. This map is not yet connected to publishing. |
 
 The two Google Sheets are the current working roster sources because the
 expected BigQuery source tables are not yet usable for this selection step.
 BigQuery remains the intended system of record. The test lists are separate
 from both sheets; adding a row to either test list does not launch a campaign.
+For production practices, match the doctor's primary-location code in the
+Employee Census to the code in the Master Location List, then to the same code
+in the WordPress site map. Do not match by website domain or doctor email;
+several practices share a public domain. The WordPress map is a staging input,
+not yet the BigQuery publishing configuration.
 
 ## Prompts and project reference
 

@@ -159,6 +159,16 @@ enabled. For example, the TEST001 editing base is
 different operation. No production location should be auto-published from a
 public URL inferred from the master sheet.
 
+The separate [AAC WordPress Site Map](https://docs.google.com/spreadsheets/d/1eP8YmH9vwCFXQ80_VjPXrGj6SGa1k3d2Ux00Xfcbw6A/edit)
+is the current collection point for production editing-site URLs. It has one
+row per currently eligible general-dentist location, keyed by the code from
+the Master Location List. Fill only its `WordPress editing URL` column (and
+optional notes); do not place credentials there. A dentist's primary-location
+code in the Employee Census joins to that same location code. This sheet is
+not yet synced into `practices.publisher_config_reference` or used by the
+WordPress adapter, so filling it cannot trigger publishing or emails. Validate
+each entered URL and credential association before any BigQuery sync.
+
 The Phase 1K communication workflows centralize doctor-message routing and
 deadline reminders. Email is the V1 delivery adapter, with preference-aware
 fallback behavior and durable communication logging. SMS and Empower remain

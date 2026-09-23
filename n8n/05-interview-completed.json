@@ -160,6 +160,43 @@
       ],
       "id": "e6167d16-1df1-4b35-8b6c-6dbab0dc404e",
       "name": "Phase 1D Notes"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "MJDpbf6RMnUgkzyg",
+          "mode": "list",
+          "cachedResultName": "AAC - 06 - Generate Article"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "interview_id": "={{ $node[\"Persist Interview and Mark Complete\"].json.interview_id }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "interview_id",
+              "displayName": "interview_id",
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "618b103a-718b-43f0-a085-9ef486172e56",
+      "name": "Generate Article from Completed Interview",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        760,
+        -180
+      ]
     }
   ],
   "connections": {
@@ -197,6 +234,17 @@
         [
           {
             "node": "Reject Invalid Completion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Return Completion Success": {
+      "main": [
+        [
+          {
+            "node": "Generate Article from Completed Interview",
             "type": "main",
             "index": 0
           }

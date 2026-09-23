@@ -20,9 +20,17 @@
           "value": "apex-marketing-n8n",
           "mode": "id"
         },
-        "sqlQuery": "-- AAC Phase 1E\n-- Initialize article storage if this is the first Phase 1E run.\nCREATE TABLE IF NOT EXISTS `apex-marketing-n8n.automated_article_creation.articles` (\n  article_id STRING NOT NULL,\n  interview_id STRING NOT NULL,\n  doctor_id STRING NOT NULL,\n  practice_id STRING NOT NULL,\n  campaign_id STRING NOT NULL,\n  status STRING NOT NULL,\n  current_version INT64 NOT NULL,\n  created_at TIMESTAMP NOT NULL,\n  doctor_review_deadline TIMESTAMP,\n  doctor_approved_at TIMESTAMP,\n  marketing_approved_at TIMESTAMP,\n  published_at TIMESTAMP,\n  published_url STRING\n);\n\nCREATE TABLE IF NOT EXISTS `apex-marketing-n8n.automated_article_creation.article_versions` (\n  article_id STRING NOT NULL,\n  version_number INT64 NOT NULL,\n  version_type STRING NOT NULL,\n  content STRING NOT NULL,\n  revision_instruction STRING,\n  created_at TIMESTAMP NOT NULL,\n  created_by STRING NOT NULL\n);\n\n-- Load the newest substantive completed interview that does not yet have an article.\nSELECT\n  i.interview_id,\n  i.campaign_id,\n  c.campaign_name,\n  c.campaign_month,\n  COALESCE(c.doctor_review_days, 5) AS doctor_review_days,\n  c.require_marketing_approval,\n  i.doctor_id,\n  d.doctor_name,\n  d.credentials,\n  d.practice_id,\n  p.practice_name,\n  p.website_domain,\n  p.publisher_config_reference,\n  i.topic_id,\n  t.topic_title,\n  t.topic_description,\n  t.interview_guidance,\n  i.transcript,\n  i.completed_at\nFROM `apex-marketing-n8n.automated_article_creation.interviews` i\nJOIN `apex-marketing-n8n.automated_article_creation.doctors` d\n  ON d.doctor_id = i.doctor_id\nJOIN `apex-marketing-n8n.automated_article_creation.practices` p\n  ON p.practice_id = d.practice_id\nJOIN `apex-marketing-n8n.automated_article_creation.campaigns` c\n  ON c.campaign_id = i.campaign_id\nJOIN `apex-marketing-n8n.automated_article_creation.campaign_topics` t\n  ON t.topic_id = i.topic_id\nLEFT JOIN `apex-marketing-n8n.automated_article_creation.articles` a\n  ON a.interview_id = i.interview_id\nWHERE\n  i.status IN ('INTERVIEW_COMPLETED', 'ARTICLE_GENERATION_FAILED')\n  AND i.transcript IS NOT NULL\n  AND ARRAY_LENGTH(REGEXP_EXTRACT_ALL(TRIM(i.transcript), r'\\S+')) >= 100\n  AND a.article_id IS NULL\nORDER BY i.completed_at DESC\nLIMIT 1;",
+        "sqlQuery": "-- AAC Phase 1E\n-- Initialize article storage if this is the first Phase 1E run.\nCREATE TABLE IF NOT EXISTS `apex-marketing-n8n.automated_article_creation.articles` (\n  article_id STRING NOT NULL,\n  interview_id STRING NOT NULL,\n  doctor_id STRING NOT NULL,\n  practice_id STRING NOT NULL,\n  campaign_id STRING NOT NULL,\n  status STRING NOT NULL,\n  current_version INT64 NOT NULL,\n  created_at TIMESTAMP NOT NULL,\n  doctor_review_deadline TIMESTAMP,\n  doctor_approved_at TIMESTAMP,\n  marketing_approved_at TIMESTAMP,\n  published_at TIMESTAMP,\n  published_url STRING\n);\n\nCREATE TABLE IF NOT EXISTS `apex-marketing-n8n.automated_article_creation.article_versions` (\n  article_id STRING NOT NULL,\n  version_number INT64 NOT NULL,\n  version_type STRING NOT NULL,\n  content STRING NOT NULL,\n  revision_instruction STRING,\n  created_at TIMESTAMP NOT NULL,\n  created_by STRING NOT NULL\n);\n\n-- Load the newest substantive completed interview that does not yet have an article.\nSELECT\n  i.interview_id,\n  i.campaign_id,\n  c.campaign_name,\n  c.campaign_month,\n  COALESCE(c.doctor_review_days, 5) AS doctor_review_days,\n  c.require_marketing_approval,\n  i.doctor_id,\n  d.doctor_name,\n  d.credentials,\n  d.practice_id,\n  p.practice_name,\n  p.website_domain,\n  p.publisher_config_reference,\n  i.topic_id,\n  t.topic_title,\n  t.topic_description,\n  t.interview_guidance,\n  i.transcript,\n  i.completed_at\nFROM `apex-marketing-n8n.automated_article_creation.interviews` i\nJOIN `apex-marketing-n8n.automated_article_creation.doctors` d\n  ON d.doctor_id = i.doctor_id\nJOIN `apex-marketing-n8n.automated_article_creation.practices` p\n  ON p.practice_id = d.practice_id\nJOIN `apex-marketing-n8n.automated_article_creation.campaigns` c\n  ON c.campaign_id = i.campaign_id\nJOIN `apex-marketing-n8n.automated_article_creation.campaign_topics` t\n  ON t.topic_id = i.topic_id\nLEFT JOIN `apex-marketing-n8n.automated_article_creation.articles` a\n  ON a.interview_id = i.interview_id\nWHERE\n  i.status IN ('INTERVIEW_COMPLETED', 'ARTICLE_GENERATION_FAILED')\n  AND i.transcript IS NOT NULL\n  AND ARRAY_LENGTH(REGEXP_EXTRACT_ALL(TRIM(i.transcript), r'\\S+')) >= 100\n  AND a.article_id IS NULL\n  AND i.interview_id = @interview_id\n  AND d.practice_id = 'practice_test_001'\nORDER BY i.completed_at DESC\nLIMIT 1;",
         "options": {
-          "location": "US"
+          "location": "US",
+          "queryParameters": {
+            "namedParameters": [
+              {
+                "name": "interview_id",
+                "value": "={{ $json.interview_id }}"
+              }
+            ]
+          }
         }
       },
       "type": "n8n-nodes-base.googleBigQuery",
@@ -168,12 +176,69 @@
         }
       },
       "id": "aac-check-for-completed-interviews-hourly",
-      "name": "Check for Completed Interviews Hourly",
+      "name": "Check for Completed Interviews Hourly (Deactivated)",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
         -880,
         240
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "interview_id"
+            }
+          ]
+        }
+      },
+      "id": "5e10b110-1e23-4f45-88b4-f2b09fb6f9de",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -760,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "shKPE4heHjz9XgMv",
+          "mode": "list",
+          "cachedResultName": "AAC - 07 - Create Doctor Review Link"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "article_id": "={{ $json.article_id }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "article_id",
+              "displayName": "article_id",
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "6c3bf22b-e388-45f3-89b9-b65f78e7cdee",
+      "name": "Send Draft for Doctor Review",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1640,
+        0
       ]
     }
   ],
@@ -233,11 +298,22 @@
         ]
       ]
     },
-    "Check for Completed Interviews Hourly": {
+    "When Executed by Another Workflow": {
       "main": [
         [
           {
             "node": "Load Next Completed Interview",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Persist Initial Article Draft": {
+      "main": [
+        [
+          {
+            "node": "Send Draft for Doctor Review",
             "type": "main",
             "index": 0
           }

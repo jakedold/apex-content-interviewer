@@ -28,9 +28,17 @@
           "value": "apex-marketing-n8n",
           "mode": "id"
         },
-        "sqlQuery": "-- AAC Phase 1G\n-- Load the newest unprocessed doctor revision request and its complete source context.\nWITH latest_change_request AS (\n  SELECT approval_id, article_id, response, responded_at\n  FROM `apex-marketing-n8n.automated_article_creation.approvals`\n  WHERE approval_type = 'DOCTOR_REVIEW'\n    AND status = 'CHANGES_REQUESTED'\n    AND LENGTH(TRIM(response)) > 0\n  QUALIFY ROW_NUMBER() OVER (PARTITION BY article_id ORDER BY responded_at DESC, requested_at DESC) = 1\n),\nrevision_history AS (\n  SELECT\n    article_id,\n    TO_JSON_STRING(ARRAY_AGG(STRUCT(\n      version_number,\n      version_type,\n      revision_instruction,\n      created_at\n    ) ORDER BY version_number)) AS revision_history_json\n  FROM `apex-marketing-n8n.automated_article_creation.article_versions`\n  GROUP BY article_id\n)\nSELECT\n  a.article_id,\n  a.interview_id,\n  a.campaign_id,\n  a.doctor_id,\n  a.practice_id,\n  a.current_version,\n  COALESCE(c.doctor_review_days, 5) AS doctor_review_days,\n  r.approval_id,\n  r.response AS revision_instruction,\n  r.responded_at,\n  v.content AS current_package_json,\n  i.transcript,\n  i.topic_id,\n  d.doctor_name,\n  d.credentials,\n  p.practice_name,\n  p.website_domain,\n  p.publisher_config_reference,\n  c.campaign_name,\n  c.campaign_month,\n  t.topic_title,\n  t.topic_description,\n  t.interview_guidance,\n  h.revision_history_json\nFROM `apex-marketing-n8n.automated_article_creation.articles` a\nJOIN latest_change_request r ON r.article_id = a.article_id\nJOIN `apex-marketing-n8n.automated_article_creation.article_versions` v\n  ON v.article_id = a.article_id AND v.version_number = a.current_version\nJOIN `apex-marketing-n8n.automated_article_creation.interviews` i ON i.interview_id = a.interview_id\nJOIN `apex-marketing-n8n.automated_article_creation.doctors` d ON d.doctor_id = a.doctor_id\nJOIN `apex-marketing-n8n.automated_article_creation.practices` p ON p.practice_id = a.practice_id\nJOIN `apex-marketing-n8n.automated_article_creation.campaigns` c ON c.campaign_id = a.campaign_id\nLEFT JOIN `apex-marketing-n8n.automated_article_creation.campaign_topics` t ON t.topic_id = i.topic_id\nLEFT JOIN revision_history h ON h.article_id = a.article_id\nWHERE a.status = 'DOCTOR_CHANGES_REQUESTED'\nORDER BY r.responded_at DESC\nLIMIT 1;",
+        "sqlQuery": "-- AAC Phase 1G\n-- Load the newest unprocessed doctor revision request and its complete source context.\nWITH latest_change_request AS (\n  SELECT approval_id, article_id, response, responded_at\n  FROM `apex-marketing-n8n.automated_article_creation.approvals`\n  WHERE approval_type = 'DOCTOR_REVIEW'\n    AND status = 'CHANGES_REQUESTED'\n    AND LENGTH(TRIM(response)) > 0\n  QUALIFY ROW_NUMBER() OVER (PARTITION BY article_id ORDER BY responded_at DESC, requested_at DESC) = 1\n),\nrevision_history AS (\n  SELECT\n    article_id,\n    TO_JSON_STRING(ARRAY_AGG(STRUCT(\n      version_number,\n      version_type,\n      revision_instruction,\n      created_at\n    ) ORDER BY version_number)) AS revision_history_json\n  FROM `apex-marketing-n8n.automated_article_creation.article_versions`\n  GROUP BY article_id\n)\nSELECT\n  a.article_id,\n  a.interview_id,\n  a.campaign_id,\n  a.doctor_id,\n  a.practice_id,\n  a.current_version,\n  COALESCE(c.doctor_review_days, 5) AS doctor_review_days,\n  r.approval_id,\n  r.response AS revision_instruction,\n  r.responded_at,\n  v.content AS current_package_json,\n  i.transcript,\n  i.topic_id,\n  d.doctor_name,\n  d.credentials,\n  p.practice_name,\n  p.website_domain,\n  p.publisher_config_reference,\n  c.campaign_name,\n  c.campaign_month,\n  t.topic_title,\n  t.topic_description,\n  t.interview_guidance,\n  h.revision_history_json\nFROM `apex-marketing-n8n.automated_article_creation.articles` a\nJOIN latest_change_request r ON r.article_id = a.article_id\nJOIN `apex-marketing-n8n.automated_article_creation.article_versions` v\n  ON v.article_id = a.article_id AND v.version_number = a.current_version\nJOIN `apex-marketing-n8n.automated_article_creation.interviews` i ON i.interview_id = a.interview_id\nJOIN `apex-marketing-n8n.automated_article_creation.doctors` d ON d.doctor_id = a.doctor_id\nJOIN `apex-marketing-n8n.automated_article_creation.practices` p ON p.practice_id = a.practice_id\nJOIN `apex-marketing-n8n.automated_article_creation.campaigns` c ON c.campaign_id = a.campaign_id\nLEFT JOIN `apex-marketing-n8n.automated_article_creation.campaign_topics` t ON t.topic_id = i.topic_id\nLEFT JOIN revision_history h ON h.article_id = a.article_id\nWHERE a.status = 'DOCTOR_CHANGES_REQUESTED'\n  AND a.article_id = @article_id\n  AND a.practice_id = 'practice_test_001'\nORDER BY r.responded_at DESC\nLIMIT 1;",
         "options": {
-          "location": "US"
+          "location": "US",
+          "queryParameters": {
+            "namedParameters": [
+              {
+                "name": "article_id",
+                "value": "={{ $json.article_id }}"
+              }
+            ]
+          }
         }
       }
     },
@@ -178,12 +186,69 @@
         }
       },
       "id": "aac-check-for-doctor-change-requests-hourly",
-      "name": "Check for Doctor Change Requests Hourly",
+      "name": "Check for Doctor Change Requests Hourly (Deactivated)",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
         -920,
         260
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "article_id"
+            }
+          ]
+        }
+      },
+      "id": "340bd614-7244-49f8-ab55-1bd1dbbd88fe",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -760,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "shKPE4heHjz9XgMv",
+          "mode": "list",
+          "cachedResultName": "AAC - 07 - Create Doctor Review Link"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "article_id": "={{ $json.article_id }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "article_id",
+              "displayName": "article_id",
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "713cb549-da61-440b-b211-aeac3c6a8b72",
+      "name": "Send Revised Draft for Doctor Review",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1620,
+        0
       ]
     }
   ],
@@ -243,11 +308,22 @@
         ]
       ]
     },
-    "Check for Doctor Change Requests Hourly": {
+    "When Executed by Another Workflow": {
       "main": [
         [
           {
             "node": "Load Requested Revision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Persist New Article Version": {
+      "main": [
+        [
+          {
+            "node": "Send Revised Draft for Doctor Review",
             "type": "main",
             "index": 0
           }

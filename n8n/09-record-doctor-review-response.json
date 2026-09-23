@@ -12,39 +12,72 @@
       "name": "Receive Doctor Decision",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
-      "position": [-560, 0],
+      "position": [
+        -560,
+        0
+      ],
       "webhookId": "1ae2f78d-266c-4ed3-88b6-81adeff79002"
     },
     {
       "parameters": {
         "authentication": "serviceAccount",
-        "projectId": { "__rl": true, "value": "apex-marketing-n8n", "mode": "id" },
+        "projectId": {
+          "__rl": true,
+          "value": "apex-marketing-n8n",
+          "mode": "id"
+        },
         "sqlQuery": "-- AAC Phase 1F\nCREATE TEMP TABLE valid_response AS\nSELECT\n  rl.review_link_id, rl.article_id, rl.doctor_id, a.campaign_id,\n  CASE\n    WHEN @action = 'approve' THEN 'APPROVED'\n    WHEN @action = 'request_changes' AND LENGTH(TRIM(@response)) > 0 THEN 'CHANGES_REQUESTED'\n    ELSE NULL\n  END AS decision\nFROM `apex-marketing-n8n.automated_article_creation.article_review_links` rl\nJOIN `apex-marketing-n8n.automated_article_creation.articles` a ON a.article_id = rl.article_id\nWHERE rl.secure_token_hash = TO_HEX(SHA256(@token))\n  AND rl.expires_at > CURRENT_TIMESTAMP()\n  AND rl.status IN ('READY', 'OPENED')\n  AND a.status = 'DOCTOR_REVIEW_PENDING'\nQUALIFY ROW_NUMBER() OVER (ORDER BY rl.created_at DESC) = 1;\n\nDELETE FROM valid_response WHERE decision IS NULL;\n\nUPDATE `apex-marketing-n8n.automated_article_creation.article_review_links`\nSET status = 'RESPONDED', responded_at = CURRENT_TIMESTAMP()\nWHERE review_link_id IN (SELECT review_link_id FROM valid_response);\n\nUPDATE `apex-marketing-n8n.automated_article_creation.approvals`\nSET\n  status = (SELECT decision FROM valid_response LIMIT 1),\n  responded_at = CURRENT_TIMESTAMP(),\n  response = NULLIF(TRIM(@response), '')\nWHERE article_id IN (SELECT article_id FROM valid_response)\n  AND approval_type = 'DOCTOR_REVIEW'\n  AND status = 'PENDING';\n\nUPDATE `apex-marketing-n8n.automated_article_creation.articles`\nSET\n  status = IF((SELECT decision FROM valid_response LIMIT 1) = 'APPROVED', 'DOCTOR_APPROVED', 'DOCTOR_CHANGES_REQUESTED'),\n  doctor_approved_at = IF((SELECT decision FROM valid_response LIMIT 1) = 'APPROVED', CURRENT_TIMESTAMP(), NULL)\nWHERE article_id IN (SELECT article_id FROM valid_response);\n\nUPDATE `apex-marketing-n8n.automated_article_creation.campaign_doctors`\nSET\n  status = IF((SELECT decision FROM valid_response LIMIT 1) = 'APPROVED', 'DOCTOR_APPROVED', 'DOCTOR_CHANGES_REQUESTED'),\n  updated_at = CURRENT_TIMESTAMP()\nWHERE campaign_id IN (SELECT campaign_id FROM valid_response)\n  AND doctor_id IN (SELECT doctor_id FROM valid_response);\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.workflow_events`\n(event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id, payload)\nSELECT\n  GENERATE_UUID(), 'article', article_id,\n  IF(decision = 'APPROVED', 'doctor.approved', 'revision.requested'),\n  CURRENT_TIMESTAMP(), 'doctor_review_portal', NULL,\n  TO_JSON(STRUCT(review_link_id, NULLIF(TRIM(@response), '') AS response))\nFROM valid_response;\n\nSELECT\n  IF(v.article_id IS NOT NULL, TRUE, FALSE) AS valid,\n  IF(v.article_id IS NOT NULL, v.decision, 'INVALID_OR_EXPIRED') AS status,\n  v.article_id,\n  IF(v.article_id IS NULL, 'This review link is invalid, expired, or has already been used.', NULL) AS error\nFROM (SELECT 1 AS seed) s\nLEFT JOIN valid_response v ON TRUE;",
         "options": {
           "location": "US",
-          "queryParameters": { "namedParameters": [
-            { "name": "token", "value": "={{ $json.body.token }}" },
-            { "name": "action", "value": "={{ $json.body.action }}" },
-            { "name": "response", "value": "={{ $json.body.response || '' }}" }
-          ] }
+          "queryParameters": {
+            "namedParameters": [
+              {
+                "name": "token",
+                "value": "={{ $json.body.token }}"
+              },
+              {
+                "name": "action",
+                "value": "={{ $json.body.action }}"
+              },
+              {
+                "name": "response",
+                "value": "={{ $json.body.response || '' }}"
+              }
+            ]
+          }
         }
       },
       "id": "c83d3642-b6c6-40ab-9fa2-ceea38db9003",
       "name": "Record Approval or Change Request",
       "type": "n8n-nodes-base.googleBigQuery",
       "typeVersion": 2.1,
-      "position": [-280, 0]
+      "position": [
+        -280,
+        0
+      ]
     },
     {
       "parameters": {
         "respondWith": "firstIncomingItem",
-        "options": { "responseHeaders": { "entries": [{ "name": "Cache-Control", "value": "no-store" }] } }
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
       },
       "id": "2af72562-e988-45a3-b189-70a923499004",
       "name": "Return Review Decision",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.4,
-      "position": [0, 0]
+      "position": [
+        0,
+        0
+      ]
     },
     {
       "parameters": {
@@ -56,17 +89,224 @@
       "name": "Phase 1F Decision Notes",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
-      "position": [-520, -360]
+      "position": [
+        -520,
+        -360
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "717bcad1-4155-4b1f-a311-bbe3e1554346",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "APPROVED",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "bf1aa515-c81a-40ac-9567-f5a7bde12f8b",
+      "name": "Doctor Approved?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        480,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "OYSKXW1BmAApEvv0",
+          "mode": "list",
+          "cachedResultName": "AAC - 12 - Route to Marketing Review"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "article_id": "={{ $json.article_id }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "article_id",
+              "displayName": "article_id",
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "29b912da-68fb-4438-806a-b598b30a0414",
+      "name": "Route Approved Article",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        740,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "40fac50b-438e-406c-8eb8-ae4314de0f12",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "CHANGES_REQUESTED",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c9521c18-62ae-4aef-8ae5-e9b87a1ec053",
+      "name": "Doctor Requested Changes?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        740,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "frSc6utHMHj9Wodc",
+          "mode": "list",
+          "cachedResultName": "AAC - 10 - Revise Article from Doctor Feedback"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "article_id": "={{ $json.article_id }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "article_id",
+              "displayName": "article_id",
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "c425ea57-229e-4d5f-857e-f81914e93259",
+      "name": "Revise Requested Article",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1000,
+        0
+      ]
     }
   ],
   "connections": {
-    "Receive Doctor Decision": { "main": [[{ "node": "Record Approval or Change Request", "type": "main", "index": 0 }]] },
-    "Record Approval or Change Request": { "main": [[{ "node": "Return Review Decision", "type": "main", "index": 0 }]] }
+    "Receive Doctor Decision": {
+      "main": [
+        [
+          {
+            "node": "Record Approval or Change Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record Approval or Change Request": {
+      "main": [
+        [
+          {
+            "node": "Return Review Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Return Review Decision": {
+      "main": [
+        [
+          {
+            "node": "Doctor Approved?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Doctor Approved?": {
+      "main": [
+        [
+          {
+            "node": "Route Approved Article",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Doctor Requested Changes?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Doctor Requested Changes?": {
+      "main": [
+        [
+          {
+            "node": "Revise Requested Article",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
   "pinData": {},
-  "settings": { "executionOrder": "v1" },
+  "settings": {
+    "executionOrder": "v1"
+  },
   "active": false,
   "versionId": "8856fdfd-555c-4890-b259-8d315eab9006",
-  "meta": { "templateCredsSetupCompleted": false },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
   "tags": []
 }

@@ -116,29 +116,34 @@ credential attached to its Form Trigger; do not put that credential or the form
 URL in this repository. The form starts campaigns; it does not publish articles
 or trigger the Headless Hostman static-site release.
 
-The article-generation workflow uses the approved prompt preserved at
-`../prompts/article-generation-master-prompt.md`. It checks hourly at minute 5
-for a completed interview that does not yet have an article. The manual trigger
-remains available for diagnosis.
-
-The article-revision workflow uses the dedicated prompt preserved at
-`../prompts/article-revision-master-prompt.md`. It checks hourly at minute 10
-for a doctor change request, revises the current package with the original
-transcript and revision history in context, and inserts a new
-`AI_DOCTOR_REVISION` version. The guarded review-link workflow issues the new
-one-time link and sends it to the doctor at minute 20.
+The test-only article stages now hand off when the preceding stage finishes:
+interview completion → first draft → doctor review invitation; doctor approval
+→ marketing invitation; doctor change request → revised draft → new doctor
+review invitation; marketing approval → WordPress publication. The review
+portal responds before the next stage runs. Invalid or expired decisions do
+not launch another stage. Each sub-workflow selects the exact article or
+interview ID and guards `practice_test_001` before doing work.
+The old hourly stage-polling nodes in workflows 06, 07, 10, 12, and 18 are
+deactivated. These sub-workflows show **Inactive** in n8n because their entry
+point is a parent workflow call, not a webhook or schedule. Manual test
+triggers remain for diagnosis. The generation and revision prompts remain
+versioned in `../prompts/` and use the Shortcoder guidance in
+`../docs/SHORTCODER.md`.
 
 The doctor-review deadline workflow runs hourly, finds pending reviews whose
 configured deadline has expired, marks the approval as automatic, expires the
 active review link, advances the article to `DOCTOR_AUTO_APPROVED`, and records
 an auditable `doctor.auto_approved` event. Its output identifies whether
-marketing review or publishing is the next stage.
+marketing review or publishing is the next stage. This deadline check is
+intentionally time-based; it is distinct from polling for completed stages.
 
 The marketing-review workflows route each doctor-approved article according
 to its campaign setting. Required reviews receive a separate hashed one-time
 link, and the marketing portal can either grant final approval or record a
-written change request that blocks publishing. Campaigns that do not require
-marketing approval advance directly to publishing.
+written change request that blocks publishing. The event-driven test route
+currently sends only articles requiring marketing approval. The
+no-marketing-review and deadline-auto-approval routes need separate handoffs
+before they can be used without scheduled or manual follow-up.
 
 The WordPress publishing workflow is the first publishing adapter. It only
 loads approved articles for practices with an explicit WordPress publisher,
@@ -149,11 +154,12 @@ and audit event in BigQuery. The TEST001 practice has been configured for a
 proof-of-concept WordPress post at `https://apexparent.hostmanpowered.com/test001/`.
 The live adapter derives its API URL from the explicit
 `publisher_config_reference.wordpress_base_url`, not the public-site field.
-Both HTTP nodes use the existing `Wordpress account` credential. Publishing
-remains manual and must wait for doctor and marketing approval. The pilot's
-selection query is restricted to `practice_test_001` and
-`campaign_test_202609_test001_september_pilot`; remove that restriction only
-after broader publishing mappings and safeguards are validated. The Headless
+Both HTTP nodes use the existing `Wordpress account` credential. Marketing
+approval now calls the publisher for the exact article ID; the publisher's
+query and preparation step independently restrict it to `practice_test_001`
+and the TEST001 WordPress editing base. A successful manual test-site publish
+was recorded on September 23, but the new automatic handoff has not yet been
+verified with a fresh approval. The Headless
 Hostman static-site build and live release are separate, deferred steps.
 The master-sheet URLs are the public static websites, not WordPress API
 origins. They may identify the intended public location and supply public
@@ -183,11 +189,11 @@ there is no public message-sending webhook.
 The review-link workflow sends initial and revised draft invitations through
 that same private router. It checks for a successful invitation for the current
 article version before creating another link, so a failed send can be retried
-without repeating a successful one. Doctor approvals route to marketing review
-at minute 25. The marketing invitation workflow checks at minute 30, rotates a
-one-time marketing link, emails `jdold@apexdp.com`, and records successful
-delivery so failures can be retried. WordPress publishing remains a separate,
-manual adapter while the static-site publishing step is deferred.
+without repeating a successful one. A valid doctor approval now calls marketing
+routing immediately; a valid change request calls revision immediately. The
+marketing invitation workflow rotates a one-time link, emails
+`jdold@apexdp.com`, and records successful delivery so failures can be retried.
+The static-site publishing step remains manual and deferred.
 
 Current browser endpoints:
 

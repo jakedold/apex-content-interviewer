@@ -13,13 +13,14 @@
         }
       },
       "id": "aac-marketing-invitation-schedule",
-      "name": "Check for Unsent Marketing Reviews Hourly",
+      "name": "Check for Unsent Marketing Reviews Hourly (Deactivated)",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
         -720,
         80
-      ]
+      ],
+      "disabled": true
     },
     {
       "parameters": {},
@@ -40,9 +41,17 @@
           "value": "apex-marketing-n8n",
           "mode": "id"
         },
-        "sqlQuery": "-- Send one marketing review invitation for each pending article version.\nCREATE TEMP TABLE candidate AS\nSELECT a.article_id, a.current_version, ap.deadline,\n  COALESCE(JSON_VALUE(v.content, '$.metadata.h1'), 'Article draft') AS article_title\nFROM `apex-marketing-n8n.automated_article_creation.articles` a\nJOIN `apex-marketing-n8n.automated_article_creation.approvals` ap\n  ON ap.article_id = a.article_id AND ap.approval_type = 'MARKETING_REVIEW' AND ap.status = 'PENDING'\nJOIN `apex-marketing-n8n.automated_article_creation.article_versions` v\n  ON v.article_id = a.article_id AND v.version_number = a.current_version\nWHERE a.status = 'MARKETING_REVIEW'\n  AND COALESCE(ap.deadline, TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)) > CURRENT_TIMESTAMP()\n  AND NOT EXISTS (\n    SELECT 1 FROM `apex-marketing-n8n.automated_article_creation.workflow_events` e\n    WHERE e.entity_type = 'article' AND e.entity_id = a.article_id\n      AND e.event_type = 'marketing.review_invitation_sent'\n      AND SAFE_CAST(JSON_VALUE(e.payload, '$.version_number') AS INT64) = a.current_version\n  )\nORDER BY ap.requested_at ASC\nLIMIT 1;\n\nUPDATE `apex-marketing-n8n.automated_article_creation.marketing_review_links`\nSET status = 'SUPERSEDED'\nWHERE article_id IN (SELECT article_id FROM candidate) AND status IN ('READY', 'OPENED');\n\nCREATE TEMP TABLE new_link AS\nSELECT GENERATE_UUID() AS marketing_review_link_id, article_id, current_version, article_title,\n  CONCAT(REPLACE(GENERATE_UUID(), '-', ''), REPLACE(GENERATE_UUID(), '-', '')) AS raw_token,\n  COALESCE(deadline, TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)) AS expires_at\nFROM candidate;\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.marketing_review_links`\n(marketing_review_link_id, article_id, secure_token_hash, status, created_at, expires_at)\nSELECT marketing_review_link_id, article_id, TO_HEX(SHA256(raw_token)), 'READY', CURRENT_TIMESTAMP(), expires_at\nFROM new_link;\n\nSELECT article_id, current_version, article_title, marketing_review_link_id,\n  CONCAT('https://apex-content-interviewer.jdold.workers.dev/marketing-review/', raw_token) AS review_url\nFROM new_link;",
+        "sqlQuery": "-- Send one marketing review invitation for each pending article version.\nCREATE TEMP TABLE candidate AS\nSELECT a.article_id, a.current_version, ap.deadline,\n  COALESCE(JSON_VALUE(v.content, '$.metadata.h1'), 'Article draft') AS article_title\nFROM `apex-marketing-n8n.automated_article_creation.articles` a\nJOIN `apex-marketing-n8n.automated_article_creation.approvals` ap\n  ON ap.article_id = a.article_id AND ap.approval_type = 'MARKETING_REVIEW' AND ap.status = 'PENDING'\nJOIN `apex-marketing-n8n.automated_article_creation.article_versions` v\n  ON v.article_id = a.article_id AND v.version_number = a.current_version\nWHERE a.status = 'MARKETING_REVIEW'\n  AND a.article_id = @article_id\n  AND a.practice_id = 'practice_test_001'\n  AND COALESCE(ap.deadline, TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)) > CURRENT_TIMESTAMP()\n  AND NOT EXISTS (\n    SELECT 1 FROM `apex-marketing-n8n.automated_article_creation.workflow_events` e\n    WHERE e.entity_type = 'article' AND e.entity_id = a.article_id\n      AND e.event_type = 'marketing.review_invitation_sent'\n      AND SAFE_CAST(JSON_VALUE(e.payload, '$.version_number') AS INT64) = a.current_version\n  )\nORDER BY ap.requested_at ASC\nLIMIT 1;\n\nUPDATE `apex-marketing-n8n.automated_article_creation.marketing_review_links`\nSET status = 'SUPERSEDED'\nWHERE article_id IN (SELECT article_id FROM candidate) AND status IN ('READY', 'OPENED');\n\nCREATE TEMP TABLE new_link AS\nSELECT GENERATE_UUID() AS marketing_review_link_id, article_id, current_version, article_title,\n  CONCAT(REPLACE(GENERATE_UUID(), '-', ''), REPLACE(GENERATE_UUID(), '-', '')) AS raw_token,\n  COALESCE(deadline, TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)) AS expires_at\nFROM candidate;\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.marketing_review_links`\n(marketing_review_link_id, article_id, secure_token_hash, status, created_at, expires_at)\nSELECT marketing_review_link_id, article_id, TO_HEX(SHA256(raw_token)), 'READY', CURRENT_TIMESTAMP(), expires_at\nFROM new_link;\n\nSELECT article_id, current_version, article_title, marketing_review_link_id,\n  CONCAT('https://apex-content-interviewer.jdold.workers.dev/marketing-review/', raw_token) AS review_url\nFROM new_link;",
         "options": {
-          "location": "US"
+          "location": "US",
+          "queryParameters": {
+            "namedParameters": [
+              {
+                "name": "article_id",
+                "value": "={{ $json.article_id }}"
+              }
+            ]
+          }
         }
       },
       "id": "aac-marketing-invitation-link",
@@ -141,20 +150,28 @@
         -720,
         -300
       ]
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "article_id"
+            }
+          ]
+        }
+      },
+      "id": "a1891213-274a-436a-b870-c4d8a9639155",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -760,
+        280
+      ]
     }
   ],
   "connections": {
-    "Check for Unsent Marketing Reviews Hourly": {
-      "main": [
-        [
-          {
-            "node": "Prepare Fresh Marketing Review Link",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Run Marketing Invitation Check Manually": {
       "main": [
         [
@@ -193,6 +210,17 @@
         [
           {
             "node": "Record Marketing Invitation Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Prepare Fresh Marketing Review Link",
             "type": "main",
             "index": 0
           }

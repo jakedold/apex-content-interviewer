@@ -20,9 +20,17 @@
           "value": "apex-marketing-n8n",
           "mode": "id"
         },
-        "sqlQuery": "-- AAC Phase 1I\nCREATE TABLE IF NOT EXISTS `apex-marketing-n8n.automated_article_creation.marketing_review_links` (\n  marketing_review_link_id STRING NOT NULL,\n  article_id STRING NOT NULL,\n  secure_token_hash STRING NOT NULL,\n  status STRING NOT NULL,\n  created_at TIMESTAMP NOT NULL,\n  expires_at TIMESTAMP NOT NULL,\n  first_opened_at TIMESTAMP,\n  responded_at TIMESTAMP\n);\n\nCREATE TEMP TABLE routed_article AS\nSELECT\n  a.article_id, a.doctor_id, a.campaign_id, a.current_version,\n  c.require_marketing_approval,\n  IF(c.require_marketing_approval, 'MARKETING_REVIEW', 'PUBLISHING') AS next_status\nFROM `apex-marketing-n8n.automated_article_creation.articles` a\nJOIN `apex-marketing-n8n.automated_article_creation.campaigns` c ON c.campaign_id = a.campaign_id\nWHERE a.status IN ('DOCTOR_APPROVED', 'DOCTOR_AUTO_APPROVED')\nORDER BY COALESCE(a.doctor_approved_at, a.created_at) DESC\nLIMIT 1;\n\nUPDATE `apex-marketing-n8n.automated_article_creation.marketing_review_links`\nSET status = 'SUPERSEDED'\nWHERE article_id IN (SELECT article_id FROM routed_article WHERE require_marketing_approval)\n  AND status IN ('READY', 'OPENED');\n\nCREATE TEMP TABLE new_link AS\nSELECT\n  GENERATE_UUID() AS marketing_review_link_id, article_id, doctor_id, campaign_id, current_version,\n  CONCAT(REPLACE(GENERATE_UUID(), '-', ''), REPLACE(GENERATE_UUID(), '-', '')) AS raw_token,\n  TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 30 DAY) AS expires_at\nFROM routed_article\nWHERE require_marketing_approval;\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.marketing_review_links`\n(marketing_review_link_id, article_id, secure_token_hash, status, created_at, expires_at)\nSELECT marketing_review_link_id, article_id, TO_HEX(SHA256(raw_token)), 'READY', CURRENT_TIMESTAMP(), expires_at\nFROM new_link;\n\nMERGE `apex-marketing-n8n.automated_article_creation.approvals` T\nUSING (\n  SELECT GENERATE_UUID() AS approval_id, article_id, 'MARKETING_REVIEW' AS approval_type,\n    'PENDING' AS status, CURRENT_TIMESTAMP() AS requested_at, expires_at AS deadline\n  FROM new_link\n) S\nON T.article_id = S.article_id AND T.approval_type = S.approval_type AND T.status = 'PENDING'\nWHEN MATCHED THEN UPDATE SET requested_at = S.requested_at, deadline = S.deadline, responded_at = NULL, response = NULL\nWHEN NOT MATCHED THEN INSERT\n  (approval_id, article_id, approval_type, status, requested_at, deadline)\n  VALUES (S.approval_id, S.article_id, S.approval_type, S.status, S.requested_at, S.deadline);\n\nUPDATE `apex-marketing-n8n.automated_article_creation.articles`\nSET status = (SELECT next_status FROM routed_article LIMIT 1)\nWHERE article_id IN (SELECT article_id FROM routed_article);\n\nUPDATE `apex-marketing-n8n.automated_article_creation.campaign_doctors`\nSET status = (SELECT next_status FROM routed_article LIMIT 1), updated_at = CURRENT_TIMESTAMP()\nWHERE campaign_id IN (SELECT campaign_id FROM routed_article)\n  AND doctor_id IN (SELECT doctor_id FROM routed_article);\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.workflow_events`\n(event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id, payload)\nSELECT GENERATE_UUID(), 'article', article_id,\n  IF(require_marketing_approval, 'marketing.review_requested', 'publish.requested'),\n  CURRENT_TIMESTAMP(), 'n8n', NULL,\n  TO_JSON(STRUCT(current_version AS version_number, require_marketing_approval))\nFROM routed_article;\n\nSELECT\n  r.article_id, r.doctor_id, r.campaign_id, r.current_version, r.require_marketing_approval, r.next_status,\n  n.marketing_review_link_id, n.expires_at,\n  IF(n.raw_token IS NULL, NULL, CONCAT('https://apex-content-interviewer.jdold.workers.dev/marketing-review/', n.raw_token)) AS review_url\nFROM routed_article r\nLEFT JOIN new_link n USING (article_id, doctor_id, campaign_id, current_version);",
+        "sqlQuery": "-- AAC Phase 1I\nCREATE TABLE IF NOT EXISTS `apex-marketing-n8n.automated_article_creation.marketing_review_links` (\n  marketing_review_link_id STRING NOT NULL,\n  article_id STRING NOT NULL,\n  secure_token_hash STRING NOT NULL,\n  status STRING NOT NULL,\n  created_at TIMESTAMP NOT NULL,\n  expires_at TIMESTAMP NOT NULL,\n  first_opened_at TIMESTAMP,\n  responded_at TIMESTAMP\n);\n\nCREATE TEMP TABLE routed_article AS\nSELECT\n  a.article_id, a.doctor_id, a.campaign_id, a.current_version,\n  c.require_marketing_approval,\n  IF(c.require_marketing_approval, 'MARKETING_REVIEW', 'PUBLISHING') AS next_status\nFROM `apex-marketing-n8n.automated_article_creation.articles` a\nJOIN `apex-marketing-n8n.automated_article_creation.campaigns` c ON c.campaign_id = a.campaign_id\nWHERE a.status IN ('DOCTOR_APPROVED', 'DOCTOR_AUTO_APPROVED')\n  AND a.article_id = @article_id\n  AND a.practice_id = 'practice_test_001'\nORDER BY COALESCE(a.doctor_approved_at, a.created_at) DESC\nLIMIT 1;\n\nUPDATE `apex-marketing-n8n.automated_article_creation.marketing_review_links`\nSET status = 'SUPERSEDED'\nWHERE article_id IN (SELECT article_id FROM routed_article WHERE require_marketing_approval)\n  AND status IN ('READY', 'OPENED');\n\nCREATE TEMP TABLE new_link AS\nSELECT\n  GENERATE_UUID() AS marketing_review_link_id, article_id, doctor_id, campaign_id, current_version,\n  CONCAT(REPLACE(GENERATE_UUID(), '-', ''), REPLACE(GENERATE_UUID(), '-', '')) AS raw_token,\n  TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 30 DAY) AS expires_at\nFROM routed_article\nWHERE require_marketing_approval;\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.marketing_review_links`\n(marketing_review_link_id, article_id, secure_token_hash, status, created_at, expires_at)\nSELECT marketing_review_link_id, article_id, TO_HEX(SHA256(raw_token)), 'READY', CURRENT_TIMESTAMP(), expires_at\nFROM new_link;\n\nMERGE `apex-marketing-n8n.automated_article_creation.approvals` T\nUSING (\n  SELECT GENERATE_UUID() AS approval_id, article_id, 'MARKETING_REVIEW' AS approval_type,\n    'PENDING' AS status, CURRENT_TIMESTAMP() AS requested_at, expires_at AS deadline\n  FROM new_link\n) S\nON T.article_id = S.article_id AND T.approval_type = S.approval_type AND T.status = 'PENDING'\nWHEN MATCHED THEN UPDATE SET requested_at = S.requested_at, deadline = S.deadline, responded_at = NULL, response = NULL\nWHEN NOT MATCHED THEN INSERT\n  (approval_id, article_id, approval_type, status, requested_at, deadline)\n  VALUES (S.approval_id, S.article_id, S.approval_type, S.status, S.requested_at, S.deadline);\n\nUPDATE `apex-marketing-n8n.automated_article_creation.articles`\nSET status = (SELECT next_status FROM routed_article LIMIT 1)\nWHERE article_id IN (SELECT article_id FROM routed_article);\n\nUPDATE `apex-marketing-n8n.automated_article_creation.campaign_doctors`\nSET status = (SELECT next_status FROM routed_article LIMIT 1), updated_at = CURRENT_TIMESTAMP()\nWHERE campaign_id IN (SELECT campaign_id FROM routed_article)\n  AND doctor_id IN (SELECT doctor_id FROM routed_article);\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.workflow_events`\n(event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id, payload)\nSELECT GENERATE_UUID(), 'article', article_id,\n  IF(require_marketing_approval, 'marketing.review_requested', 'publish.requested'),\n  CURRENT_TIMESTAMP(), 'n8n', NULL,\n  TO_JSON(STRUCT(current_version AS version_number, require_marketing_approval))\nFROM routed_article;\n\nSELECT\n  r.article_id, r.doctor_id, r.campaign_id, r.current_version, r.require_marketing_approval, r.next_status,\n  n.marketing_review_link_id, n.expires_at,\n  IF(n.raw_token IS NULL, NULL, CONCAT('https://apex-content-interviewer.jdold.workers.dev/marketing-review/', n.raw_token)) AS review_url\nFROM routed_article r\nLEFT JOIN new_link n USING (article_id, doctor_id, campaign_id, current_version);",
         "options": {
-          "location": "US"
+          "location": "US",
+          "queryParameters": {
+            "namedParameters": [
+              {
+                "name": "article_id",
+                "value": "={{ $json.article_id }}"
+              }
+            ]
+          }
         }
       },
       "id": "25393d0c-18f8-4f8d-9290-6289371e2002",
@@ -61,12 +69,102 @@
         }
       },
       "id": "aac-check-for-doctor-approved-articles-hourly",
-      "name": "Check for Doctor-Approved Articles Hourly",
+      "name": "Check for Doctor-Approved Articles Hourly (Deactivated)",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
         -520,
         160
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "article_id"
+            }
+          ]
+        }
+      },
+      "id": "903199a3-3b36-41e3-9c9c-665e5171293a",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -760,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cf4ae0fc-619f-46d2-9b67-bac5831f5e40",
+              "leftValue": "={{ $json.next_status }}",
+              "rightValue": "MARKETING_REVIEW",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "7247439b-0ce3-4276-9f8e-220484a4d9a0",
+      "name": "Marketing Review Required?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        80,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "L6fSarhGYhUmogmE",
+          "mode": "list",
+          "cachedResultName": "AAC - 18 - Send Marketing Review Invitation"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "article_id": "={{ $json.article_id }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "article_id",
+              "displayName": "article_id",
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "f2f473b8-ea87-4aaf-b47a-1bdf1f9cff42",
+      "name": "Send Marketing Review Invitation",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        320,
+        -80
       ]
     }
   ],
@@ -82,11 +180,33 @@
         ]
       ]
     },
-    "Check for Doctor-Approved Articles Hourly": {
+    "When Executed by Another Workflow": {
       "main": [
         [
           {
             "node": "Route Approved Article",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Approved Article": {
+      "main": [
+        [
+          {
+            "node": "Marketing Review Required?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Marketing Review Required?": {
+      "main": [
+        [
+          {
+            "node": "Send Marketing Review Invitation",
             "type": "main",
             "index": 0
           }

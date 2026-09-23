@@ -1,0 +1,93 @@
+{
+  "name": "AAC - Test Practices and Emails Preview",
+  "nodes": [
+    {
+      "id": "aac-test-preview-trigger",
+      "name": "Enter test practices and emails",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "aac-test-entries-preview",
+      "parameters": {
+        "authentication": "basicAuth",
+        "formTitle": "Preview test practices and emails",
+        "formDescription": "Enter test-only practices and recipients. This does not save, launch, email, or publish anything.",
+        "formFields": {
+          "values": [
+            {
+              "fieldName": "test_practices",
+              "fieldLabel": "Test practices (one Name | public website URL per line; URL optional)",
+              "fieldType": "textarea",
+              "requiredField": false,
+              "placeholder": "TEST001 | https://test-site.example.org"
+            },
+            {
+              "fieldName": "test_emails",
+              "fieldLabel": "Test emails (one email | practice name per line; practice optional if one practice)",
+              "fieldType": "textarea",
+              "requiredField": false,
+              "placeholder": "you@example.org | TEST001"
+            }
+          ]
+        },
+        "responseMode": "lastNode",
+        "options": {
+          "path": "aac-test-entries-preview",
+          "buttonLabel": "Preview test entries",
+          "ignoreBots": true
+        }
+      }
+    },
+    {
+      "id": "aac-validate-test-entries",
+      "name": "Validate test-only entries",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+      "jsCode": "const input = $input.first().json;\nconst value = (name, label) => String(input[name] ?? input[label] ?? '').trim();\nconst splitLines = (text) => text.split(/\\r?\\n/).map((line) => line.trim()).filter(Boolean);\nconst practiceLines = splitLines(value('test_practices', 'Test practices (one Name | public website URL per line; URL optional)'));\nconst recipientLines = splitLines(value('test_emails', 'Test emails (one email | practice name per line; practice optional if one practice)'));\nif (!practiceLines.length && !recipientLines.length) throw new Error('Enter at least one test practice or test email.');\nif (practiceLines.length > 20 || recipientLines.length > 100) throw new Error('Use at most 20 test practices and 100 test emails in one preview.');\nconst practices = practiceLines.map((line) => {\n  const parts = line.split('|').map((part) => part.trim());\n  if (parts.length > 2 || !parts[0]) throw new Error('Each test practice must be Name | public website URL (URL optional).');\n  let public_website_url = '';\n  if (parts[1]) {\n    let parsed;\n    try { parsed = new URL(parts[1]); } catch { throw new Error('Invalid test practice URL: ' + parts[1]); }\n    if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.search || parsed.hash) throw new Error('Test practice URLs must be HTTPS without credentials, query, or fragment.');\n    public_website_url = parsed.href.replace(/\\/$/, '');\n  }\n  return { name: parts[0], public_website_url };\n});\nconst byName = new Map();\nfor (const practice of practices) {\n  const key = practice.name.toLowerCase();\n  if (byName.has(key)) throw new Error('Duplicate test practice: ' + practice.name);\n  byName.set(key, practice);\n}\nconst recipients = recipientLines.map((line) => {\n  const parts = line.split('|').map((part) => part.trim());\n  if (parts.length > 2 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(parts[0] || '')) throw new Error('Each test email must be email | practice name.');\n  const practiceName = parts[1] || (practices.length === 1 ? practices[0].name : '');\n  if (practiceName && !byName.has(practiceName.toLowerCase())) throw new Error('Test email references an unknown test practice: ' + practiceName);\n  return { email: parts[0].toLowerCase(), practice_name: practiceName };\n});\nif (new Set(recipients.map((recipient) => recipient.email)).size !== recipients.length) throw new Error('Each test email may appear only once.');\nreturn [{ json: { mode: 'TEST_PREVIEW_ONLY', preview_only: true, test_practices: practices, test_recipients: recipients, practice_count: practices.length, recipient_count: recipients.length, message: 'No email sent. No campaign or practice saved. No WordPress post or static-site release created.' } }];"
+      }
+    },
+    {
+      "id": "aac-test-preview-note",
+      "name": "Test Preview Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -300
+      ],
+      "parameters": {
+        "content": "## Test-only preview\n\nEnter practice names/public websites and email recipients without touching the production roster. The workflow contains no BigQuery, Gmail, HTTP, or WordPress nodes, and stays inactive. Attach a dedicated Basic Auth credential after import. No entries are persisted.",
+        "height": 230,
+        "width": 600
+      }
+    }
+  ],
+  "connections": {
+    "Enter test practices and emails": {
+      "main": [
+        [
+          {
+            "node": "Validate test-only entries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Chicago"
+  },
+  "active": false,
+  "tags": []
+}

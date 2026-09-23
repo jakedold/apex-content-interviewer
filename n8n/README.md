@@ -8,6 +8,7 @@ Version-controlled workflow exports:
 
 - `01-launch-campaign.json` — private administrator form for one campaign, three topics, and a list of doctors
 - `01-roster-selection-preview.json` — inactive, selection-only staging form that reads the two Google Sheets, preselects eligible locations and dentists, and returns a preview without creating a campaign or sending messages
+- `01-test-entries-preview.json` — separate inactive form for temporary test practices and email recipients; it validates and previews entries without saving them or sending anything
 - `02-dispatch-campaign-invitations.json` — scheduled invitation delivery through the private message router
 - `02-create-topic-interview-links.json`
 - `03-validate-interview-link.json`
@@ -70,8 +71,8 @@ connection successfully read bounded ranges from both files in the inactive
 `AAC - Roster Sheet Access Check (Inactive)` workflow. The check showed n8n's
 `row_number` is relative to the selected A1 range, so separate column reads
 must use the same starting row before joining by `row_number`. The existing
-live launch form is still inactive; sheet-driven selection has not yet been
-installed.
+live launch form is still inactive. The sheet-driven selection preview is
+installed in n8n as an inactive, non-sending staging workflow.
 
 The staging preview export intentionally has no credential bindings or write
 nodes. After import, attach the existing `Google Sheets account` credential to
@@ -79,8 +80,34 @@ its four read nodes and a dedicated Basic Auth credential to its Form Trigger
 before using its test URL. It reads only the relevant columns, preserves row
 alignment by the relative `row_number`, and never commits its selection to
 BigQuery. Keep the original campaign launcher and invitation dispatcher
-inactive while validating this preview. The preview is not yet installed in
-live n8n.
+inactive while validating this preview. Its n8n workflow is
+`AAC - Roster-Driven Campaign Selection Preview`.
+
+Use the separate test-entry preview when adding non-roster practices or email
+addresses for a trial. Enter one practice per line as `Practice name | public
+website URL` (URL optional), and one recipient per line as `email | practice
+name` (practice name optional when only one practice is entered). These test
+entries are not added to the authoritative Google Sheets or BigQuery, and
+cannot be mixed into the real-dentist selection preview. The installed n8n
+workflow is `AAC - Test Practices and Emails Preview` and remains inactive.
+The form is a temporary validation surface, not a saved test roster or a live
+campaign option. Neither preview contains a mail, campaign-write, WordPress,
+or static-release action.
+
+Persistent test-only entries live in two separate n8n Data Tables in the
+Personal project. Use **Add Row** there to maintain them; do not put test
+entries in the authoritative census or location sheets:
+
+- `AAC Test Practices` (`vyWqiwFpRvYDGnW6`): `practice_name`,
+  `public_website_url`, `wordpress_site_url`. The WordPress URL is the editing
+  subsite, not the public static URL.
+- `AAC Test Emails` (`UVcspQQJPdgtgf9q`): `email`, `practice_name`. Match
+  `practice_name` exactly to a row in the test-practices table.
+
+These tables are not connected to any email-sending or campaign workflow.
+The test-entry preview validates temporary form input only; it does **not**
+write to these tables. Review and add rows explicitly in the tables when they
+should be kept for future testing.
 
 Do not reactivate it for real campaigns until authoritative location/website
 and doctor assignments are entered in BigQuery, the revised export is installed

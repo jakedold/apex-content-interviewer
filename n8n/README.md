@@ -176,12 +176,18 @@ enabled. For example, the TEST001 editing base is
 different operation. No production location should be auto-published from a
 public URL inferred from the master sheet.
 
-The shared workbook's `Wordpress Sites` tab is the current collection point
-for production editing-site URLs, keyed by `Locations.Code`. Do not place
+The shared workbook's `Wordpress Sites` tab is the collection point for
+production editing-site URLs, keyed by `Locations.Code`. Do not place
 credentials there. A dentist's primary-location code joins to that same code.
-This tab is not yet synced into `practices.publisher_config_reference` or used by the
-WordPress adapter, so filling it cannot trigger publishing or emails. Validate
-each entered URL and credential association before any BigQuery sync.
+On 2026-09-23, 58 eligible general-dentist locations were staged in BigQuery
+`practices` with their public and WordPress URLs. These profiles are all
+`active = FALSE`, have no `publisher_type` or credential, and carry
+`mapping_status = UNVERIFIED`. They cannot launch campaigns or publish. The
+publisher adapter remains restricted to TEST001. See
+[`docs/PRACTICE_SITE_MAPPING.md`](../docs/PRACTICE_SITE_MAPPING.md) for the
+initial sync, shared subsites, and verification gates. Spreadsheet changes
+after this snapshot are **not automatically synced** to BigQuery yet; they
+continue to appear in the read-only roster preview.
 
 The Phase 1K communication workflows centralize doctor-message routing and
 deadline reminders. Email is the V1 delivery adapter, with preference-aware

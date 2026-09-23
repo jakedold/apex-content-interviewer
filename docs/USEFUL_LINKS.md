@@ -32,7 +32,9 @@ Sheet edits alone do not launch campaigns or send invitations. BigQuery remains
 the system of record for workflow state. The older master-location sheet,
 separate WordPress map, and n8n Test Practices/Test Emails data tables are
 superseded as inputs; retain them for reference until migration is verified.
-The WordPress tab is not yet synced into the BigQuery publishing configuration.
+An [initial, inactive BigQuery mapping](PRACTICE_SITE_MAPPING.md) now records
+58 general-dentist practices and their WordPress editing URLs. It does not
+automatically follow later spreadsheet edits or enable real-site publishing.
 The TEST-1 test-user row and its BigQuery practice profile are mapped to the
 WordPress editing subsite `https://apexparent.hostmanpowered.com/test001/`.
 This does not authorize publishing for other locations.

@@ -9,9 +9,10 @@ in this file.
 
 | Link | What it is | Current status |
 | --- | --- | --- |
-| [Launch an article campaign](https://n8n.apexdentalautomation.com/form/aac-launch-article-campaign) | Administrator launch form | **Unavailable while its workflow is inactive.** The invitation dispatcher is active; do not activate this form or create READY recipients until roster, site mapping, and sending safeguards are ready. |
-| [Launch-form workflow](https://n8n.apexdentalautomation.com/workflow/k2NuDbJccRdiyTTx) | n8n editor for the launch form | Inactive as checked September 23, 2026. |
-| [Unified roster selection preview](https://n8n.apexdentalautomation.com/workflow/49aNWb8s90rbD0nA) | Staging workflow for locations and recipients from the four workbook tabs | Inactive; connected to the workbook with privacy-limited reads. No email or campaign-write steps. Form authentication and end-to-end behavior still need testing. |
+| [Start a test article campaign](https://n8n.apexdentalautomation.com/form/aac-test-campaign-launch) | Protected, multi-step test-only launcher | **Active.** Reads the workbook's `Test User` tab, limits selection to TEST-1 and its listed recipients, displays a final recipient confirmation, and requires `SEND TEST INVITATIONS`. A September 2026 test campaign was launched for the one listed test email. Do not add real dentists to `Test User`. |
+| [Test campaign launcher workflow](https://n8n.apexdentalautomation.com/workflow/KvuBYWElqsvKx8lf) | n8n editor and execution history | Active test-only workflow; review failed executions here rather than trusting the form's generic “Submitted” page. |
+| [Original campaign launcher](https://n8n.apexdentalautomation.com/workflow/k2NuDbJccRdiyTTx) | Older free-entry form | **Inactive.** Do not use for live dentists until the production roster and site mapping are separately validated. |
+| [Unified roster selection preview](https://n8n.apexdentalautomation.com/workflow/49aNWb8s90rbD0nA) | Selection-only staging workflow for the four workbook tabs | Inactive; no email or campaign-write steps. |
 | [Test-practices-and-emails preview](https://n8n.apexdentalautomation.com/workflow/eQDcQhZmaNB8sVZE) | Checks temporary test entries | Inactive; does not save entries or send emails. |
 
 ## Add or check practices and people
@@ -32,6 +33,9 @@ the system of record for workflow state. The older master-location sheet,
 separate WordPress map, and n8n Test Practices/Test Emails data tables are
 superseded as inputs; retain them for reference until migration is verified.
 The WordPress tab is not yet synced into the BigQuery publishing configuration.
+The TEST-1 test-user row and its BigQuery practice profile are mapped to the
+WordPress editing subsite `https://apexparent.hostmanpowered.com/test001/`.
+This does not authorize publishing for other locations.
 
 ## Prompts and project reference
 
@@ -42,6 +46,7 @@ The WordPress tab is not yet synced into the BigQuery publishing configuration.
 | [Article-generation prompt](../prompts/article-generation-master-prompt.md) | First-draft writing prompt. |
 | [Article-revision prompt](../prompts/article-revision-master-prompt.md) | Revises a draft after doctor feedback. |
 | [Workflow inventory and operating notes](../n8n/README.md) | Exported n8n workflows and current setup notes. |
+| [WordPress publishing workflow](https://n8n.apexdentalautomation.com/workflow/kGd2YSJ2MVJwRld0) | Manual, inactive adapter for approved articles; the static-site release remains separate. |
 | [Project architecture](PROJECT_ARCHITECTURE.md) | System design and build direction. |
 
 For a prompt change, follow the instructions in the prompt library. Editing a

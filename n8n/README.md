@@ -28,6 +28,17 @@ Version-controlled workflow exports:
 - `17-doctor-review-reminders.json`
 - `18-send-marketing-review-invitation.json`
 
+On September 23, 2026, the protected [test-only campaign launcher](https://n8n.apexdentalautomation.com/workflow/KvuBYWElqsvKx8lf)
+was activated. Its [form](https://n8n.apexdentalautomation.com/form/aac-test-campaign-launch)
+reads the shared workbook, offers only `Test User` entries at `TEST-1`, shows
+the exact recipients before launch, and requires `SEND TEST INVITATIONS`.
+The BigQuery write guards the test practice, WordPress editing URL, recipient
+count, and existing doctor identities. The September pilot for
+`jdold@apexdp.com` succeeded and its invitation reached `INVITED`.
+The older free-entry launcher remains inactive. The live test-only launcher
+still needs a credential-free JSON export checked in here; n8n is currently
+its runtime source.
+
 Campaign launch is a separate step from publishing. The administrator enters a
 campaign name, month, exact location/practice name, matching HTTPS website URL,
 three distinct topics, and doctors as `Name,email` lines. The form validates
@@ -41,7 +52,7 @@ expires after 30 days. Failed deliveries can be retried, while successful
 deliveries are not repeated. The older `02-create-topic-interview-links.json`
 is a legacy test workflow and should remain inactive.
 
-The live launch form currently remains inactive. Its first version accepted
+The older free-entry launch form remains inactive. Its first version accepted
 only a practice profile ID. The revised export includes explicit location and
 website fields plus mapping validation; it is not yet installed in live n8n.
 The next launch-form revision must read the four tabs of the
@@ -73,7 +84,7 @@ bounded ranges from the former files in the inactive
 `AAC - Roster Sheet Access Check (Inactive)` workflow. The check showed n8n's
 `row_number` is relative to the selected A1 range. The revised preview reads
 all required columns together in each tab and joins by code, not row order. The existing
-live launch form is still inactive. The sheet-driven selection preview is
+older free-entry launch form is still inactive. The sheet-driven selection preview is
 installed in n8n as an inactive, non-sending staging workflow.
 
 The staging preview export intentionally has no credential bindings or write
@@ -81,9 +92,9 @@ nodes. The inactive [Unified Roster Selection Preview](https://n8n.apexdentalaut
 has the existing `Google Sheets account` connection on five read nodes. It
 reads only Doctor Census columns A–D and I, not birthdays or personal email
 addresses. Earlier imported drafts were archived.
-Confirm a dedicated Basic Auth credential on its Form Trigger before using its
-test URL; access control and end-to-end form behavior have not yet been
-verified. It reads bounded ranges and never commits its selection to BigQuery.
+The separate test-only launcher has dedicated Basic Auth and was exercised
+end-to-end. This selection preview reads bounded ranges and never commits its
+selection to BigQuery.
 Keep the original campaign launcher inactive. The invitation dispatcher was
 active in n8n on 2026-09-23, so creating READY campaign doctors could send
 emails; the preview intentionally performs no BigQuery write.
@@ -135,7 +146,11 @@ a real non-example domain, and a configured credential reference. It resolves
 the approved package's publishing tokens, performs an idempotent slug-based
 create or update, and records the external post ID, final URL, lifecycle state,
 and audit event in BigQuery. The TEST001 practice has been configured for a
-proof-of-concept WordPress post. Publishing remains manual; the Headless
+proof-of-concept WordPress post at `https://apexparent.hostmanpowered.com/test001/`.
+The live adapter derives its API URL from the explicit
+`publisher_config_reference.wordpress_base_url`, not the public-site field.
+Both HTTP nodes use the existing `Wordpress account` credential. Publishing
+remains manual and must wait for doctor and marketing approval; the Headless
 Hostman static-site build and live release are separate, deferred steps.
 The master-sheet URLs are the public static websites, not WordPress API
 origins. They may identify the intended public location and supply public

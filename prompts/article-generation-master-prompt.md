@@ -361,9 +361,9 @@ Do not write the article as someone reporting on the expert.
 
 Avoid constructions such as:
 
-"Dr. {{DOCTOR_NAME}} explains..."
+"Dr. [interviewed doctor] explains..."
 
-"According to Dr. {{DOCTOR_NAME}}..."
+"According to Dr. [interviewed doctor]..."
 
 "She believes..."
 
@@ -877,22 +877,15 @@ A focused interview may justify a shorter one.
 STEP 27: LOCALIZATION AND DYNAMIC TOKENS
 ==================================================
 
-The article may be published on different practice websites using dynamic fields.
+The WordPress sites use the Shortcoder plugin for reusable practice details. In publication-ready article HTML, use only the confirmed Shortcoder tags below when the detail is relevant:
 
-Available fields may include:
+- Practice name: `[sc name="practice_name"][/sc]`
+- Practice phone number: `[sc name="practice_phone_number"][/sc]`
+- Practice address: `[sc name="practice_address"][/sc]`
+- Practice city: `[sc name="practice_city"][/sc]`
+- Practice email: `[sc name="practice_email"][/sc]`
 
-{{DOCTOR_NAME}}
-{{DOCTOR_CREDENTIALS}}
-{{PRACTICE_NAME}}
-{{CITY_AREA}}
-{{STATE}}
-{{PHONE}}
-{{APPOINTMENT_URL}}
-{{DOCTOR_BIO_URL}}
-
-Preserve these tokens EXACTLY.
-
-Do not invent replacement values.
+Preserve each tag exactly, including its closing `[/sc]`. Do not replace it with a guessed value. Do not invent other Shortcoder names. The interviewed doctor's name and credentials come from the interview context, not the site's generic `doctor_01` or `doctor_02` tags. Use a site-specific booking shortcode only when that subsite's intended placement and behavior have been verified. Never place a Shortcoder tag in an HTML attribute or metadata field.
 
 Use them naturally where relevant.
 
@@ -906,7 +899,7 @@ Appropriate uses may include:
 - provider profile links
 - metadata
 
-Do not mechanically insert {{CITY_AREA}} or {{STATE}} throughout the article.
+Do not mechanically repeat city or state names throughout the article.
 
 Do not create headings solely to include a city keyword.
 
@@ -957,9 +950,7 @@ Where appropriate, identify natural opportunities to link to related practice co
 
 If the actual destination URL is known, use it.
 
-If it is not known, use a clearly named token such as:
-
-{{INTERNAL_LINK_PERIODONTAL_TREATMENT}}
+If the destination is not known, describe the opportunity in the review document and leave the article unlinked. Do not emit an unresolved link placeholder.
 
 Do not invent URLs.
 
@@ -973,13 +964,7 @@ End with a natural professional CTA when appropriate.
 
 The CTA should feel like the logical conclusion of the article.
 
-It may use:
-
-{{PRACTICE_NAME}}
-{{CITY_AREA}}
-{{STATE}}
-{{PHONE}}
-{{APPOINTMENT_URL}}
+It may use the confirmed practice Shortcoder tags above where they read naturally. Do not invent an appointment URL or insert a booking shortcode without a verified site-specific placement.
 
 Use only what is necessary.
 
@@ -1101,7 +1086,7 @@ At the very beginning of article.html include:
 <!-- SLUG: [recommended-slug] -->
 <!-- META_DESCRIPTION: [meta description] -->
 <!-- PRIMARY_TOPIC: [primary topic/search intent] -->
-<!-- AUTHOR: {{DOCTOR_NAME}}, {{DOCTOR_CREDENTIALS}} -->
+<!-- AUTHOR: [interviewed doctor's verified name and credentials] -->
 
 These comments must appear before the <h1>.
 
@@ -1158,11 +1143,11 @@ PRIMARY SEARCH INTENT
 
 AUTHOR
 
-{{DOCTOR_NAME}}, {{DOCTOR_CREDENTIALS}}
+[interviewed doctor's verified name and credentials]
 
 PRACTICE
 
-{{PRACTICE_NAME}}
+`[sc name="practice_name"][/sc]`
 
 ESTIMATED WORD COUNT
 

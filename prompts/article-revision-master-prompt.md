@@ -25,7 +25,7 @@ The transcript remains the source of the doctor's experience, professional judgm
 - Do not silently make unrelated editorial changes.
 - Do not introduce new clinical claims without checking authoritative sources.
 - If a requested statement would be inaccurate, unsafe, or unsupported, make the closest defensible revision and explain the limitation in the review document.
-- Keep all dynamic tokens exactly intact, including `{{DOCTOR_NAME}}`, `{{DOCTOR_CREDENTIALS}}`, `{{PRACTICE_NAME}}`, and `{{APPOINTMENT_URL}}`.
+- Keep confirmed WordPress Shortcoder tags exactly intact, including `[sc name="practice_name"][/sc]` and any verified practice contact tags. Do not introduce legacy `{{...}}` publishing tokens, invent a Shortcoder name, or substitute the generic `doctor_01`/`doctor_02` tags for the interviewed doctor.
 - Preserve clean production HTML with no `<html>`, `<head>`, `<body>`, `<script>`, or `<style>` tags.
 - Preserve the five required metadata comments before the `<h1>`.
 - The production article must contain no internal review comments.

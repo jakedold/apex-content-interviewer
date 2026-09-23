@@ -46,7 +46,9 @@ This does not authorize publishing for other locations.
 | [Article-generation prompt](../prompts/article-generation-master-prompt.md) | First-draft writing prompt. |
 | [Article-revision prompt](../prompts/article-revision-master-prompt.md) | Revises a draft after doctor feedback. |
 | [Workflow inventory and operating notes](../n8n/README.md) | Exported n8n workflows and current setup notes. |
-| [WordPress publishing workflow](https://n8n.apexdentalautomation.com/workflow/kGd2YSJ2MVJwRld0) | Manual, inactive adapter for approved articles; the static-site release remains separate. |
+| [Marketing approval workflow](https://n8n.apexdentalautomation.com/workflow/X5X9i3hq0nokxd2U) | Records the review decision; approved TEST-1 articles start WordPress publishing. |
+| [WordPress publishing workflow](https://n8n.apexdentalautomation.com/workflow/kGd2YSJ2MVJwRld0) | Called after marketing approval for an exact TEST-1 article; static-site release remains separate. |
+| [Shortcoder field guide](SHORTCODER.md) | Verified practice shortcode names and publishing limits. |
 | [Project architecture](PROJECT_ARCHITECTURE.md) | System design and build direction. |
 | [Known issues](KNOWN_ISSUES.md) | Documented low-priority interface and workflow issues. |
 

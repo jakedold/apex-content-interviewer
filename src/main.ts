@@ -168,7 +168,7 @@ function renderReviewComplete(context: ReviewContext, requestedChanges: boolean,
   const message = requestedChanges
     ? 'Your requested changes have been recorded. We’ll prepare a revised version and send a new review link.'
     : kind === 'marketing'
-      ? 'Marketing approval has been recorded. The article will now move to publishing.'
+      ? 'Marketing approval has been recorded, and WordPress publishing has started. The live static site is not changed by this step.'
       : 'Your approval has been recorded. The article will now move to the next review step.';
   const heading = kind === 'marketing'
     ? 'Thank you.'
@@ -213,7 +213,7 @@ function renderReview(context: ReviewContext, token: string, kind: ReviewKind): 
           <p>Approve it as written, or tell us what you would like changed.</p>
         </div>
         <div class="review-buttons">
-          <button id="approve-button" class="primary-button" type="button">Approve Article</button>
+          <button id="approve-button" class="primary-button" type="button">${kind === 'marketing' ? 'Approve and Publish' : 'Approve Article'}</button>
           <button id="changes-button" class="secondary-button" type="button">Request Changes</button>
         </div>
         <form id="changes-form" class="changes-form" hidden>
@@ -338,6 +338,9 @@ async function waitForTranscriptSettle(session: RealtimeSession, maxWaitMs = 250
 
 function renderInterview(context: InterviewContext, token: string): void {
   const doctorDisplay = [context.doctor_name, context.credentials].filter(Boolean).join(', ');
+  const title = context.topic_title?.trim() ?? '';
+  const description = context.topic_description?.trim() ?? '';
+  const showDescription = description && description.toLocaleLowerCase() !== title.toLocaleLowerCase();
 
   app.innerHTML = `
     <main class="page"><section class="card">
@@ -347,8 +350,8 @@ function renderInterview(context: InterviewContext, token: string): void {
       <p class="intro">We'll have a short conversation about:</p>
       <div class="topic-card">
         <span class="topic-label">Today's topic</span>
-        <h2>${escapeHtml(context.topic_title)}</h2>
-        <p>${escapeHtml(context.topic_description)}</p>
+        <h2>${escapeHtml(title)}</h2>
+        ${showDescription ? `<p>${escapeHtml(description)}</p>` : ''}
       </div>
       <div class="expectation">
         <strong>What to expect</strong>

@@ -2,44 +2,82 @@
   "name": "AAC - 14 - Record Marketing Review Response",
   "nodes": [
     {
-      "parameters": { "httpMethod": "POST", "path": "aac/marketing-review/respond", "responseMode": "responseNode", "options": {} },
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "aac/marketing-review/respond",
+        "responseMode": "responseNode",
+        "options": {}
+      },
       "id": "cb8eb21b-f22e-4837-a67c-c32dc3be4001",
       "name": "Receive Marketing Decision",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
-      "position": [-560, 0],
+      "position": [
+        -560,
+        0
+      ],
       "webhookId": "a090e928-23c6-4839-9e23-9f5d19764002"
     },
     {
       "parameters": {
         "authentication": "serviceAccount",
-        "projectId": { "__rl": true, "value": "apex-marketing-n8n", "mode": "id" },
+        "projectId": {
+          "__rl": true,
+          "value": "apex-marketing-n8n",
+          "mode": "id"
+        },
         "sqlQuery": "-- AAC Phase 1I\nCREATE TEMP TABLE valid_response AS\nSELECT\n  ml.marketing_review_link_id AS review_link_id, ml.article_id, a.doctor_id, a.campaign_id,\n  CASE\n    WHEN @action = 'approve' THEN 'APPROVED'\n    WHEN @action = 'request_changes' AND LENGTH(TRIM(@response)) > 0 THEN 'CHANGES_REQUESTED'\n    ELSE NULL\n  END AS decision\nFROM `apex-marketing-n8n.automated_article_creation.marketing_review_links` ml\nJOIN `apex-marketing-n8n.automated_article_creation.articles` a ON a.article_id = ml.article_id\nWHERE ml.secure_token_hash = TO_HEX(SHA256(@token))\n  AND ml.expires_at > CURRENT_TIMESTAMP()\n  AND ml.status IN ('READY', 'OPENED')\n  AND a.status = 'MARKETING_REVIEW'\nQUALIFY ROW_NUMBER() OVER (ORDER BY ml.created_at DESC) = 1;\n\nDELETE FROM valid_response WHERE decision IS NULL;\n\nUPDATE `apex-marketing-n8n.automated_article_creation.marketing_review_links`\nSET status = 'RESPONDED', responded_at = CURRENT_TIMESTAMP()\nWHERE marketing_review_link_id IN (SELECT review_link_id FROM valid_response);\n\nUPDATE `apex-marketing-n8n.automated_article_creation.approvals`\nSET status = (SELECT decision FROM valid_response LIMIT 1),\n  responded_at = CURRENT_TIMESTAMP(), response = NULLIF(TRIM(@response), '')\nWHERE article_id IN (SELECT article_id FROM valid_response)\n  AND approval_type = 'MARKETING_REVIEW' AND status = 'PENDING';\n\nUPDATE `apex-marketing-n8n.automated_article_creation.articles`\nSET\n  status = IF((SELECT decision FROM valid_response LIMIT 1) = 'APPROVED', 'MARKETING_APPROVED', 'MARKETING_CHANGES_REQUESTED'),\n  marketing_approved_at = IF((SELECT decision FROM valid_response LIMIT 1) = 'APPROVED', CURRENT_TIMESTAMP(), NULL)\nWHERE article_id IN (SELECT article_id FROM valid_response);\n\nUPDATE `apex-marketing-n8n.automated_article_creation.campaign_doctors`\nSET status = IF((SELECT decision FROM valid_response LIMIT 1) = 'APPROVED', 'MARKETING_APPROVED', 'MARKETING_CHANGES_REQUESTED'),\n  updated_at = CURRENT_TIMESTAMP()\nWHERE campaign_id IN (SELECT campaign_id FROM valid_response)\n  AND doctor_id IN (SELECT doctor_id FROM valid_response);\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.workflow_events`\n(event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id, payload)\nSELECT GENERATE_UUID(), 'article', article_id,\n  IF(decision = 'APPROVED', 'marketing.approved', 'revision.requested'),\n  CURRENT_TIMESTAMP(), 'marketing_review_portal', NULL,\n  TO_JSON(STRUCT(review_link_id, NULLIF(TRIM(@response), '') AS response, 'MARKETING_REVIEW' AS approval_type))\nFROM valid_response;\n\nSELECT\n  IF(v.article_id IS NOT NULL, TRUE, FALSE) AS valid,\n  IF(v.article_id IS NOT NULL, v.decision, 'INVALID_OR_EXPIRED') AS status,\n  v.article_id,\n  IF(v.article_id IS NULL, 'This marketing review link is invalid, expired, or has already been used.', NULL) AS error\nFROM (SELECT 1 AS seed) s\nLEFT JOIN valid_response v ON TRUE;",
         "options": {
           "location": "US",
-          "queryParameters": { "namedParameters": [
-            { "name": "token", "value": "={{ $json.body.token }}" },
-            { "name": "action", "value": "={{ $json.body.action }}" },
-            { "name": "response", "value": "={{ $json.body.response || '' }}" }
-          ] }
+          "queryParameters": {
+            "namedParameters": [
+              {
+                "name": "token",
+                "value": "={{ $json.body.token }}"
+              },
+              {
+                "name": "action",
+                "value": "={{ $json.body.action }}"
+              },
+              {
+                "name": "response",
+                "value": "={{ $json.body.response || '' }}"
+              }
+            ]
+          }
         }
       },
       "id": "1fa7c4ad-33d4-40ad-b3ca-aeab5bba4003",
       "name": "Record Marketing Approval or Change Request",
       "type": "n8n-nodes-base.googleBigQuery",
       "typeVersion": 2.1,
-      "position": [-280, 0]
+      "position": [
+        -280,
+        0
+      ]
     },
     {
       "parameters": {
         "respondWith": "firstIncomingItem",
-        "options": { "responseHeaders": { "entries": [{ "name": "Cache-Control", "value": "no-store" }] } }
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
       },
       "id": "a5c3c3ae-603f-47f8-9549-89de8f694004",
       "name": "Return Marketing Decision",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.4,
-      "position": [0, 0]
+      "position": [
+        0,
+        0
+      ]
     },
     {
       "parameters": {
@@ -51,17 +89,137 @@
       "name": "Phase 1I Decision Notes",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
-      "position": [-520, -360]
+      "position": [
+        -520,
+        -360
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "marketing-approved-only",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "APPROVED",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        80,
+        100
+      ],
+      "id": "6b358b53-64ea-4913-8008-4ab0ac2b5f14",
+      "name": "If Approved"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "kGd2YSJ2MVJwRld0",
+          "mode": "list",
+          "cachedResultName": "AAC - 15 - Publish Approved Article to WordPress"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "article_id": "={{ $json.article_id }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "article_id",
+              "displayName": "article_id",
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        320,
+        20
+      ],
+      "id": "47ed5b1a-c37d-4ef3-8c8c-827dee8a53f1",
+      "name": "Publish Approved TEST-1 Article"
     }
   ],
   "connections": {
-    "Receive Marketing Decision": { "main": [[{ "node": "Record Marketing Approval or Change Request", "type": "main", "index": 0 }]] },
-    "Record Marketing Approval or Change Request": { "main": [[{ "node": "Return Marketing Decision", "type": "main", "index": 0 }]] }
+    "Receive Marketing Decision": {
+      "main": [
+        [
+          {
+            "node": "Record Marketing Approval or Change Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record Marketing Approval or Change Request": {
+      "main": [
+        [
+          {
+            "node": "Return Marketing Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Return Marketing Decision": {
+      "main": [
+        [
+          {
+            "node": "If Approved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Approved": {
+      "main": [
+        [
+          {
+            "node": "Publish Approved TEST-1 Article",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
   },
   "pinData": {},
-  "settings": { "executionOrder": "v1" },
+  "settings": {
+    "executionOrder": "v1"
+  },
   "active": false,
   "versionId": "ed48c9ca-ebc1-4a80-a4d9-74a4f8444006",
-  "meta": { "templateCredsSetupCompleted": false },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
   "tags": []
 }

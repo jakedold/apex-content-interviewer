@@ -30,3 +30,17 @@ test('rejects duplicate WordPress codes and incomplete test users', () => {
   assert.throws(() => buildCampaignRoster([], [['TX-01', 'One', 'example.org/one'], ['TX-01', 'One', 'example.org/two']], []), /Duplicate WordPress/);
   assert.throws(() => buildCampaignRoster([], [], [], [['test@example.com', 'Test', 'Place', '']]), /Incomplete test user/);
 });
+
+test('validates URLs without a global URL constructor', () => {
+  const previous = globalThis.URL;
+  try {
+    globalThis.URL = undefined;
+    const roster = buildCampaignRoster([], [], [], [['jdold@apexdp.com', 'Dr. Dold', 'Apex Dental Partners', 'https://apexparent.hostmanpowered.com/test-new-2/']]);
+    assert.equal(roster.testUsers[0].wordpress_site_url, 'https://apexparent.hostmanpowered.com/test-new-2/');
+  } finally {
+    globalThis.URL = previous;
+  }
+  for (const badUrl of ['http://example.com/', 'https://user@example.com/', 'https://example.com/?token=x', 'https://example.com/#section', 'https://example..com/']) {
+    assert.throws(() => buildCampaignRoster([], [], [], [['test@example.com', 'Test', 'Place', badUrl]]), /Incomplete test user/);
+  }
+});

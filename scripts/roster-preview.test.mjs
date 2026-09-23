@@ -13,6 +13,11 @@ test('selection preview is inactive, credential-free, and incapable of sending o
   assert.deepEqual(new Set(readers.map((node) => node.parameters.sheetName.value)), new Set(['Locations', 'Wordpress Sites', 'Doctor Census', 'Test User']));
   assert.deepEqual(readers.filter((node) => node.parameters.sheetName.value === 'Doctor Census').map((node) => node.parameters.options.dataLocationOnSheet.values.range).sort(), ['A2:D250', 'I2:I250']);
   assert.equal(workflow.nodes.filter((node) => node.type === 'n8n-nodes-base.form').length, 2);
+  const formPages = workflow.nodes.filter((node) => node.type === 'n8n-nodes-base.form');
+  assert.ok(formPages.every((node) => node.typeVersion === 2.3));
+  assert.ok(formPages.every((node) => !/fieldName|defaultValue|requiredField/.test(node.parameters.jsonOutput)));
+  assert.match(formPages.find((node) => node.name === 'Choose locations').parameters.jsonOutput, /Locations to exclude/);
+  assert.match(formPages.find((node) => node.name === 'Choose doctors').parameters.jsonOutput, /Recipients to exclude/);
   assert.equal(workflow.nodes.some((node) => ['n8n-nodes-base.googleBigQuery', 'n8n-nodes-base.gmail', 'n8n-nodes-base.httpRequest'].includes(node.type)), false);
   const names = new Set(workflow.nodes.map((node) => node.name));
   for (const edges of Object.values(workflow.connections)) {

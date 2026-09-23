@@ -6,13 +6,14 @@ const validEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 function siteUrl(value) {
   const raw = text(value);
   if (!raw) return '';
-  try {
-    const url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
-    if (url.protocol !== 'https:' || !url.hostname.includes('.') || url.username || url.password || url.search || url.hash) return '';
-    return `${url.origin}${url.pathname.replace(/\/*$/, '/')}`;
-  } catch {
-    return '';
-  }
+  // n8n Code nodes don't consistently expose the URL constructor.
+  const match = raw.match(/^(?:https:\/\/)?([a-z0-9.-]+)(\/[^?#\\\s]*)?$/i);
+  if (!match) return '';
+  const host = match[1].toLowerCase();
+  const labels = host.split('.');
+  if (labels.length < 2 || labels.some((label) => !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(label))) return '';
+  const path = match[2] || '/';
+  return `https://${host}${path.replace(/\/*$/, '/')}`;
 }
 
 export function buildCampaignRoster(locationRows, wordpressRows, dentistRows, testRows = []) {

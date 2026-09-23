@@ -42,6 +42,9 @@ if (!node('Keep email rows together')) {
     },
   });
 }
+// Older exports can contain a duplicate with the same name and id; keep one.
+const emailKeeper = node('Keep email rows together');
+workflow.nodes = workflow.nodes.filter((item) => item.name !== 'Keep email rows together' || item === emailKeeper);
 workflow.connections['Keep dentist rows together'].main[0][0].node = 'Read dentist work emails';
 workflow.connections['Read dentist work emails'] = { main: [[{ node: 'Keep email rows together', type: 'main', index: 0 }]] };
 workflow.connections['Keep email rows together'] = { main: [[{ node: 'Read test users', type: 'main', index: 0 }]] };
@@ -99,22 +102,41 @@ return [{ json: { audience, test_only: testOnly, locations: testOnly ? testLocat
   excluded_location_count: roster.excludedLocations.length, excluded_doctor_count: roster.excludedDoctors.length } }];`;
 
 node('Choose locations').parameters.options.formTitle = 'Choose locations (preview only)';
-node('Filter doctors by selected locations').parameters.jsCode = node('Filter doctors by selected locations').parameters.jsCode.replace(
-  'const raw = $input.first().json.selected_locations;',
-  "const input = $input.first().json;\nconst raw = input.selected_locations ?? input['Locations (all initially selected; uncheck to exclude)'];",
-);
+node('Choose locations').typeVersion = 2.3;
+node('Choose locations').parameters.jsonOutput = '={{ JSON.stringify([{fieldLabel:"Locations to exclude (leave all unchecked to include all)",fieldType:"checkbox",fieldOptions:{values:$json.locations.map((x)=>({option:x.code+" — "+x.name}))} }]) }}';
+node('Filter doctors by selected locations').parameters.jsCode = `const roster = $('Validate current roster').first().json;
+const input = $input.first().json;
+const raw = input['Locations to exclude (leave all unchecked to include all)'];
+const exclusions = Array.isArray(raw) ? raw : raw ? [raw] : [];
+const byLabel = new Map(roster.locations.map((x) => [x.code + ' — ' + x.name, x.code]));
+const excludedCodes = exclusions.map((label) => {
+  const code = byLabel.get(label);
+  if (!code) throw new Error('Unknown location exclusion: ' + label);
+  return code;
+});
+const excluded = new Set(excludedCodes);
+const locations = roster.locations.filter((x) => !excluded.has(x.code));
+if (!locations.length) throw new Error('At least one location must remain.');
+const included = new Set(locations.map((x) => x.code));
+const doctors = roster.doctors.filter((x) => included.has(x.location_code));
+if (!doctors.length) throw new Error('No eligible dentists at the included locations.');
+return [{ json: { locations, doctors } }];`;
 node('Choose doctors').parameters.options.formTitle = 'Choose recipients (preview only)';
+node('Choose doctors').typeVersion = 2.3;
+node('Choose doctors').parameters.jsonOutput = '={{ JSON.stringify([{fieldLabel:"Recipients to exclude (leave all unchecked to include all)",fieldType:"checkbox",fieldOptions:{values:$json.doctors.map((x)=>({option:x.name+" ("+x.location_code+") — "+x.email}))} }]) }}';
 node('Preview selection without sending').parameters.jsCode = `const available = $('Filter doctors by selected locations').first().json;
 const input = $input.first().json;
-const raw = input.selected_doctors ?? input['Doctors (all initially selected; uncheck to exclude)'];
-const selections = Array.isArray(raw) ? raw : raw ? [raw] : [];
+const raw = input['Recipients to exclude (leave all unchecked to include all)'];
+const exclusions = Array.isArray(raw) ? raw : raw ? [raw] : [];
 const byLabel = new Map(available.doctors.map((x) => [x.name + ' (' + x.location_code + ') — ' + x.email, x]));
-const doctors = selections.map((label) => {
+const excludedEmails = exclusions.map((label) => {
   const doctor = byLabel.get(label);
-  if (!doctor) throw new Error('Unknown recipient selection: ' + label);
-  return doctor;
+  if (!doctor) throw new Error('Unknown recipient exclusion: ' + label);
+  return doctor.email;
 });
-if (!doctors.length || new Set(doctors.map((x) => x.email)).size !== doctors.length) throw new Error('Select at least one distinct recipient.');
+const excluded = new Set(excludedEmails);
+const doctors = available.doctors.filter((x) => !excluded.has(x.email));
+if (!doctors.length || new Set(doctors.map((x) => x.email)).size !== doctors.length) throw new Error('At least one distinct recipient must remain.');
 const details = $('Start selection preview').first().json;
 const roster = $('Validate current roster').first().json;
 return [{ json: { preview_only: true, test_only: roster.test_only, audience: roster.audience,

@@ -150,7 +150,10 @@ proof-of-concept WordPress post at `https://apexparent.hostmanpowered.com/test00
 The live adapter derives its API URL from the explicit
 `publisher_config_reference.wordpress_base_url`, not the public-site field.
 Both HTTP nodes use the existing `Wordpress account` credential. Publishing
-remains manual and must wait for doctor and marketing approval; the Headless
+remains manual and must wait for doctor and marketing approval. The pilot's
+selection query is restricted to `practice_test_001` and
+`campaign_test_202609_test001_september_pilot`; remove that restriction only
+after broader publishing mappings and safeguards are validated. The Headless
 Hostman static-site build and live release are separate, deferred steps.
 The master-sheet URLs are the public static websites, not WordPress API
 origins. They may identify the intended public location and supply public

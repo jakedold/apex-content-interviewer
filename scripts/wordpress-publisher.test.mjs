@@ -29,7 +29,7 @@ test('WordPress API uses explicit editing-site URL, while links use the public s
 test('automatic publication rejects an unverified practice even with a WordPress URL', () => {
   const candidate = row({ credential_name: 'Wordpress account', wordpress_base_url: 'https://apexparent.hostmanpowered.com/test001/' });
   candidate.practice_id = 'practice_other';
-  assert.throws(() => prepare(candidate), /restricted to the TEST-1 WordPress subsite/);
+  assert.throws(() => prepare(candidate), /restricted to the TEST-1 practice/);
 });
 
 test('publication fails closed without a separate WordPress subsite URL', () => {

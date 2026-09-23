@@ -58,6 +58,7 @@ link remains read-only for the other reviewers until it expires.
 | [Marketing approval workflow](https://n8n.apexdentalautomation.com/workflow/X5X9i3hq0nokxd2U) | Records the review decision; approved TEST-1 articles start WordPress publishing. |
 | [WordPress publishing workflow](https://n8n.apexdentalautomation.com/workflow/kGd2YSJ2MVJwRld0) | Called after marketing approval for an exact TEST-1 article; static-site release remains separate. |
 | [Prestonwood WordPress draft pilot](https://n8n.apexdentalautomation.com/workflow/x8P9o3fLDyDMxJ4s) | Inactive, manual-only credential/subsite check; [internal draft 9987](https://apexparent.hostmanpowered.com/dfw-03/wp-admin/post.php?post=9987&action=edit) was verified. It does not send email or enable real-site article publishing. |
+| [Prestonwood approved-article pilot](PRESTONWOOD_APPROVED_ARTICLE_PILOT.md) | Exact-campaign, Jake-only test of interview through marketing approval and WordPress publishing | Test-specific workflow routing; not a general dentist launch or a static-site release. |
 | [Shortcoder field guide](SHORTCODER.md) | Verified practice shortcode names and publishing limits. |
 | [Project architecture](PROJECT_ARCHITECTURE.md) | System design and build direction. |
 | [Known issues](KNOWN_ISSUES.md) | Documented low-priority interface and workflow issues. |

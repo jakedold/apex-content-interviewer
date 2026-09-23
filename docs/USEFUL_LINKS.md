@@ -48,6 +48,7 @@ This does not authorize publishing for other locations.
 | [Workflow inventory and operating notes](../n8n/README.md) | Exported n8n workflows and current setup notes. |
 | [WordPress publishing workflow](https://n8n.apexdentalautomation.com/workflow/kGd2YSJ2MVJwRld0) | Manual, inactive adapter for approved articles; the static-site release remains separate. |
 | [Project architecture](PROJECT_ARCHITECTURE.md) | System design and build direction. |
+| [Known issues](KNOWN_ISSUES.md) | Documented low-priority interface and workflow issues. |
 
 For a prompt change, follow the instructions in the prompt library. Editing a
 Markdown file alone does not update a prompt embedded in a live n8n workflow.

@@ -12,7 +12,7 @@ in this file.
 | [Start a test article campaign](https://n8n.apexdentalautomation.com/form/aac-test-campaign-launch) | Protected, multi-step test-only launcher | **Active.** Reads the workbook's `Test User` tab, limits selection to TEST-1 and its listed recipients, displays a final recipient confirmation, and requires `SEND TEST INVITATIONS`. A September 2026 test campaign was launched for the one listed test email. Do not add real dentists to `Test User`. |
 | [Test campaign launcher workflow](https://n8n.apexdentalautomation.com/workflow/KvuBYWElqsvKx8lf) | n8n editor and execution history | Active test-only workflow; review failed executions here rather than trusting the form's generic “Submitted” page. |
 | [Original campaign launcher](https://n8n.apexdentalautomation.com/workflow/k2NuDbJccRdiyTTx) | Older free-entry form | **Inactive.** Do not use for live dentists until the production roster and site mapping are separately validated. |
-| [Unified roster selection preview](https://n8n.apexdentalautomation.com/workflow/49aNWb8s90rbD0nA) | Selection-only staging workflow for the four workbook tabs | Inactive; no email or campaign-write steps. |
+| [Campaign roster selection preview](https://n8n.apexdentalautomation.com/form/aac-roster-selection-preview) | Protected, read-only form using the four workbook tabs | **Active preview.** Choose Test users or general dentists; leave the exclusion boxes unchecked to include all, then check only the locations or recipients to omit. It cannot create a campaign, send emails, or publish. The doctor-sending launcher remains disabled. [Workflow editor](https://n8n.apexdentalautomation.com/workflow/49aNWb8s90rbD0nA). |
 | [Test-practices-and-emails preview](https://n8n.apexdentalautomation.com/workflow/eQDcQhZmaNB8sVZE) | Checks temporary test entries | Inactive; does not save entries or send emails. |
 
 ## Add or check practices and people
@@ -36,6 +36,12 @@ The WordPress tab is not yet synced into the BigQuery publishing configuration.
 The TEST-1 test-user row and its BigQuery practice profile are mapped to the
 WordPress editing subsite `https://apexparent.hostmanpowered.com/test001/`.
 This does not authorize publishing for other locations.
+
+The marketing-review invitation is addressed to Nicole Dorsey
+(`ndorsey@apexdp.com`) and copies Brenna Allen (`ballen@apexdp.com`) and
+Jake Dold (`jdold@apexdp.com`). They receive the same secure review link;
+the first submitted decision controls the workflow. After approval, the
+link remains read-only for the other reviewers until it expires.
 
 ## Prompts and project reference
 

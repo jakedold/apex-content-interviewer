@@ -189,7 +189,8 @@ function renderReviewComplete(context: ReviewContext, requestedChanges: boolean,
 
 function renderReview(context: ReviewContext, token: string, kind: ReviewKind): void {
   const priorStatus = context.review_status ?? '';
-  if (priorStatus === 'APPROVED' || priorStatus === 'CHANGES_REQUESTED') {
+  const marketingAlreadyApproved = kind === 'marketing' && priorStatus === 'APPROVED';
+  if (!marketingAlreadyApproved && (priorStatus === 'APPROVED' || priorStatus === 'CHANGES_REQUESTED')) {
     renderReviewComplete(context, priorStatus === 'CHANGES_REQUESTED', kind);
     return;
   }
@@ -206,11 +207,19 @@ function renderReview(context: ReviewContext, token: string, kind: ReviewKind): 
           ? `Final quality-control review for ${escapeHtml(doctorDisplay)} at ${escapeHtml(context.practice_name)}`
           : `Prepared for ${escapeHtml(doctorDisplay)} at ${escapeHtml(context.practice_name)}`}</p>
         ${kind === 'marketing'
-          ? '<p class="review-deadline">Confirm that the final article is ready to publish, or request the specific changes needed before publication.</p>'
+          ? `<p class="review-deadline">${marketingAlreadyApproved
+            ? 'Already approved. No further action is needed, but you can still preview the article below.'
+            : 'Confirm that the final article is ready to publish, or request the specific changes needed before publication.'}</p>`
           : `<p class="review-deadline">Please respond by <strong>${escapeHtml(formatDeadline(context.doctor_review_deadline))}</strong>. If we do not hear from you, the article will automatically move forward as approved.</p>`}
       </header>
       <article class="article-preview">${articleHtml}</article>
       <section class="review-actions" aria-labelledby="review-actions-heading">
+        ${marketingAlreadyApproved ? `
+        <div>
+          <div class="eyebrow">Review complete</div>
+          <h2 id="review-actions-heading">Already approved</h2>
+          <p>This article has already been approved. You can still read it above; no further action is needed.</p>
+        </div>` : `
         <div>
           <div class="eyebrow">Your decision</div>
           <h2 id="review-actions-heading">Is this article ready to move forward?</h2>
@@ -228,9 +237,11 @@ function renderReview(context: ReviewContext, token: string, kind: ReviewKind): 
             <button id="cancel-changes" class="secondary-button" type="button">Cancel</button>
           </div>
         </form>
-        <div id="review-status" class="status" aria-live="polite"></div>
+        <div id="review-status" class="status" aria-live="polite"></div>`}
       </section>
     </main>`;
+
+  if (marketingAlreadyApproved) return;
 
   const approveButton = document.querySelector<HTMLButtonElement>('#approve-button');
   const changesButton = document.querySelector<HTMLButtonElement>('#changes-button');

@@ -7,6 +7,7 @@ const source = workflow.nodes.find((node) => node.name === 'Prepare WordPress Pu
 const prepare = new Function('$json', source);
 const row = (config) => ({
   article_id: 'article_test',
+  practice_id: 'practice_test_001',
   publisher_type: 'WORDPRESS',
   publisher_config_reference: JSON.stringify(config),
   website_domain: 'https://public-dental.test',
@@ -19,10 +20,16 @@ const row = (config) => ({
 });
 
 test('WordPress API uses explicit editing-site URL, while links use the public site', () => {
-  const result = prepare(row({ credential_name: 'Wordpress account', wordpress_base_url: 'https://cms.test/test001/' }))[0].json;
-  assert.equal(result.wordpress_api_url, 'https://cms.test/test001/wp-json/wp/v2');
+  const result = prepare(row({ credential_name: 'Wordpress account', wordpress_base_url: 'https://apexparent.hostmanpowered.com/test001/' }))[0].json;
+  assert.equal(result.wordpress_api_url, 'https://apexparent.hostmanpowered.com/test001/wp-json/wp/v2');
   assert.match(result.content, /https:\/\/public-dental\.test/);
   assert.doesNotMatch(result.wordpress_api_url, /public-dental/);
+});
+
+test('automatic publication rejects an unverified practice even with a WordPress URL', () => {
+  const candidate = row({ credential_name: 'Wordpress account', wordpress_base_url: 'https://apexparent.hostmanpowered.com/test001/' });
+  candidate.practice_id = 'practice_other';
+  assert.throws(() => prepare(candidate), /restricted to the TEST-1 WordPress subsite/);
 });
 
 test('publication fails closed without a separate WordPress subsite URL', () => {

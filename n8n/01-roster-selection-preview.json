@@ -1,5 +1,5 @@
 {
-  "name": "AAC - Unified Roster Selection Preview (Inactive)",
+  "name": "AAC - Campaign Roster Selection (Preview Only)",
   "nodes": [
     {
       "id": "aac-preview-trigger",
@@ -326,7 +326,7 @@
         -380
       ],
       "parameters": {
-        "content": "## Read-only campaign selection\n\nAll five readers use the Authoritative Blog Article Distribution workbook: Locations, Wordpress Sites, Doctor Census A-D and I, and Test User. Attach the existing Google Sheets credential to the readers and dedicated Basic Auth to the trigger after import. Keep inactive. Test users and general dentists are separate audiences. This workflow has no campaign write, email, WordPress publish, or static-site release action.",
+        "content": "## Read-only campaign selection\n\nAll five readers use the Authoritative Blog Article Distribution workbook: Locations, Wordpress Sites, Doctor Census A-D and I, and Test User. The live workflow has the existing Google Sheets credential on its readers and dedicated Basic Auth on the trigger. Test users and general dentists are separate audiences. This workflow has no campaign write, email, WordPress publish, or static-site release action.",
         "height": 260,
         "width": 640
       }

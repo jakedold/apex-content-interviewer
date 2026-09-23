@@ -66,7 +66,7 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "return { json: {\n  article_id: $json.article_id,\n  current_version: $json.current_version,\n  recipient: 'jdold@apexdp.com',\n  subject: 'Article ready for marketing review',\n  message_text: ['An article is ready for marketing review:', '', $json.article_title || 'Article draft', '', 'Approve it or request changes using this secure link:', $json.review_url, '', 'Apex Dental Partners'].join(String.fromCharCode(10)),\n} };"
+        "jsCode": "return { json: {\n  article_id: $json.article_id,\n  current_version: $json.current_version,\n  recipient: 'ndorsey@apexdp.com',\n  subject: 'Article ready for marketing review',\n  message_text: ['An article is ready for marketing review:', '', $json.article_title || 'Article draft', '', 'Approve it or request changes using this secure link:', $json.review_url, '', 'This review is shared with three marketing reviewers. The first submitted decision controls the next step; after approval, the article remains available to preview.', '', 'Apex Dental Partners'].join(String.fromCharCode(10)),\n} };"
       },
       "id": "aac-marketing-invitation-message",
       "name": "Prepare Marketing Review Email",
@@ -83,7 +83,7 @@
         "subject": "={{ $json.subject }}",
         "emailType": "text",
         "message": "={{ $json.message_text }}",
-        "options": {}
+        "options": { "ccList": "ballen@apexdp.com, jdold@apexdp.com" }
       },
       "id": "aac-marketing-invitation-gmail",
       "name": "Email Marketing Reviewer",
@@ -138,7 +138,7 @@
     },
     {
       "parameters": {
-        "content": "## AAC Phase 1L - Marketing invitation\n\nAt minute 30 each hour, find one marketing review that has no successful email for its current article version. Rotate its secure link, email the designated Apex reviewer, then record successful delivery. A failed send remains eligible for a later retry. Static-site publication remains a separate step.",
+        "content": "## AAC Phase 1L - Marketing invitation\n\nCalled after doctor approval. Rotate the secure marketing link, email Nicole Dorsey and copy Brenna Allen and Jake Dold, then record successful delivery. The hourly trigger is deactivated. All reviewers share the link; the first response controls the next step. Static-site publication remains separate.",
         "height": 300,
         "width": 600
       },

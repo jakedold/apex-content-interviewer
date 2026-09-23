@@ -7,7 +7,7 @@ The deployed n8n instance remains the runtime source for credentials and environ
 Version-controlled workflow exports:
 
 - `01-launch-campaign.json` — private administrator form for one campaign, three topics, and a list of doctors
-- `01-roster-selection-preview.json` — inactive, selection-only staging form that reads five privacy-limited ranges across four tabs of the shared workbook, separates test users from dentists, and returns a preview without creating a campaign or sending messages
+- `01-roster-selection-preview.json` — active, selection-only form that reads five privacy-limited ranges across four tabs of the shared workbook, separates test users from dentists, and returns a preview without creating a campaign or sending messages
 - `01-test-entries-preview.json` — separate inactive form for temporary test practices and email recipients; it validates and previews entries without saving them or sending anything
 - `02-dispatch-campaign-invitations.json` — scheduled invitation delivery through the private message router
 - `02-create-topic-interview-links.json`
@@ -85,10 +85,12 @@ bounded ranges from the former files in the inactive
 `row_number` is relative to the selected A1 range. The revised preview reads
 all required columns together in each tab and joins by code, not row order. The existing
 older free-entry launch form is still inactive. The sheet-driven selection preview is
-installed in n8n as an inactive, non-sending staging workflow.
+installed in n8n as an active, non-sending workflow. Leaving exclusion boxes
+unchecked includes all eligible locations or dentists; checking boxes omits
+only those selections.
 
 The staging preview export intentionally has no credential bindings or write
-nodes. The inactive [Unified Roster Selection Preview](https://n8n.apexdentalautomation.com/workflow/49aNWb8s90rbD0nA)
+nodes. The active [Campaign Roster Selection (Preview Only)](https://n8n.apexdentalautomation.com/workflow/49aNWb8s90rbD0nA)
 has the existing `Google Sheets account` connection on five read nodes. It
 reads only Doctor Census columns A–D and I, not birthdays or personal email
 addresses. Earlier imported drafts were archived.
@@ -105,8 +107,9 @@ The `Test User` tab now owns persistent test-only entries. The former test-entry
 preview and n8n Data Tables (`AAC Test Practices`, `AAC Test Emails`) are
 superseded, inactive/disconnected references; do not add new test entries
 there. Neither selection preview contains a mail, campaign-write, WordPress,
-or static-release action. The unified preview now contains the new tab mapping,
-but do not use it until access control and form execution are verified.
+or static-release action. The unified preview has the new tab mapping and
+dedicated Basic Auth. Its form execution still needs end-to-end confirmation
+from an authenticated browser session before treating the UI as fully verified.
 
 Do not reactivate it for real campaigns until authoritative location/website
 and doctor assignments are entered in BigQuery, the revised export is installed
@@ -193,8 +196,11 @@ that same private router. It checks for a successful invitation for the current
 article version before creating another link, so a failed send can be retried
 without repeating a successful one. A valid doctor approval now calls marketing
 routing immediately; a valid change request calls revision immediately. The
-marketing invitation workflow rotates a one-time link, emails
-`jdold@apexdp.com`, and records successful delivery so failures can be retried.
+marketing invitation workflow rotates a one-time link, sends it to
+`ndorsey@apexdp.com`, copies `ballen@apexdp.com` and `jdold@apexdp.com`, and
+records successful delivery so failures can be retried. All three recipients
+share the link; the first response controls the review. After approval, the
+link remains a read-only article preview until it expires.
 The static-site publishing step remains manual and deferred.
 
 Current browser endpoints:

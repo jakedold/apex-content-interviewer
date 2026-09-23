@@ -1,0 +1,458 @@
+{
+  "name": "AAC - Roster-Driven Campaign Selection Preview",
+  "nodes": [
+    {
+      "id": "aac-preview-trigger",
+      "name": "Start selection preview",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "aac-roster-selection-preview",
+      "parameters": {
+        "authentication": "basicAuth",
+        "formTitle": "Preview an article campaign",
+        "formDescription": "Choose locations and dentists from current rosters. This preview does not launch, send, or publish.",
+        "formFields": {
+          "values": [
+            {
+              "fieldName": "campaign_name",
+              "fieldLabel": "Campaign name",
+              "fieldType": "text",
+              "requiredField": true
+            },
+            {
+              "fieldName": "campaign_month",
+              "fieldLabel": "Campaign month",
+              "fieldType": "date",
+              "requiredField": true
+            },
+            {
+              "fieldName": "topic_1",
+              "fieldLabel": "Topic 1",
+              "fieldType": "text",
+              "requiredField": true
+            },
+            {
+              "fieldName": "topic_2",
+              "fieldLabel": "Topic 2",
+              "fieldType": "text",
+              "requiredField": true
+            },
+            {
+              "fieldName": "topic_3",
+              "fieldLabel": "Topic 3",
+              "fieldType": "text",
+              "requiredField": true
+            }
+          ]
+        },
+        "responseMode": "lastNode",
+        "options": {
+          "path": "aac-roster-selection-preview",
+          "buttonLabel": "Choose locations",
+          "ignoreBots": true
+        }
+      }
+    },
+    {
+      "id": "read-location-codes-and-names",
+      "name": "Read location codes and names",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1fAP9gu66_rwZ9xUCjmxdql-FznlG-PQvepVaH6ThmnE",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Master List",
+          "mode": "name"
+        },
+        "options": {
+          "dataLocationOnSheet": {
+            "values": {
+              "rangeDefinition": "specifyRangeA1",
+              "range": "A4:C250"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "keep-location-rows-together",
+      "name": "Keep location rows together",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [{ json: { rows: $input.all().map((item) => item.json) } }];"
+      }
+    },
+    {
+      "id": "read-public-website-urls",
+      "name": "Read public website URLs",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        780,
+        0
+      ],
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1fAP9gu66_rwZ9xUCjmxdql-FznlG-PQvepVaH6ThmnE",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Master List",
+          "mode": "name"
+        },
+        "options": {
+          "dataLocationOnSheet": {
+            "values": {
+              "rangeDefinition": "specifyRangeA1",
+              "range": "N4:N250"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "keep-website-rows-together",
+      "name": "Keep website rows together",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [{ json: { rows: $input.all().map((item) => item.json) } }];"
+      }
+    },
+    {
+      "id": "read-general-dentist-census",
+      "name": "Read general dentist census",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1300,
+        0
+      ],
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1M0arM4jnZzalySGUKq60Hp1yhTDz2RQTXqMeOWfaOUA",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Sheet1",
+          "mode": "name"
+        },
+        "options": {
+          "dataLocationOnSheet": {
+            "values": {
+              "rangeDefinition": "specifyRangeA1",
+              "range": "A2:D250"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "keep-dentist-rows-together",
+      "name": "Keep dentist rows together",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [{ json: { rows: $input.all().map((item) => item.json) } }];"
+      }
+    },
+    {
+      "id": "read-dentist-work-emails",
+      "name": "Read dentist work emails",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1820,
+        0
+      ],
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1M0arM4jnZzalySGUKq60Hp1yhTDz2RQTXqMeOWfaOUA",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Sheet1",
+          "mode": "name"
+        },
+        "options": {
+          "dataLocationOnSheet": {
+            "values": {
+              "rangeDefinition": "specifyRangeA1",
+              "range": "I2:I250"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-current-roster",
+      "name": "Validate current roster",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Pure roster validation for the administrator campaign form. No roster data or credentials live here.\nconst text = (value) => String(value ?? '').trim();\nconst doctorCode = (primaryLocation) => text(primaryLocation).match(/\\(([^)]+)\\)\\s*$/)?.[1] ?? '';\n\nfunction buildCampaignRoster(locationRows, websiteRows, dentistRows, emailRows) {\n  // These new locations are intentionally held out even if a URL appears in the sheet.\n  const notLaunchedLocationCodes = new Set(['DFW-24', 'DFW-25']);\n  const locations = [];\n  const excludedLocations = [];\n  const locationByCode = new Map();\n  for (let index = 0; index < locationRows.length; index += 1) {\n    const [rawCode, rawName, rawType] = locationRows[index] ?? [];\n    const code = text(rawCode);\n    if (!code) continue;\n    const name = text(rawName);\n    const type = text(rawType);\n    const website = text(websiteRows[index]?.[0]);\n    const reason = notLaunchedLocationCodes.has(code) ? 'not_launched'\n      : /-(E|O|P)$/i.test(code) || type !== 'GD' ? 'specialty_or_nonpractice'\n      : /test/i.test(`${code} ${name}`) ? 'test_location'\n        : !website ? 'missing_website'\n          : !/^[a-z0-9.-]+\\.[a-z]{2,}(?:\\/[^?#]*)?$/i.test(website) ? 'invalid_website'\n            : null;\n    if (reason) {\n      excludedLocations.push({ code, name, reason });\n      continue;\n    }\n    if (locationByCode.has(code)) throw new Error(`Duplicate location code: ${code}`);\n    const location = { code, name, public_website_url: `https://${website.replace(/\\/$/, '').toLowerCase()}` };\n    locationByCode.set(code, location);\n    locations.push(location);\n  }\n\n  const doctors = [];\n  const excludedDoctors = [];\n  const seenEmails = new Set();\n  for (let index = 0; index < dentistRows.length; index += 1) {\n    const [rawName, rawPrimary, rawDepartment, rawEmployment] = dentistRows[index] ?? [];\n    const name = text(rawName);\n    if (!name) continue;\n    const primary = text(rawPrimary);\n    const code = doctorCode(primary);\n    const department = text(rawDepartment);\n    const employment = text(rawEmployment);\n    const email = text(emailRows[index]?.[0]).toLowerCase();\n    const reason = department !== 'General Dentist' ? 'not_general_dentist'\n      : !['Full-Time', 'Part-Time'].includes(employment) ? 'not_employee'\n        : /test/i.test(primary) || code === 'DFW-T' ? 'test_location'\n          : !locationByCode.has(code) ? 'location_unavailable'\n            : !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) ? 'missing_or_invalid_work_email'\n              : null;\n    if (reason) {\n      excludedDoctors.push({ name, code, reason });\n      continue;\n    }\n    if (seenEmails.has(email)) throw new Error(`Duplicate work email in census: ${email}`);\n    seenEmails.add(email);\n    doctors.push({ name, email, location_code: code });\n  }\n  return { locations, doctors, excludedLocations, excludedDoctors };\n}\n\nconst rows = (nodeName, columns) => {\n  const observed = $(nodeName).first().json.rows;\n  const result = [];\n  for (const row of observed) {\n    const index = Number(row.row_number) - 2;\n    if (!Number.isInteger(index) || index < 0) throw new Error('Unexpected Sheet row number in ' + nodeName);\n    result[index] = columns.map((column) => row[column] ?? '');\n  }\n  return result;\n};\nconst roster = buildCampaignRoster(\n  rows('Keep location rows together', ['Code', 'Name', 'Type']),\n  rows('Keep website rows together', ['URL']),\n  rows('Keep dentist rows together', ['Employee', 'Primary Location', 'Department', 'Employment Type']),\n  rows('Read dentist work emails', ['Work Email'])\n);\nif (!roster.locations.length || !roster.doctors.length) throw new Error('No eligible locations or dentists. Check Sheet access and headers.');\nreturn [{ json: roster }];"
+      }
+    },
+    {
+      "id": "choose-locations",
+      "name": "Choose locations",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.2,
+      "position": [
+        2340,
+        0
+      ],
+      "parameters": {
+        "operation": "page",
+        "defineForm": "json",
+        "jsonOutput": "={{ JSON.stringify([{fieldLabel:\"Locations (all initially selected; uncheck to exclude)\",fieldName:\"selected_locations\",fieldType:\"checkbox\",fieldOptions:{values:$json.locations.map((x)=>({option:x.code+\" — \"+x.name}))},defaultValue:$json.locations.map((x)=>x.code+\" — \"+x.name),requiredField:true}]) }}",
+        "options": {
+          "formTitle": "Choose general-dentist locations",
+          "buttonLabel": "Continue"
+        }
+      }
+    },
+    {
+      "id": "filter-doctors-by-selected-locations",
+      "name": "Filter doctors by selected locations",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2600,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const roster = $('Validate current roster').first().json;\nconst raw = $input.first().json.selected_locations;\nconst selections = Array.isArray(raw) ? raw : raw ? [raw] : [];\nconst byLabel = new Map(roster.locations.map((x) => [x.code + ' — ' + x.name, x.code]));\nconst codes = selections.map((label) => {\n  const code = byLabel.get(label);\n  if (!code) throw new Error('Unknown location selection: ' + label);\n  return code;\n});\nif (!codes.length) throw new Error('Select at least one location.');\nconst chosen = new Set(codes);\nconst doctors = roster.doctors.filter((x) => chosen.has(x.location_code));\nif (!doctors.length) throw new Error('No eligible dentists at the selected locations.');\nreturn [{ json: { locations: roster.locations.filter((x) => chosen.has(x.code)), doctors } }];"
+      }
+    },
+    {
+      "id": "choose-doctors",
+      "name": "Choose doctors",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.2,
+      "position": [
+        2860,
+        0
+      ],
+      "parameters": {
+        "operation": "page",
+        "defineForm": "json",
+        "jsonOutput": "={{ JSON.stringify([{fieldLabel:\"Doctors (all initially selected; uncheck to exclude)\",fieldName:\"selected_doctors\",fieldType:\"checkbox\",fieldOptions:{values:$json.doctors.map((x)=>({option:x.name+\" (\"+x.location_code+\") — \"+x.email}))},defaultValue:$json.doctors.map((x)=>x.name+\" (\"+x.location_code+\") — \"+x.email),requiredField:true}]) }}",
+        "options": {
+          "formTitle": "Choose general dentists",
+          "buttonLabel": "Continue"
+        }
+      }
+    },
+    {
+      "id": "preview-selection-without-sending",
+      "name": "Preview selection without sending",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3120,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const available = $('Filter doctors by selected locations').first().json;\nconst raw = $input.first().json.selected_doctors;\nconst selections = Array.isArray(raw) ? raw : raw ? [raw] : [];\nconst byLabel = new Map(available.doctors.map((x) => [x.name + ' (' + x.location_code + ') — ' + x.email, x]));\nconst doctors = selections.map((label) => {\n  const doctor = byLabel.get(label);\n  if (!doctor) throw new Error('Unknown dentist selection: ' + label);\n  return doctor;\n});\nif (!doctors.length || new Set(doctors.map((x) => x.email)).size !== doctors.length) throw new Error('Select at least one distinct dentist.');\nconst details = $('Start selection preview').first().json;\nreturn [{ json: { preview_only: true, campaign_name: details.campaign_name, campaign_month: details.campaign_month, topics: [details.topic_1, details.topic_2, details.topic_3], location_count: available.locations.length, doctor_count: doctors.length, locations: available.locations, doctors, message: 'Preview only: no campaign, invitations, WordPress posts, or static-site release created.' } }];"
+      }
+    },
+    {
+      "id": "aac-preview-note",
+      "name": "Selection Preview Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -380
+      ],
+      "parameters": {
+        "content": "## Selection-only staging form\n\nRead-only roster choices from the two Google Sheets. Attach the existing Sheets credential to four readers and dedicated Basic Auth to the trigger after import. Keep inactive. It cannot create campaigns, send messages, publish WordPress posts, or release a static site. DFW-24 and DFW-25 remain excluded.",
+        "height": 260,
+        "width": 640
+      }
+    }
+  ],
+  "connections": {
+    "Start selection preview": {
+      "main": [
+        [
+          {
+            "node": "Read location codes and names",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read location codes and names": {
+      "main": [
+        [
+          {
+            "node": "Keep location rows together",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keep location rows together": {
+      "main": [
+        [
+          {
+            "node": "Read public website URLs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read public website URLs": {
+      "main": [
+        [
+          {
+            "node": "Keep website rows together",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keep website rows together": {
+      "main": [
+        [
+          {
+            "node": "Read general dentist census",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read general dentist census": {
+      "main": [
+        [
+          {
+            "node": "Keep dentist rows together",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keep dentist rows together": {
+      "main": [
+        [
+          {
+            "node": "Read dentist work emails",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read dentist work emails": {
+      "main": [
+        [
+          {
+            "node": "Validate current roster",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate current roster": {
+      "main": [
+        [
+          {
+            "node": "Choose locations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Choose locations": {
+      "main": [
+        [
+          {
+            "node": "Filter doctors by selected locations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter doctors by selected locations": {
+      "main": [
+        [
+          {
+            "node": "Choose doctors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Choose doctors": {
+      "main": [
+        [
+          {
+            "node": "Preview selection without sending",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Chicago"
+  },
+  "active": false,
+  "tags": []
+}

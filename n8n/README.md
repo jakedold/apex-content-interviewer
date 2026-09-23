@@ -7,6 +7,7 @@ The deployed n8n instance remains the runtime source for credentials and environ
 Version-controlled workflow exports:
 
 - `01-launch-campaign.json` — private administrator form for one campaign, three topics, and a list of doctors
+- `01-roster-selection-preview.json` — inactive, selection-only staging form that reads the two Google Sheets, preselects eligible locations and dentists, and returns a preview without creating a campaign or sending messages
 - `02-dispatch-campaign-invitations.json` — scheduled invitation delivery through the private message router
 - `02-create-topic-interview-links.json`
 - `03-validate-interview-link.json`
@@ -71,6 +72,15 @@ connection successfully read bounded ranges from both files in the inactive
 must use the same starting row before joining by `row_number`. The existing
 live launch form is still inactive; sheet-driven selection has not yet been
 installed.
+
+The staging preview export intentionally has no credential bindings or write
+nodes. After import, attach the existing `Google Sheets account` credential to
+its four read nodes and a dedicated Basic Auth credential to its Form Trigger
+before using its test URL. It reads only the relevant columns, preserves row
+alignment by the relative `row_number`, and never commits its selection to
+BigQuery. Keep the original campaign launcher and invitation dispatcher
+inactive while validating this preview. The preview is not yet installed in
+live n8n.
 
 Do not reactivate it for real campaigns until authoritative location/website
 and doctor assignments are entered in BigQuery, the revised export is installed

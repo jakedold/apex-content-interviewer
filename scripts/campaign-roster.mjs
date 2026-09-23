@@ -3,6 +3,8 @@ const text = (value) => String(value ?? '').trim();
 const doctorCode = (primaryLocation) => text(primaryLocation).match(/\(([^)]+)\)\s*$/)?.[1] ?? '';
 
 export function buildCampaignRoster(locationRows, websiteRows, dentistRows, emailRows) {
+  // These new locations are intentionally held out even if a URL appears in the sheet.
+  const notLaunchedLocationCodes = new Set(['DFW-24', 'DFW-25']);
   const locations = [];
   const excludedLocations = [];
   const locationByCode = new Map();
@@ -13,7 +15,8 @@ export function buildCampaignRoster(locationRows, websiteRows, dentistRows, emai
     const name = text(rawName);
     const type = text(rawType);
     const website = text(websiteRows[index]?.[0]);
-    const reason = /-(E|O|P)$/i.test(code) || type !== 'GD' ? 'specialty_or_nonpractice'
+    const reason = notLaunchedLocationCodes.has(code) ? 'not_launched'
+      : /-(E|O|P)$/i.test(code) || type !== 'GD' ? 'specialty_or_nonpractice'
       : /test/i.test(`${code} ${name}`) ? 'test_location'
         : !website ? 'missing_website'
           : !/^[a-z0-9.-]+\.[a-z]{2,}(?:\/[^?#]*)?$/i.test(website) ? 'invalid_website'
@@ -23,7 +26,7 @@ export function buildCampaignRoster(locationRows, websiteRows, dentistRows, emai
       continue;
     }
     if (locationByCode.has(code)) throw new Error(`Duplicate location code: ${code}`);
-    const location = { code, name, website_url: `https://${website.replace(/\/$/, '').toLowerCase()}` };
+    const location = { code, name, public_website_url: `https://${website.replace(/\/$/, '').toLowerCase()}` };
     locationByCode.set(code, location);
     locations.push(location);
   }

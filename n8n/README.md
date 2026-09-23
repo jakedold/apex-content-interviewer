@@ -46,8 +46,9 @@ The next launch-form revision must read two authoritative Google Sheets instead
 of `apex-empower.empower.role`, which currently has no usable rows:
 
 - [Master Location List](https://docs.google.com/spreadsheets/d/1fAP9gu66_rwZ9xUCjmxdql-FznlG-PQvepVaH6ThmnE/edit), `Master List` tab: location code/name/type are columns
-  A–C (header row 4); website is column N. Include only `GD` practices with a
-  website; exclude `-E`, `-O`, `-P`, test locations, and support offices.
+  A–C (header row 4); public website is column N. Include only `GD` practices
+  with a public website; exclude `-E`, `-O`, `-P`, test locations, support
+  offices, and the not-yet-launched `DFW-24` and `DFW-25` locations.
 - [Employee Census](https://docs.google.com/spreadsheets/d/1M0arM4jnZzalySGUKq60Hp1yhTDz2RQTXqMeOWfaOUA/edit), `Sheet1` tab: name, primary location, department, and
   employment type are columns A–D (header row 2); work email is column I.
   Include only `General Dentist` employees marked `Full-Time` or `Part-Time`.
@@ -58,11 +59,12 @@ of `apex-empower.empower.role`, which currently has no usable rows:
 The exact columns and privacy-safe validation rules are documented here and in
 `../scripts/campaign-roster.mjs`. Do not commit a roster
 snapshot containing dentist names or email addresses. As checked on 2026-09-22,
-the sheets contain 60 eligible general-dentist locations and 109 eligible
-general dentists before website gating. Two locations (`DFW-24`, `DFW-25`) have
-blank website cells, leaving 58 website-ready locations and 106 selectable
-dentists. Keep those two locations and their three dentists out of launches
-until the master sheet has verified websites. The n8n Google Sheets connection
+the sheets contain 60 general-dentist locations and 109 full- or part-time
+general dentists before launch-readiness gating. Two new locations (`DFW-24`,
+`DFW-25`) are not launched and have blank public website cells, leaving 58
+selectable locations and 106 selectable dentists. Keep those two locations and
+their three dentists out of campaigns even if a URL is filled in, until the
+sites are launched. The n8n Google Sheets connection
 exists, but access to these particular files has not yet been verified from
 within n8n. The existing live form is still inactive and sheet-driven selection
 has not yet been installed.
@@ -107,6 +109,15 @@ create or update, and records the external post ID, final URL, lifecycle state,
 and audit event in BigQuery. The TEST001 practice has been configured for a
 proof-of-concept WordPress post. Publishing remains manual; the Headless
 Hostman static-site build and live release are separate, deferred steps.
+The master-sheet URLs are the public static websites, not WordPress API
+origins. They may identify the intended public location and supply public
+links, but they must never be used to construct `/wp-json/wp/v2` endpoints.
+Each practice needs a separate, explicitly verified WordPress multisite
+subsite base URL and credential mapping before its publishing adapter is
+enabled. For example, the TEST001 editing base is
+`https://apexparent.hostmanpowered.com/test001/`; its static site release is a
+different operation. No production location should be auto-published from a
+public URL inferred from the master sheet.
 
 The Phase 1K communication workflows centralize doctor-message routing and
 deadline reminders. Email is the V1 delivery adapter, with preference-aware

@@ -60,6 +60,10 @@ const appElement = document.querySelector<HTMLDivElement>('#app');
 if (!appElement) throw new Error('App container not found.');
 const app: HTMLDivElement = appElement;
 
+function renderBrand(): string {
+  return '<div class="brand"><img src="/brand/color_landscape.svg" alt="Apex Dental Partners" /></div>';
+}
+
 let liveSession: RealtimeSession | null = null;
 let connected = false;
 let paused = false;
@@ -99,7 +103,7 @@ async function postJson<T>(url: string, body: Record<string, unknown>): Promise<
 function renderLoading(label = 'interview', description = 'One moment while we load your topic.'): void {
   app.innerHTML = `
     <main class="page"><section class="card">
-      <div class="brand">APEX DENTAL PARTNERS</div>
+      ${renderBrand()}
       <div class="activity activity-large" aria-hidden="true"><span class="spinner"></span></div>
       <h1>Preparing your ${escapeHtml(label)}</h1>
       <p class="description">${escapeHtml(description)}</p>
@@ -109,7 +113,7 @@ function renderLoading(label = 'interview', description = 'One moment while we l
 function renderInvalid(message: string, label = 'interview'): void {
   app.innerHTML = `
     <main class="page"><section class="card">
-      <div class="brand">APEX DENTAL PARTNERS</div>
+      ${renderBrand()}
       <div class="eyebrow">Content ${escapeHtml(label)}</div>
       <h1>This ${escapeHtml(label)} link isn't available.</h1>
       <p class="description">${escapeHtml(message)}</p>
@@ -175,7 +179,7 @@ function renderReviewComplete(context: ReviewContext, requestedChanges: boolean,
     : `Thank you, ${escapeHtml(context.doctor_name)}.`;
   app.innerHTML = `
     <main class="page"><section class="card completion-card">
-      <div class="brand">APEX DENTAL PARTNERS</div>
+      ${renderBrand()}
       <div class="completion-check" aria-hidden="true">✓</div>
       <div class="eyebrow">Article review complete</div>
       <h1>${heading}</h1>
@@ -195,7 +199,7 @@ function renderReview(context: ReviewContext, token: string, kind: ReviewKind): 
   app.innerHTML = `
     <main class="review-page">
       <header class="review-header">
-        <div class="brand">APEX DENTAL PARTNERS</div>
+        ${renderBrand()}
         <div class="eyebrow">${kind === 'marketing' ? 'Marketing Review' : 'Article Review'}</div>
         <h1>${escapeHtml(context.article_title || 'Your article draft')}</h1>
         <p class="review-byline">${kind === 'marketing'
@@ -286,7 +290,7 @@ function renderReview(context: ReviewContext, token: string, kind: ReviewKind): 
 function renderComplete(context: InterviewContext): void {
   app.innerHTML = `
     <main class="page"><section class="card completion-card">
-      <div class="brand">APEX DENTAL PARTNERS</div>
+      ${renderBrand()}
       <div class="completion-check" aria-hidden="true">✓</div>
       <div class="eyebrow">Interview complete</div>
       <h1>Thank you, ${escapeHtml(context.doctor_name)}.</h1>
@@ -344,7 +348,7 @@ function renderInterview(context: InterviewContext, token: string): void {
 
   app.innerHTML = `
     <main class="page"><section class="card">
-      <div class="brand">APEX DENTAL PARTNERS</div>
+      ${renderBrand()}
       <div class="eyebrow">AI Content Interview</div>
       <h1>Hi, ${escapeHtml(doctorDisplay)}</h1>
       <p class="intro">We'll have a short conversation about:</p>

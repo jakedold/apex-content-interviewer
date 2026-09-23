@@ -64,10 +64,13 @@ general dentists before launch-readiness gating. Two new locations (`DFW-24`,
 `DFW-25`) are not launched and have blank public website cells, leaving 58
 selectable locations and 106 selectable dentists. Keep those two locations and
 their three dentists out of campaigns even if a URL is filled in, until the
-sites are launched. The n8n Google Sheets connection
-exists, but access to these particular files has not yet been verified from
-within n8n. The existing live form is still inactive and sheet-driven selection
-has not yet been installed.
+sites are launched. On 2026-09-22, the existing `Google Sheets account`
+connection successfully read bounded ranges from both files in the inactive
+`AAC - Roster Sheet Access Check (Inactive)` workflow. The check showed n8n's
+`row_number` is relative to the selected A1 range, so separate column reads
+must use the same starting row before joining by `row_number`. The existing
+live launch form is still inactive; sheet-driven selection has not yet been
+installed.
 
 Do not reactivate it for real campaigns until authoritative location/website
 and doctor assignments are entered in BigQuery, the revised export is installed

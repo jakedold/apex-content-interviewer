@@ -360,6 +360,7 @@ function renderInterview(context: InterviewContext, token: string): void {
       <div class="expectation">
         <strong>What to expect</strong>
         <p>This is a conversational voice interview. Speak naturally, just as you would if someone were interviewing you in person.</p>
+        <p>Choose a quiet place before you begin. Background conversations and other noise can interrupt the voice interviewer. Headphones with a microphone may help.</p>
       </div>
       <div class="interview-controls">
         <button id="interview-button" class="primary-button" type="button">Start Interview</button>

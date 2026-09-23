@@ -134,16 +134,18 @@ The doctor-review deadline workflow runs hourly, finds pending reviews whose
 configured deadline has expired, marks the approval as automatic, expires the
 active review link, advances the article to `DOCTOR_AUTO_APPROVED`, and records
 an auditable `doctor.auto_approved` event. Its output identifies whether
-marketing review or publishing is the next stage. This deadline check is
-intentionally time-based; it is distinct from polling for completed stages.
+marketing review or publishing is the next stage. It now calls the marketing
+router for each auto-approved article; the router's TEST-1 guard prevents an
+unmapped practice from continuing. This deadline check is intentionally
+time-based; it is distinct from polling for completed stages.
 
 The marketing-review workflows route each doctor-approved article according
 to its campaign setting. Required reviews receive a separate hashed one-time
 link, and the marketing portal can either grant final approval or record a
 written change request that blocks publishing. The event-driven test route
 currently sends only articles requiring marketing approval. The
-no-marketing-review and deadline-auto-approval routes need separate handoffs
-before they can be used without scheduled or manual follow-up.
+no-marketing-review route still needs a separate publishing handoff before it
+can be used without manual follow-up.
 
 The WordPress publishing workflow is the first publishing adapter. It only
 loads approved articles for practices with an explicit WordPress publisher,

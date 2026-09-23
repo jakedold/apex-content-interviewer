@@ -42,6 +42,31 @@ is a legacy test workflow and should remain inactive.
 The live launch form currently remains inactive. Its first version accepted
 only a practice profile ID. The revised export includes explicit location and
 website fields plus mapping validation; it is not yet installed in live n8n.
+The next launch-form revision must read two authoritative Google Sheets instead
+of `apex-empower.empower.role`, which currently has no usable rows:
+
+- [Master Location List](https://docs.google.com/spreadsheets/d/1fAP9gu66_rwZ9xUCjmxdql-FznlG-PQvepVaH6ThmnE/edit), `Master List` tab: location code/name/type are columns
+  A–C (header row 4); website is column N. Include only `GD` practices with a
+  website; exclude `-E`, `-O`, `-P`, test locations, and support offices.
+- [Employee Census](https://docs.google.com/spreadsheets/d/1M0arM4jnZzalySGUKq60Hp1yhTDz2RQTXqMeOWfaOUA/edit), `Sheet1` tab: name, primary location, department, and
+  employment type are columns A–D (header row 2); work email is column I.
+  Include only `General Dentist` employees marked `Full-Time` or `Part-Time`.
+  Exclude contractors, vendors, DFW-Test, and any doctor whose primary location
+  is unavailable. Join by the location code in parentheses, not by email
+  domain or website, because several locations share a domain.
+
+The exact columns and privacy-safe validation rules are documented here and in
+`../scripts/campaign-roster.mjs`. Do not commit a roster
+snapshot containing dentist names or email addresses. As checked on 2026-09-22,
+the sheets contain 60 eligible general-dentist locations and 109 eligible
+general dentists before website gating. Two locations (`DFW-24`, `DFW-25`) have
+blank website cells, leaving 58 website-ready locations and 106 selectable
+dentists. Keep those two locations and their three dentists out of launches
+until the master sheet has verified websites. The n8n Google Sheets connection
+exists, but access to these particular files has not yet been verified from
+within n8n. The existing live form is still inactive and sheet-driven selection
+has not yet been installed.
+
 Do not reactivate it for real campaigns until authoritative location/website
 and doctor assignments are entered in BigQuery, the revised export is installed
 and tested, and any doctors who work across multiple websites have an explicit

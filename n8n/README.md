@@ -7,7 +7,7 @@ The deployed n8n instance remains the runtime source for credentials and environ
 Version-controlled workflow exports:
 
 - `01-launch-campaign.json` — private administrator form for one campaign, three topics, and a list of doctors
-- `01-roster-selection-preview.json` — inactive, selection-only staging form that reads the two Google Sheets, preselects eligible locations and dentists, and returns a preview without creating a campaign or sending messages
+- `01-roster-selection-preview.json` — inactive, selection-only staging form that reads five privacy-limited ranges across four tabs of the shared workbook, separates test users from dentists, and returns a preview without creating a campaign or sending messages
 - `01-test-entries-preview.json` — separate inactive form for temporary test practices and email recipients; it validates and previews entries without saving them or sending anything
 - `02-dispatch-campaign-invitations.json` — scheduled invitation delivery through the private message router
 - `02-create-topic-interview-links.json`
@@ -44,70 +44,58 @@ is a legacy test workflow and should remain inactive.
 The live launch form currently remains inactive. Its first version accepted
 only a practice profile ID. The revised export includes explicit location and
 website fields plus mapping validation; it is not yet installed in live n8n.
-The next launch-form revision must read two authoritative Google Sheets instead
-of `apex-empower.empower.role`, which currently has no usable rows:
+The next launch-form revision must read the four tabs of the
+[Authoritative Blog Article Distribution workbook](https://docs.google.com/spreadsheets/d/1M0arM4jnZzalySGUKq60Hp1yhTDz2RQTXqMeOWfaOUA/edit)
+instead of `apex-empower.empower.role`, which currently has no usable rows:
 
-- [Master Location List](https://docs.google.com/spreadsheets/d/1fAP9gu66_rwZ9xUCjmxdql-FznlG-PQvepVaH6ThmnE/edit), `Master List` tab: location code/name/type are columns
-  A–C (header row 4); public website is column N. Include only `GD` practices
+- `Locations`: location code/name/type are columns A–C (header row 1);
+  public website is column N. Include only `GD` practices
   with a public website; exclude `-E`, `-O`, `-P`, test locations, support
   offices, and the not-yet-launched `DFW-24` and `DFW-25` locations.
-- [Employee Census](https://docs.google.com/spreadsheets/d/1M0arM4jnZzalySGUKq60Hp1yhTDz2RQTXqMeOWfaOUA/edit), `Sheet1` tab: name, primary location, department, and
+- `Doctor Census`: name, primary location, department, and
   employment type are columns A–D (header row 2); work email is column I.
   Include only `General Dentist` employees marked `Full-Time` or `Part-Time`.
   Exclude contractors, vendors, DFW-Test, and any doctor whose primary location
   is unavailable. Join by the location code in parentheses, not by email
   domain or website, because several locations share a domain.
+- `Wordpress Sites`: location code/name/editing-site URL are columns A–C
+  (header row 1). Join by code, reject duplicate or mismatched mappings,
+  and normalize a scheme-less URL to HTTPS. Never substitute the public URL.
+- `Test User`: email/name/location/WordPress URL are columns A–D (header row 1).
+  This is a separate test-only audience; it must not be mixed with dentists.
 
 The exact columns and privacy-safe validation rules are documented here and in
 `../scripts/campaign-roster.mjs`. Do not commit a roster
-snapshot containing dentist names or email addresses. As checked on 2026-09-22,
-the sheets contain 60 general-dentist locations and 109 full- or part-time
-general dentists before launch-readiness gating. Two new locations (`DFW-24`,
-`DFW-25`) are not launched and have blank public website cells, leaving 58
-selectable locations and 106 selectable dentists. Keep those two locations and
-their three dentists out of campaigns even if a URL is filled in, until the
-sites are launched. On 2026-09-22, the existing `Google Sheets account`
-connection successfully read bounded ranges from both files in the inactive
+snapshot containing dentist names or email addresses. `DFW-24` and `DFW-25`
+remain excluded until their sites launch, even if URLs are populated. On
+2026-09-22, the existing `Google Sheets account` connection successfully read
+bounded ranges from the former files in the inactive
 `AAC - Roster Sheet Access Check (Inactive)` workflow. The check showed n8n's
-`row_number` is relative to the selected A1 range, so separate column reads
-must use the same starting row before joining by `row_number`. The existing
+`row_number` is relative to the selected A1 range. The revised preview reads
+all required columns together in each tab and joins by code, not row order. The existing
 live launch form is still inactive. The sheet-driven selection preview is
 installed in n8n as an inactive, non-sending staging workflow.
 
 The staging preview export intentionally has no credential bindings or write
-nodes. After import, attach the existing `Google Sheets account` credential to
-its four read nodes and a dedicated Basic Auth credential to its Form Trigger
-before using its test URL. It reads only the relevant columns, preserves row
-alignment by the relative `row_number`, and never commits its selection to
-BigQuery. Keep the original campaign launcher and invitation dispatcher
-inactive while validating this preview. Its n8n workflow is
-`AAC - Roster-Driven Campaign Selection Preview`.
+nodes. The inactive [Unified Roster Selection Preview](https://n8n.apexdentalautomation.com/workflow/49aNWb8s90rbD0nA)
+has the existing `Google Sheets account` connection on five read nodes. It
+reads only Doctor Census columns A–D and I, not birthdays or personal email
+addresses. Earlier imported drafts were archived.
+Confirm a dedicated Basic Auth credential on its Form Trigger before using its
+test URL; access control and end-to-end form behavior have not yet been
+verified. It reads bounded ranges and never commits its selection to BigQuery.
+Keep the original campaign launcher inactive. The invitation dispatcher was
+active in n8n on 2026-09-23, so creating READY campaign doctors could send
+emails; the preview intentionally performs no BigQuery write.
+The older [two-sheet preview](https://n8n.apexdentalautomation.com/workflow/dcenQwsnrc7ljMoR)
+is superseded and remains inactive.
 
-Use the separate test-entry preview when adding non-roster practices or email
-addresses for a trial. Enter one practice per line as `Practice name | public
-website URL` (URL optional), and one recipient per line as `email | practice
-name` (practice name optional when only one practice is entered). These test
-entries are not added to the authoritative Google Sheets or BigQuery, and
-cannot be mixed into the real-dentist selection preview. The installed n8n
-workflow is `AAC - Test Practices and Emails Preview` and remains inactive.
-The form is a temporary validation surface, not a saved test roster or a live
-campaign option. Neither preview contains a mail, campaign-write, WordPress,
-or static-release action.
-
-Persistent test-only entries live in two separate n8n Data Tables in the
-Personal project. Use **Add Row** there to maintain them; do not put test
-entries in the authoritative census or location sheets:
-
-- `AAC Test Practices` (`vyWqiwFpRvYDGnW6`): `practice_name`,
-  `public_website_url`, `wordpress_site_url`. The WordPress URL is the editing
-  subsite, not the public static URL.
-- `AAC Test Emails` (`UVcspQQJPdgtgf9q`): `email`, `practice_name`. Match
-  `practice_name` exactly to a row in the test-practices table.
-
-These tables are not connected to any email-sending or campaign workflow.
-The test-entry preview validates temporary form input only; it does **not**
-write to these tables. Review and add rows explicitly in the tables when they
-should be kept for future testing.
+The `Test User` tab now owns persistent test-only entries. The former test-entry
+preview and n8n Data Tables (`AAC Test Practices`, `AAC Test Emails`) are
+superseded, inactive/disconnected references; do not add new test entries
+there. Neither selection preview contains a mail, campaign-write, WordPress,
+or static-release action. The unified preview now contains the new tab mapping,
+but do not use it until access control and form execution are verified.
 
 Do not reactivate it for real campaigns until authoritative location/website
 and doctor assignments are entered in BigQuery, the revised export is installed
@@ -159,13 +147,10 @@ enabled. For example, the TEST001 editing base is
 different operation. No production location should be auto-published from a
 public URL inferred from the master sheet.
 
-The separate [AAC WordPress Site Map](https://docs.google.com/spreadsheets/d/1eP8YmH9vwCFXQ80_VjPXrGj6SGa1k3d2Ux00Xfcbw6A/edit)
-is the current collection point for production editing-site URLs. It has one
-row per currently eligible general-dentist location, keyed by the code from
-the Master Location List. Fill only its `WordPress editing URL` column (and
-optional notes); do not place credentials there. A dentist's primary-location
-code in the Employee Census joins to that same location code. This sheet is
-not yet synced into `practices.publisher_config_reference` or used by the
+The shared workbook's `Wordpress Sites` tab is the current collection point
+for production editing-site URLs, keyed by `Locations.Code`. Do not place
+credentials there. A dentist's primary-location code joins to that same code.
+This tab is not yet synced into `practices.publisher_config_reference` or used by the
 WordPress adapter, so filling it cannot trigger publishing or emails. Validate
 each entered URL and credential association before any BigQuery sync.
 

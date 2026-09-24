@@ -43,7 +43,9 @@ The marketing-review invitation is addressed to Nicole Dorsey
 (`ndorsey@apexdp.com`) and copies Brenna Allen (`ballen@apexdp.com`) and
 Jake Dold (`jdold@apexdp.com`). They receive the same secure review link;
 the first submitted decision controls the workflow. After approval, the
-link remains read-only for the other reviewers until it expires.
+link remains read-only for the other reviewers until it expires. The
+Prestonwood test campaign is an exception: its marketing invitation goes
+only to Jake, without copies.
 
 ## Prompts and project reference
 
@@ -53,12 +55,14 @@ link remains read-only for the other reviewers until it expires.
 | [Voice interviewer prompt](../prompts/voice-interviewer.md) | Clinician interview prompt, versioned in GitHub. |
 | [Article-generation prompt](../prompts/article-generation-master-prompt.md) | First-draft writing prompt. |
 | [Article-revision prompt](../prompts/article-revision-master-prompt.md) | Revises a draft after doctor feedback. |
+| [Marketing-revision prompt](../prompts/marketing-revision-master-prompt.md) | Revises an article after marketing requests changes; the next review returns to marketing, not the doctor. |
 | [Workflow inventory and operating notes](../n8n/README.md) | Exported n8n workflows and current setup notes. |
 | [Apex brand reference](BRANDING.md) | Visual tokens, assets, and where interview/review styling is maintained. |
 | [Marketing approval workflow](https://n8n.apexdentalautomation.com/workflow/X5X9i3hq0nokxd2U) | Records the review decision; approved TEST-1 articles start WordPress publishing. |
+| [Marketing revision workflow](https://n8n.apexdentalautomation.com/workflow/dM3OqBRiTT1xg5ub) | Handles TEST-1 marketing change requests and sends the new version for fresh marketing review. |
 | [WordPress publishing workflow](https://n8n.apexdentalautomation.com/workflow/kGd2YSJ2MVJwRld0) | Called after marketing approval for an exact TEST-1 article; static-site release remains separate. |
 | [Prestonwood WordPress draft pilot](https://n8n.apexdentalautomation.com/workflow/x8P9o3fLDyDMxJ4s) | Inactive, manual-only credential/subsite check; [internal draft 9987](https://apexparent.hostmanpowered.com/dfw-03/wp-admin/post.php?post=9987&action=edit) was verified. It does not send email or enable real-site article publishing. |
-| [Prestonwood approved-article pilot](PRESTONWOOD_APPROVED_ARTICLE_PILOT.md) | Exact-campaign, Jake-only test of interview through marketing approval and WordPress publishing | Test-specific workflow routing; not a general dentist launch or a static-site release. |
+| [Prestonwood approved-article pilot](PRESTONWOOD_APPROVED_ARTICLE_PILOT.md) | Exact-campaign, Jake-only test of interview through marketing approval and WordPress publishing; not a general dentist launch or a static-site release. |
 | [Shortcoder field guide](SHORTCODER.md) | Verified practice shortcode names and publishing limits. |
 | [Project architecture](PROJECT_ARCHITECTURE.md) | System design and build direction. |
 | [Known issues](KNOWN_ISSUES.md) | Documented low-priority interface and workflow issues. |

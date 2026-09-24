@@ -81,7 +81,7 @@
     },
     {
       "parameters": {
-        "content": "## AAC Phase 1I - Marketing Decision\n\nAccepts final approval or a written change request, prevents token replay, blocks publication when changes are requested, and records an auditable marketing event.\n\nConnect the existing **Google BigQuery account** credential, then activate the workflow.",
+        "content": "## AAC Phase 1I - Marketing Decision\n\nAccepts final approval or a written change request, prevents token replay, and records an auditable marketing event. Approval calls WordPress publishing. A change request calls workflow 20 to create a new version and returns directly to marketing review; publishing remains blocked until a fresh approval.\n\nUse the existing **Google BigQuery account** credential. The live workflow is active.",
         "height": 300,
         "width": 520
       },
@@ -129,6 +129,39 @@
     },
     {
       "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "marketing-change-request-only",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "CHANGES_REQUESTED",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        240,
+        240
+      ],
+      "id": "28f3e45a-34d1-427e-b148-80ccb0c962ea",
+      "name": "If1"
+    },
+    {
+      "parameters": {
         "workflowId": {
           "__rl": true,
           "value": "kGd2YSJ2MVJwRld0",
@@ -163,6 +196,43 @@
       ],
       "id": "47ed5b1a-c37d-4ef3-8c8c-827dee8a53f1",
       "name": "Publish Approved TEST-1 Article"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "dM3OqBRiTT1xg5ub",
+          "mode": "list",
+          "cachedResultName": "AAC - 20 - Revise Article from Marketing Feedback"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "article_id": "={{ $json.article_id }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "article_id",
+              "displayName": "article_id",
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        320,
+        240
+      ],
+      "id": "5e62a1c0-3d89-4675-a80d-3e501e18df0a",
+      "name": "Revise After Marketing Change Request"
     }
   ],
   "connections": {
@@ -204,6 +274,24 @@
         [
           {
             "node": "Publish Approved TEST-1 Article",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Revise After Marketing Change Request",
             "type": "main",
             "index": 0
           }

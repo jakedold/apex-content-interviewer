@@ -1,0 +1,334 @@
+{
+  "name": "AAC - 20 - Revise Article from Marketing Feedback",
+  "nodes": [
+    {
+      "id": "3ff1a63a-262f-4f56-b8b5-4b2c633aac71",
+      "name": "Run Marketing Revision Test",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -920,
+        100
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "f21ea104-aab0-44aa-a825-2136edeb0198",
+      "name": "Load Marketing Revision Request",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [
+        -680,
+        100
+      ],
+      "parameters": {
+        "authentication": "serviceAccount",
+        "projectId": {
+          "__rl": true,
+          "value": "apex-marketing-n8n",
+          "mode": "id"
+        },
+        "sqlQuery": "-- AAC Phase 1G\n-- Load the newest unprocessed marketing revision request and its complete source context.\nWITH latest_change_request AS (\n  SELECT approval_id, article_id, response, responded_at\n  FROM `apex-marketing-n8n.automated_article_creation.approvals`\n  WHERE approval_type = 'MARKETING_REVIEW'\n    AND status = 'CHANGES_REQUESTED'\n    AND LENGTH(TRIM(response)) > 0\n  QUALIFY ROW_NUMBER() OVER (PARTITION BY article_id ORDER BY responded_at DESC, requested_at DESC) = 1\n),\nrevision_history AS (\n  SELECT\n    article_id,\n    TO_JSON_STRING(ARRAY_AGG(STRUCT(\n      version_number,\n      version_type,\n      revision_instruction,\n      created_at\n    ) ORDER BY version_number)) AS revision_history_json\n  FROM `apex-marketing-n8n.automated_article_creation.article_versions`\n  GROUP BY article_id\n)\nSELECT\n  a.article_id,\n  a.interview_id,\n  a.campaign_id,\n  a.doctor_id,\n  a.practice_id,\n  a.current_version,\n  COALESCE(c.doctor_review_days, 5) AS doctor_review_days,\n  r.approval_id,\n  r.response AS revision_instruction,\n  r.responded_at,\n  v.content AS current_package_json,\n  i.transcript,\n  i.topic_id,\n  d.doctor_name,\n  d.credentials,\n  p.practice_name,\n  p.website_domain,\n  p.publisher_config_reference,\n  c.campaign_name,\n  c.campaign_month,\n  t.topic_title,\n  t.topic_description,\n  t.interview_guidance,\n  h.revision_history_json\nFROM `apex-marketing-n8n.automated_article_creation.articles` a\nJOIN latest_change_request r ON r.article_id = a.article_id\nJOIN `apex-marketing-n8n.automated_article_creation.article_versions` v\n  ON v.article_id = a.article_id AND v.version_number = a.current_version\nJOIN `apex-marketing-n8n.automated_article_creation.interviews` i ON i.interview_id = a.interview_id\nJOIN `apex-marketing-n8n.automated_article_creation.doctors` d ON d.doctor_id = a.doctor_id\nJOIN `apex-marketing-n8n.automated_article_creation.practices` p ON p.practice_id = a.practice_id\nJOIN `apex-marketing-n8n.automated_article_creation.campaigns` c ON c.campaign_id = a.campaign_id\nLEFT JOIN `apex-marketing-n8n.automated_article_creation.campaign_topics` t ON t.topic_id = i.topic_id\nLEFT JOIN revision_history h ON h.article_id = a.article_id\nWHERE a.status = 'MARKETING_CHANGES_REQUESTED'\n  AND a.article_id = @article_id\n  AND a.practice_id = 'practice_test_001'\nORDER BY r.responded_at DESC\nLIMIT 1;",
+        "options": {
+          "location": "US",
+          "queryParameters": {
+            "namedParameters": [
+              {
+                "name": "article_id",
+                "value": "={{ $json.article_id }}"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "dd775a7c-b446-4bbf-af44-a5d517b5df95",
+      "name": "Prepare Marketing Revision Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        100
+      ],
+      "parameters": {
+        "jsCode": "const revision = $json;\n\nif (!revision.article_id || !revision.current_package_json || !revision.revision_instruction) {\n  throw new Error('No unprocessed marketing revision request is available.');\n}\n\nlet currentPackage;\ntry {\n  currentPackage = typeof revision.current_package_json === 'string'\n    ? JSON.parse(revision.current_package_json)\n    : revision.current_package_json;\n} catch (error) {\n  throw new Error('The current article package is not valid JSON: ' + error.message);\n}\n\nconst schema = {\n  type: 'object',\n  additionalProperties: false,\n  required: ['article_html', 'review_document_markdown', 'metadata'],\n  properties: {\n    article_html: { type: 'string' },\n    review_document_markdown: { type: 'string' },\n    metadata: {\n      type: 'object',\n      additionalProperties: false,\n      required: ['h1', 'seo_title', 'slug', 'meta_description', 'primary_search_intent', 'word_count'],\n      properties: {\n        h1: { type: 'string' },\n        seo_title: { type: 'string' },\n        slug: { type: 'string' },\n        meta_description: { type: 'string' },\n        primary_search_intent: { type: 'string' },\n        word_count: { type: 'integer' }\n      }\n    }\n  }\n};\n\nconst isPrestonwoodPilot = revision.campaign_id === 'campaign_test_202609_aac_prestonwood_pilot_2026_09_23';\nif (isPrestonwoodPilot && (revision.practice_id !== 'practice_test_001' || String(revision.doctor_id || '').toLowerCase() !== 'doctor_jdold_apexdp_com')) {\n  throw new Error('The Prestonwood pilot requires the named test doctor and TEST001 practice.');\n}\nconst practiceContext = {\n  doctor_name: revision.doctor_name,\n  doctor_credentials: revision.credentials,\n  practice_name: isPrestonwoodPilot ? 'Prestonwood Family Dentistry' : revision.practice_name,\n  website_domain: isPrestonwoodPilot ? 'https://prestonwooddentistry.com' : revision.website_domain,\n  publisher_config_reference: revision.publisher_config_reference,\n  campaign_name: revision.campaign_name,\n  campaign_month: revision.campaign_month,\n  topic_title: revision.topic_title,\n  topic_description: revision.topic_description,\n  interview_guidance: revision.interview_guidance\n};\n\nconst input = [\n  'MARKETING REVISION REQUEST',\n  revision.revision_instruction,\n  '',\n  'CURRENT ARTICLE VERSION',\n  String(revision.current_version),\n  '',\n  'CURRENT PUBLICATION PACKAGE',\n  JSON.stringify(currentPackage, null, 2),\n  '',\n  'ORIGINAL INTERVIEW TRANSCRIPT',\n  revision.transcript || '',\n  '',\n  'PRIOR REVISION HISTORY',\n  revision.revision_history_json || '[]',\n  '',\n  'PRACTICE CONTEXT',\n  JSON.stringify(practiceContext, null, 2)\n].join('\\n');\n\nreturn [{\n  json: {\n    ...revision,\n    next_version: Number(revision.current_version) + 1,\n    openai_body: {\n      model: 'gpt-6-astra',\n      tools: [{ type: 'web_search' }],\n      include: ['web_search_call.action.sources'],\n      instructions: \"# Marketing Revision Master Prompt\\n\\nYou are revising an expert-authored dental article after a marketing reviewer\\nrequested changes. Return the same complete publication package schema as the\\ncurrent article: `article_html`, `review_document_markdown`, and `metadata`.\\n\\nUse the reviewer's written request first, then the original interview, the\\ncurrent version, prior revision history, and authoritative research where\\nfactual verification is needed. Revise the current article; do not start an\\nunrelated draft. Preserve the interviewed clinician's authentic first-person\\nvoice. Do not invent clinical experience, patient stories, personal opinions,\\npractice procedures, or credentials. If a requested change conflicts with the\\ninterview or reliable evidence, make only a defensible correction and explain\\nthe limitation in the review document.\\n\\nKeep all unaffected, accurate material. Preserve confirmed WordPress Shortcoder\\ntags exactly, especially `[sc name=\\\"practice_name\\\"][/sc]`; do not introduce\\nlegacy `{{...}}` publishing tokens, invent shortcode names, or use generic\\n`doctor_01`/`doctor_02` tags for the interviewed doctor. Production HTML must\\nremain clean, with the five metadata comments before the H1 and no internal\\nreview comments, script, style, or document wrapper tags.\\n\\nThe result must contain the full revised article HTML and full human-readable\\nreview document, not a diff. The review document's article wording must match\\nthe HTML. Update source notes, editorial notes, and review checklist wherever\\nthe revision changes them. This revision returns to marketing review directly;\\ndo not claim it received a new doctor approval.\\n\",\n      input,\n      text: {\n        format: {\n          type: 'json_schema',\n          name: 'revised_article_publication_package',\n          strict: true,\n          schema\n        }\n      },\n      max_output_tokens: 30000\n    }\n  }\n}];"
+      }
+    },
+    {
+      "id": "5217afd9-b4b7-4a35-b606-2f4cd3e89b14",
+      "name": "Revise Article for Marketing",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -100,
+        100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json.openai_body) }}",
+        "options": {
+          "timeout": 900000
+        }
+      }
+    },
+    {
+      "id": "4b4b52f6-39b2-426e-a1ab-6c89afb8c14a",
+      "name": "Validate Marketing Revision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        200,
+        100
+      ],
+      "parameters": {
+        "jsCode": "const response = $json;\nconst context = $('Prepare Marketing Revision Request').first().json;\n\nif (response.error) {\n  throw new Error('OpenAI article revision failed: ' + JSON.stringify(response.error));\n}\nif (response.status && response.status !== 'completed') {\n  throw new Error('OpenAI revision response did not complete. Status: ' + response.status);\n}\n\nconst message = (response.output || []).find((item) => item.type === 'message');\nconst outputText = message?.content?.find((item) => item.type === 'output_text')?.text;\nif (!outputText) {\n  throw new Error('OpenAI revision response did not contain structured output text.');\n}\n\nlet publicationPackage;\ntry {\n  publicationPackage = JSON.parse(outputText);\n} catch (error) {\n  throw new Error('Revised article package was not valid JSON: ' + error.message);\n}\n\nconst html = publicationPackage.article_html || '';\nconst review = publicationPackage.review_document_markdown || '';\nif (!html.trim() || !html.startsWith('<!-- SEO_TITLE:') || !html.includes('<h1>')) {\n  throw new Error('Revised production HTML is empty or missing required metadata and H1.');\n}\nif (/<(?:html|head|body|script|style)(?:\\s|>)/i.test(html)) {\n  throw new Error('Revised production HTML contains a forbidden wrapper or executable/style tag.');\n}\nif (/<!--\\s*(?:FACT CHECK|INTERVIEW BASIS|REVIEW NOTE|SOURCE|CLINICAL REVIEW|RESEARCH ADDITION)/i.test(html)) {\n  throw new Error('Revised production HTML contains internal review comments.');\n}\nif (review.length < 1000) {\n  throw new Error('Revised review document is unexpectedly short.');\n}\n\nconst packageForStorage = {\n  article_html: html,\n  review_document_markdown: review,\n  metadata: publicationPackage.metadata,\n  openai_response_id: response.id,\n  generated_at: new Date().toISOString(),\n  revised_from_version: Number(context.current_version),\n  revision_instruction: context.revision_instruction\n};\n\nreturn [{\n  json: {\n    article_id: context.article_id,\n    interview_id: context.interview_id,\n    campaign_id: context.campaign_id,\n    doctor_id: context.doctor_id,\n    practice_id: context.practice_id,\n    approval_id: context.approval_id,\n    current_version: Number(context.current_version),\n    next_version: Number(context.next_version),\n    doctor_review_days: Number(context.doctor_review_days || 5),\n    revision_instruction: context.revision_instruction,\n    package_json: JSON.stringify(packageForStorage),\n    openai_response_id: response.id\n  }\n}];"
+      }
+    },
+    {
+      "id": "fe90b240-df1a-4680-aef4-5c2ebef3e2e5",
+      "name": "Persist Marketing Revision",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [
+        500,
+        100
+      ],
+      "parameters": {
+        "authentication": "serviceAccount",
+        "projectId": {
+          "__rl": true,
+          "value": "apex-marketing-n8n",
+          "mode": "id"
+        },
+        "sqlQuery": "-- Preserve the approved doctor version, create a distinct marketing revision, and return it to marketing only.\nASSERT (\n  SELECT COUNT(*) FROM `apex-marketing-n8n.automated_article_creation.articles`\n  WHERE article_id = @article_id AND status = 'MARKETING_CHANGES_REQUESTED'\n    AND current_version = CAST(@current_version AS INT64)\n) = 1 AS 'The marketing change request was already processed or its version changed.';\n\nMERGE `apex-marketing-n8n.automated_article_creation.article_versions` T\nUSING (SELECT @article_id AS article_id, CAST(@next_version AS INT64) AS version_number,\n  'AI_MARKETING_REVISION' AS version_type, @package_json AS content,\n  @revision_instruction AS revision_instruction, CURRENT_TIMESTAMP() AS created_at,\n  'n8n:marketing-revision' AS created_by) S\nON T.article_id = S.article_id AND T.version_number = S.version_number\nWHEN NOT MATCHED THEN INSERT\n  (article_id, version_number, version_type, content, revision_instruction, created_at, created_by)\nVALUES (S.article_id, S.version_number, S.version_type, S.content, S.revision_instruction, S.created_at, S.created_by);\n\nUPDATE `apex-marketing-n8n.automated_article_creation.articles`\nSET status = 'MARKETING_REVIEW', current_version = CAST(@next_version AS INT64),\n  marketing_approved_at = NULL\nWHERE article_id = @article_id AND status = 'MARKETING_CHANGES_REQUESTED'\n  AND current_version = CAST(@current_version AS INT64);\n\nUPDATE `apex-marketing-n8n.automated_article_creation.campaign_doctors`\nSET status = 'MARKETING_REVIEW', updated_at = CURRENT_TIMESTAMP()\nWHERE campaign_id = @campaign_id AND doctor_id = @doctor_id;\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.approvals`\n(approval_id, article_id, approval_type, status, requested_at, deadline)\nVALUES (GENERATE_UUID(), @article_id, 'MARKETING_REVIEW', 'PENDING',\n  CURRENT_TIMESTAMP(), TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 30 DAY));\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.workflow_events`\n(event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id, payload)\nVALUES (GENERATE_UUID(), 'article', @article_id, 'article.revised', CURRENT_TIMESTAMP(),\n  'n8n+openai', NULL, TO_JSON(STRUCT(CAST(@current_version AS INT64) AS previous_version,\n  CAST(@next_version AS INT64) AS version_number, 'AI_MARKETING_REVISION' AS version_type,\n  @approval_id AS approval_id, @openai_response_id AS openai_response_id)));\n\nSELECT @article_id AS article_id, @doctor_id AS doctor_id, @campaign_id AS campaign_id,\n  CAST(@next_version AS INT64) AS current_version, 'MARKETING_REVIEW' AS status;",
+        "options": {
+          "location": "US",
+          "queryParameters": {
+            "namedParameters": [
+              {
+                "name": "article_id",
+                "value": "={{ $json.article_id }}"
+              },
+              {
+                "name": "campaign_id",
+                "value": "={{ $json.campaign_id }}"
+              },
+              {
+                "name": "doctor_id",
+                "value": "={{ $json.doctor_id }}"
+              },
+              {
+                "name": "approval_id",
+                "value": "={{ $json.approval_id }}"
+              },
+              {
+                "name": "current_version",
+                "value": "={{ $json.current_version }}"
+              },
+              {
+                "name": "next_version",
+                "value": "={{ $json.next_version }}"
+              },
+              {
+                "name": "revision_instruction",
+                "value": "={{ $json.revision_instruction }}"
+              },
+              {
+                "name": "package_json",
+                "value": "={{ $json.package_json }}"
+              },
+              {
+                "name": "openai_response_id",
+                "value": "={{ $json.openai_response_id }}"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "381d978d-6e5d-4e77-aa55-d9e33c4a8c9e",
+      "name": "Marketing Revision Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -920,
+        -460
+      ],
+      "parameters": {
+        "content": "Marketing change request → new immutable AI_MARKETING_REVISION → fresh marketing approval → marketing invitation. The doctor is not re-asked. Only the exact TEST001 article selected by the caller may run. WordPress publishing remains behind a new marketing approval."
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "10 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "76d2b5a0-5695-4551-b737-0b2a572d2d19",
+      "name": "Marketing Revision Schedule (Deactivated)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -920,
+        260
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "article_id"
+            }
+          ]
+        }
+      },
+      "id": "783a94f4-c7e9-4665-b539-8a3321ee108e",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -760,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "L6fSarhGYhUmogmE",
+          "mode": "list",
+          "cachedResultName": "AAC - 18 - Send Marketing Review Invitation"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "article_id": "={{ $json.article_id }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "article_id",
+              "displayName": "article_id",
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "ac95fd8e-1cbc-43a3-a099-5434922d46c7",
+      "name": "Send Revised Draft for Marketing Review",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1620,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Load Marketing Revision Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Marketing Revision Test": {
+      "main": [
+        [
+          {
+            "node": "Load Marketing Revision Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Marketing Revision Request": {
+      "main": [
+        [
+          {
+            "node": "Prepare Marketing Revision Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Marketing Revision Request": {
+      "main": [
+        [
+          {
+            "node": "Revise Article for Marketing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Revise Article for Marketing": {
+      "main": [
+        [
+          {
+            "node": "Validate Marketing Revision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Marketing Revision": {
+      "main": [
+        [
+          {
+            "node": "Persist Marketing Revision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Persist Marketing Revision": {
+      "main": [
+        [
+          {
+            "node": "Send Revised Draft for Marketing Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "versionId": "122ad7ef-782c-472c-8d36-87459fe2c864",
+  "meta": null,
+  "tags": []
+}

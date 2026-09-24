@@ -28,6 +28,7 @@ Version-controlled workflow exports:
 - `17-doctor-review-reminders.json`
 - `18-send-marketing-review-invitation.json`
 - `19-prestonwood-wordpress-draft-pilot.json` — isolated manual credential/subsite check; creates only a fixed internal draft at Prestonwood and is not part of the article pipeline
+- `20-revise-article-from-marketing-feedback.json` — marketing-requested revision; new immutable version and fresh marketing review without doctor reapproval
 
 On September 23, 2026, the [inactive Prestonwood draft pilot](https://n8n.apexdentalautomation.com/workflow/x8P9o3fLDyDMxJ4s)
 ran manually using the existing `Wordpress account` credential. Its
@@ -133,6 +134,7 @@ or trigger the Headless Hostman static-site release.
 The test-only article stages now hand off when the preceding stage finishes:
 interview completion → first draft → doctor review invitation; doctor approval
 → marketing invitation; doctor change request → revised draft → new doctor
+review invitation; marketing change request → revised draft → fresh marketing
 review invitation; marketing approval → WordPress publication. The review
 portal responds before the next stage runs. Invalid or expired decisions do
 not launch another stage. Each sub-workflow selects the exact article or
@@ -156,7 +158,10 @@ time-based; it is distinct from polling for completed stages.
 The marketing-review workflows route each doctor-approved article according
 to its campaign setting. Required reviews receive a separate hashed one-time
 link, and the marketing portal can either grant final approval or record a
-written change request that blocks publishing. The event-driven test route
+written change request that blocks publishing. For the TEST-1 route, workflow
+20 revises the current package, records a new article version, and sends a new
+marketing review invitation. It does not ask the doctor to approve again.
+The event-driven test route
 currently sends only articles requiring marketing approval. The
 no-marketing-review route still needs a separate publishing handoff before it
 can be used without manual follow-up.

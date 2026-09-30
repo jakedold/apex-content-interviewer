@@ -1,0 +1,129 @@
+{
+  "name": "AAC - 24 - Admin Command Router",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "aac/admin/command",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "receive-admin-command",
+      "name": "Receive Authenticated Admin Command",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-760, 0],
+      "webhookId": "5ec73bd6-2412-4a1a-bff0-acde00000024"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || {};\nconst required = (name) => { const value = String(body[name] ?? '').trim(); if (!value) throw new Error('Missing ' + name); return value; };\nconst action = required('action');\nconst actorEmail = required('actor_email').toLowerCase();\nif (!/^[^\\s@]+@apexdp\\.com$/i.test(actorEmail)) throw new Error('Administrator identity must be an Apex Workspace account.');\nconst idempotencyKey = required('idempotency_key');\nif (!/^[A-Za-z0-9_-]{16,100}$/.test(idempotencyKey)) throw new Error('Invalid idempotency key.');\nif (action === 'approve_for_doctor') {\n  const reason = required('reason');\n  if (reason.length < 12 || reason.length > 2000) throw new Error('Approval evidence must be 12–2000 characters.');\n  return [{ json: { action, actor_email: actorEmail, idempotency_key: idempotencyKey, article_id: required('article_id'), campaign_id: required('campaign_id'), doctor_id: required('doctor_id'), expected_status: required('expected_status'), expected_version: Number(body.expected_version), reason } }];\n}\nif (action === 'launch_campaign') {\n  const topics = Array.isArray(body.topics) ? body.topics.map((topic) => ({ title: String(topic?.title || '').trim() })) : [];\n  const doctorIds = Array.isArray(body.doctor_ids) ? [...new Set(body.doctor_ids.map((id) => String(id).trim()).filter(Boolean))] : [];\n  const campaignName = required('campaign_name');\n  const month = required('campaign_month');\n  if (!/^\\d{4}-\\d{2}$/.test(month) || topics.length !== 3 || topics.some((topic) => !topic.title) || new Set(topics.map((topic) => topic.title.toLowerCase())).size !== 3 || !doctorIds.length) throw new Error('Campaign month, three distinct topics, and at least one doctor are required.');\n  const slug = campaignName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 48);\n  const campaignId = 'campaign_' + month.replace('-', '') + '_' + slug;\n  return [{ json: { action, actor_email: actorEmail, idempotency_key: idempotencyKey, campaign_id: campaignId, campaign_name: campaignName, campaign_month: month + '-01', practice_id: required('practice_id'), topics_json: JSON.stringify(topics), doctor_ids_json: JSON.stringify(doctorIds) } }];\n}\nthrow new Error('Unsupported administrative action.');"
+      },
+      "id": "validate-admin-command",
+      "name": "Validate and Normalize Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-540, 0]
+    },
+    {
+      "parameters": {
+        "rules": { "values": [
+          { "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 }, "conditions": [{ "leftValue": "={{ $json.action }}", "rightValue": "approve_for_doctor", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" }, "renameOutput": true, "outputKey": "approval" },
+          { "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 }, "conditions": [{ "leftValue": "={{ $json.action }}", "rightValue": "launch_campaign", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" }, "renameOutput": true, "outputKey": "campaign" }
+        ] },
+        "options": { "fallbackOutput": "extra" }
+      },
+      "id": "route-command",
+      "name": "Route Narrow Command",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [-300, 0]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "projectId": { "__rl": true, "value": "apex-marketing-n8n", "mode": "id" },
+        "sqlQuery": "CREATE TABLE IF NOT EXISTS `apex-marketing-n8n.automated_article_creation.admin_commands` (\n  idempotency_key STRING NOT NULL, action STRING NOT NULL, actor_email STRING NOT NULL,\n  entity_id STRING NOT NULL, requested_at TIMESTAMP NOT NULL, completed_at TIMESTAMP, payload JSON\n);\nASSERT NOT EXISTS (SELECT 1 FROM `apex-marketing-n8n.automated_article_creation.admin_commands` WHERE idempotency_key = @idempotency_key) AS 'This command was already processed.';\nASSERT (SELECT COUNT(*) FROM `apex-marketing-n8n.automated_article_creation.articles` WHERE article_id = @article_id AND campaign_id = @campaign_id AND doctor_id = @doctor_id AND status = @expected_status AND current_version = CAST(@expected_version AS INT64)) = 1 AS 'The article changed or is no longer waiting for doctor approval.';\nBEGIN TRANSACTION;\nUPDATE `apex-marketing-n8n.automated_article_creation.approvals` SET status = 'APPROVED', responded_at = CURRENT_TIMESTAMP(), response = @reason\nWHERE article_id = @article_id AND approval_type = 'DOCTOR_REVIEW' AND status = 'PENDING';\nUPDATE `apex-marketing-n8n.automated_article_creation.article_review_links` SET status = 'SUPERSEDED', responded_at = CURRENT_TIMESTAMP()\nWHERE article_id = @article_id AND status IN ('READY', 'OPENED');\nUPDATE `apex-marketing-n8n.automated_article_creation.articles` SET status = 'DOCTOR_APPROVED', doctor_approved_at = CURRENT_TIMESTAMP()\nWHERE article_id = @article_id AND status = @expected_status AND current_version = CAST(@expected_version AS INT64);\nUPDATE `apex-marketing-n8n.automated_article_creation.campaign_doctors` SET status = 'DOCTOR_APPROVED', updated_at = CURRENT_TIMESTAMP()\nWHERE campaign_id = @campaign_id AND doctor_id = @doctor_id;\nINSERT INTO `apex-marketing-n8n.automated_article_creation.workflow_events`\n(event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id, payload)\nVALUES (GENERATE_UUID(), 'article', @article_id, 'doctor.approved_by_admin', CURRENT_TIMESTAMP(), 'admin_dashboard', NULL,\n  TO_JSON(STRUCT(@actor_email AS actor_email, @reason AS evidence, CAST(@expected_version AS INT64) AS version_number, @idempotency_key AS idempotency_key)));\nINSERT INTO `apex-marketing-n8n.automated_article_creation.admin_commands`\n(idempotency_key, action, actor_email, entity_id, requested_at, completed_at, payload)\nVALUES (@idempotency_key, 'approve_for_doctor', @actor_email, @article_id, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP(),\n  TO_JSON(STRUCT(@campaign_id AS campaign_id, @doctor_id AS doctor_id, @reason AS evidence, CAST(@expected_version AS INT64) AS version_number)));\nCOMMIT TRANSACTION;\nSELECT TRUE AS ok, 'DOCTOR_APPROVED' AS status, @article_id AS article_id;",
+        "options": { "location": "US", "queryParameters": { "namedParameters": [
+          { "name": "idempotency_key", "value": "={{ $json.idempotency_key }}" }, { "name": "article_id", "value": "={{ $json.article_id }}" },
+          { "name": "campaign_id", "value": "={{ $json.campaign_id }}" }, { "name": "doctor_id", "value": "={{ $json.doctor_id }}" },
+          { "name": "expected_status", "value": "={{ $json.expected_status }}" }, { "name": "expected_version", "value": "={{ $json.expected_version }}" },
+          { "name": "reason", "value": "={{ $json.reason }}" }, { "name": "actor_email", "value": "={{ $json.actor_email }}" }
+        ] } }
+      },
+      "id": "record-admin-approval",
+      "name": "Record Audited Doctor Approval",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [-40, -140]
+    },
+    {
+      "parameters": {
+        "workflowId": { "__rl": true, "value": "OYSKXW1BmAApEvv0", "mode": "list", "cachedResultName": "AAC - 12 - Route to Marketing Review" },
+        "workflowInputs": { "mappingMode": "defineBelow", "value": { "article_id": "={{ $json.article_id }}" }, "matchingColumns": [], "schema": [{ "id": "article_id", "displayName": "article_id", "type": "string" }], "attemptToConvertTypes": false, "convertFieldsToString": true },
+        "options": { "waitForSubWorkflow": true }
+      },
+      "id": "continue-approved-article",
+      "name": "Continue Approved Article",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [200, -140]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "projectId": { "__rl": true, "value": "apex-marketing-n8n", "mode": "id" },
+        "sqlQuery": "CREATE TABLE IF NOT EXISTS `apex-marketing-n8n.automated_article_creation.admin_commands` (\n  idempotency_key STRING NOT NULL, action STRING NOT NULL, actor_email STRING NOT NULL,\n  entity_id STRING NOT NULL, requested_at TIMESTAMP NOT NULL, completed_at TIMESTAMP, payload JSON\n);\nASSERT NOT EXISTS (SELECT 1 FROM `apex-marketing-n8n.automated_article_creation.admin_commands` WHERE idempotency_key = @idempotency_key) AS 'This command was already processed.';\nASSERT NOT EXISTS (SELECT 1 FROM `apex-marketing-n8n.automated_article_creation.campaigns` WHERE campaign_id = @campaign_id) AS 'This campaign already exists.';\nASSERT (SELECT COUNT(*) FROM `apex-marketing-n8n.automated_article_creation.practices` WHERE practice_id = @practice_id AND active = TRUE) = 1 AS 'The selected practice is not active.';\nASSERT (SELECT COUNT(*) FROM `apex-marketing-n8n.automated_article_creation.doctors` WHERE doctor_id IN UNNEST(JSON_VALUE_ARRAY(PARSE_JSON(@doctor_ids_json))) AND practice_id = @practice_id AND active = TRUE) = ARRAY_LENGTH(JSON_VALUE_ARRAY(PARSE_JSON(@doctor_ids_json))) AS 'Every selected doctor must be active at the selected practice.';\nASSERT ARRAY_LENGTH(JSON_QUERY_ARRAY(PARSE_JSON(@topics_json))) = 3 AS 'Exactly three topics are required.';\nBEGIN TRANSACTION;\nINSERT INTO `apex-marketing-n8n.automated_article_creation.campaigns`\n(campaign_id, campaign_name, campaign_month, status, doctor_review_days, require_marketing_approval, created_at, launched_at)\nVALUES (@campaign_id, @campaign_name, DATE(@campaign_month), 'LAUNCHED', 5, TRUE, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP());\nINSERT INTO `apex-marketing-n8n.automated_article_creation.campaign_topics`\n(topic_id, campaign_id, topic_title, topic_description, interview_guidance, topic_sort_order, active, created_at)\nSELECT CONCAT(@campaign_id, '_topic_', CAST(offset + 1 AS STRING)), @campaign_id, JSON_VALUE(topic, '$.title'), JSON_VALUE(topic, '$.title'), NULL, offset + 1, TRUE, CURRENT_TIMESTAMP()\nFROM UNNEST(JSON_QUERY_ARRAY(PARSE_JSON(@topics_json))) topic WITH OFFSET;\nINSERT INTO `apex-marketing-n8n.automated_article_creation.campaign_doctors`\n(campaign_id, doctor_id, status, invited_at, created_at, updated_at)\nSELECT @campaign_id, doctor_id, 'READY', NULL, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP()\nFROM UNNEST(JSON_VALUE_ARRAY(PARSE_JSON(@doctor_ids_json))) doctor_id;\nINSERT INTO `apex-marketing-n8n.automated_article_creation.workflow_events`\n(event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id, payload)\nVALUES (GENERATE_UUID(), 'campaign', @campaign_id, 'campaign.started_by_admin', CURRENT_TIMESTAMP(), 'admin_dashboard', NULL,\n  TO_JSON(STRUCT(@actor_email AS actor_email, @practice_id AS practice_id, @idempotency_key AS idempotency_key)));\nINSERT INTO `apex-marketing-n8n.automated_article_creation.admin_commands`\n(idempotency_key, action, actor_email, entity_id, requested_at, completed_at, payload)\nVALUES (@idempotency_key, 'launch_campaign', @actor_email, @campaign_id, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP(),\n  TO_JSON(STRUCT(@practice_id AS practice_id, @topics_json AS topics_json, @doctor_ids_json AS doctor_ids_json)));\nCOMMIT TRANSACTION;\nSELECT TRUE AS ok, 'LAUNCHED' AS status, @campaign_id AS campaign_id;",
+        "options": { "location": "US", "queryParameters": { "namedParameters": [
+          { "name": "idempotency_key", "value": "={{ $json.idempotency_key }}" }, { "name": "campaign_id", "value": "={{ $json.campaign_id }}" },
+          { "name": "campaign_name", "value": "={{ $json.campaign_name }}" }, { "name": "campaign_month", "value": "={{ $json.campaign_month }}" },
+          { "name": "practice_id", "value": "={{ $json.practice_id }}" }, { "name": "topics_json", "value": "={{ $json.topics_json }}" },
+          { "name": "doctor_ids_json", "value": "={{ $json.doctor_ids_json }}" }, { "name": "actor_email", "value": "={{ $json.actor_email }}" }
+        ] } }
+      },
+      "id": "launch-admin-campaign",
+      "name": "Create Audited Campaign",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [-40, 140]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ { ok: true, action: 'approve_for_doctor', status: $json.next_status || $json.status, article_id: $json.article_id } }}", "options": {} },
+      "id": "respond-approval",
+      "name": "Return Approval Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [440, -140]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ { ok: true, action: 'launch_campaign', status: $json.status, campaign_id: $json.campaign_id } }}", "options": {} },
+      "id": "respond-campaign",
+      "name": "Return Campaign Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [200, 140]
+    },
+    {
+      "parameters": { "content": "## AAC Admin Command Boundary\n\nPrivate webhook called only by the Cloudflare Worker. Attach a Header Auth credential that validates `X-AAC-Admin-Secret`, plus the existing BigQuery credential. Commands are idempotent, state-checked, and audited before n8n continues orchestration.\n\nActivating this workflow enables actions that can send invitations or advance approved content. Test with a test campaign before production use.", "height": 300, "width": 430 },
+      "id": "admin-command-notes",
+      "name": "Admin Command Security Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-760, -400]
+    }
+  ],
+  "connections": {
+    "Receive Authenticated Admin Command": { "main": [[{ "node": "Validate and Normalize Command", "type": "main", "index": 0 }]] },
+    "Validate and Normalize Command": { "main": [[{ "node": "Route Narrow Command", "type": "main", "index": 0 }]] },
+    "Route Narrow Command": { "main": [[{ "node": "Record Audited Doctor Approval", "type": "main", "index": 0 }], [{ "node": "Create Audited Campaign", "type": "main", "index": 0 }]] },
+    "Record Audited Doctor Approval": { "main": [[{ "node": "Continue Approved Article", "type": "main", "index": 0 }]] },
+    "Continue Approved Article": { "main": [[{ "node": "Return Approval Result", "type": "main", "index": 0 }]] },
+    "Create Audited Campaign": { "main": [[{ "node": "Return Campaign Result", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "092b2f93-99d6-46dc-997a-acde00000024",
+  "meta": { "templateCredsSetupCompleted": false },
+  "tags": []
+}

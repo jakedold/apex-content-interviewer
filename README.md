@@ -27,6 +27,8 @@ Doctors open a secure topic-specific link, complete an OpenAI Realtime voice int
 
 The interview UI includes microphone startup, visible loading/thinking/speaking states, pause/resume, transcript capture, and completion persistence. The review UI sanitizes the stored article HTML with an explicit element and link allowlist before rendering it.
 
+The marketing control center lives at `/admin`. It reads campaign, doctor, article, workflow event, and communication state directly from BigQuery after validating Cloudflare Access identity. Setup and activation requirements are documented in [Admin dashboard](docs/ADMIN_DASHBOARD.md).
+
 ## Local development
 
 ```bash

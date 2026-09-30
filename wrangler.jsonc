@@ -2,14 +2,22 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "apex-content-interviewer",
   "main": "./worker/index.ts",
-  "compatibility_date": "2026-09-20",
+  // Latest date supported by the currently locked local Workers runtime.
+  "compatibility_date": "2026-09-25",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
     "binding": "ASSETS",
     "not_found_handling": "single-page-application"
   },
   "vars": {
-    "N8N_BASE_URL": "https://n8n.apexdentalautomation.com"
+    "N8N_BASE_URL": "https://n8n.apexdentalautomation.com",
+    "ADMIN_ACCESS_TEAM_DOMAIN": "curly-meadow-fb13.cloudflareaccess.com",
+    "ADMIN_ACCESS_AUD": "d72141bb586cf179ee8111f4b1d7f734eea3e2a85c796b3aa519c3c68edfb6ee",
+    "BQ_PROJECT_ID": "apex-marketing-n8n",
+    "BQ_DATASET": "automated_article_creation",
+    "BQ_LOCATION": "US",
+    "ADMIN_ACTION_EMAILS": "jdold@apexdp.com",
+    "ADMIN_COMMAND_PATH": "/webhook/aac/admin/command"
   },
   "observability": {
     "enabled": true

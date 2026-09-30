@@ -579,7 +579,9 @@ async function initializeMarketingReview(): Promise<void> {
   }
 }
 
-if (/^\/marketing-review\//.test(window.location.pathname)) {
+if (/^\/admin(?:\/|$)/.test(window.location.pathname)) {
+  void import('./admin').then(({ initializeAdmin }) => initializeAdmin());
+} else if (/^\/marketing-review\//.test(window.location.pathname)) {
   void initializeMarketingReview();
 } else if (/^\/review\//.test(window.location.pathname)) {
   void initializeReview();

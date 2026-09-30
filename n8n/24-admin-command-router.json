@@ -288,7 +288,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { ok: true, action: 'launch_campaign', status: $json.status, campaign_id: $json.campaign_id } }}",
+        "responseBody": "={{ { ok: true, action: 'launch_campaign', status: $json.status, campaign_id: $json.campaign_id, invitation_send_at: $json.invitation_send_at || null } }}",
         "options": {}
       },
       "id": "respond-campaign",

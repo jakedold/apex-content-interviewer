@@ -628,12 +628,12 @@ function renderDashboard(data: AdminResponse): void {
   document.querySelector<HTMLButtonElement>('#campaign-dialog-close')?.addEventListener('click', () => campaignDialog?.close());
   document.querySelector<HTMLButtonElement>('#cancel-campaign')?.addEventListener('click', () => campaignDialog?.close());
 
-  const campaignPractice = document.querySelector<HTMLSelectElement>('#campaign-practice');
-  const campaignAudience = document.querySelector<HTMLSelectElement>('#campaign-audience');
-  const campaignSendMode = document.querySelector<HTMLSelectElement>('#campaign-send-mode');
+  const campaignPractice = document.querySelector('#campaign-practice') as HTMLSelectElement | null;
+  const campaignAudience = document.querySelector('#campaign-audience') as HTMLSelectElement | null;
+  const campaignSendMode = document.querySelector('#campaign-send-mode') as HTMLSelectElement | null;
   const scheduleFields = document.querySelector<HTMLElement>('#campaign-schedule-fields');
   const scheduledLocal = document.querySelector<HTMLInputElement>('#campaign-scheduled-local');
-  const campaignTimezone = document.querySelector<HTMLSelectElement>('#campaign-timezone');
+  const campaignTimezone = document.querySelector('#campaign-timezone') as HTMLSelectElement | null;
   const existingRecipients = document.querySelector<HTMLElement>('#existing-recipient-section');
   const demoRecipients = document.querySelector<HTMLElement>('#demo-recipient-section');
   const demoRecipientTextarea = document.querySelector<HTMLTextAreaElement>('#campaign-demo-recipients');

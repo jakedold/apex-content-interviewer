@@ -113,3 +113,22 @@ The code is complete up to environment activation. An authorized administrator m
 5. A deployment after the placeholders and secret are configured.
 
 No D1 database is used or configured.
+
+## Test campaign launcher
+
+The dashboard campaign builder intentionally mirrors the active n8n test-only launcher before production dentist launch is enabled.
+
+For each campaign:
+
+1. Choose the **Test users only** audience.
+2. Enter the campaign name and month.
+3. Prepare exactly three distinct topics.
+4. Upload one approved featured image per topic to the Apex Parent central Media Library:
+   `https://apexparent.hostmanpowered.com/wp-admin/upload.php?mlo-category=all-files`
+5. For each topic, record the direct `https://apexparent.hostmanpowered.com/wp-content/uploads/...` file URL, useful alt text, source type, and rights/source reference.
+6. Choose the verified TEST001 practice and one or more active test recipients.
+7. Type `SEND TEST INVITATIONS` exactly before launch.
+
+The dashboard and n8n command workflow both validate these requirements. Campaign launch stores the image provenance with the topic in BigQuery before any invitation can be dispatched.
+
+The legacy workflow named **AAC - 02 - Create Topic Interview Links** is an old manual POC and should remain inactive. It is not the scheduled invitation workflow. The scheduled sender is **AAC - 02 - Dispatch Campaign Invitations**.

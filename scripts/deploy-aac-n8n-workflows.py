@@ -104,6 +104,28 @@ def credential_signature(credentials: dict[str, Any]) -> str:
     return json.dumps(credentials, sort_keys=True, separators=(",", ":"))
 
 
+def align_bigquery_authentication(node: dict[str, Any]) -> None:
+    """Keep the BigQuery auth selector compatible with the preserved credential."""
+    if node.get("type") != "n8n-nodes-base.googleBigQuery":
+        return
+    credentials = node.get("credentials") or {}
+    parameters = node.setdefault("parameters", {})
+    if "googleBigQueryOAuth2Api" in credentials:
+        parameters["authentication"] = "oAuth2"
+    elif "googleApi" in credentials:
+        parameters["authentication"] = "serviceAccount"
+
+
+def has_compatible_credentials(node: dict[str, Any]) -> bool:
+    credentials = node.get("credentials") or {}
+    if node.get("type") != "n8n-nodes-base.googleBigQuery":
+        return bool(credentials)
+    authentication = node.get("parameters", {}).get("authentication")
+    required = "googleApi" if authentication == "serviceAccount" else "googleBigQueryOAuth2Api"
+    binding = credentials.get(required)
+    return isinstance(binding, dict) and bool(binding.get("id"))
+
+
 def prepare_desired(
     desired: dict[str, Any],
     live: dict[str, Any],
@@ -140,6 +162,8 @@ def prepare_desired(
             elif node_type in unique_type_credentials:
                 node["credentials"] = copy.deepcopy(unique_type_credentials[node_type])
 
+        align_bigquery_authentication(node)
+
         if node_type == "n8n-nodes-base.executeWorkflow":
             workflow_id = node.get("parameters", {}).get("workflowId")
             if isinstance(workflow_id, dict):
@@ -152,7 +176,7 @@ def prepare_desired(
     # whenever a desired node of that same type exists.
     live_credential_types = set(type_credentials)
     for node in desired.get("nodes", []):
-        if node.get("type") in live_credential_types and not node.get("credentials"):
+        if node.get("type") in live_credential_types and not has_compatible_credentials(node):
             raise RuntimeError(
                 f"Could not safely determine credentials for node "
                 f"'{node.get('name')}' ({node.get('type')}) in {desired.get('name')}."

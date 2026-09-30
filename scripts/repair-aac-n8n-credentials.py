@@ -6,8 +6,8 @@ references (credential id/name metadata) from other live workflows that already 
 the same node type/authentication mode.
 
 It backs up the four target workflows before changing anything, updates them in
-place, restores their active state, and verifies that credential-bearing nodes are
-bound afterwards.
+place, restores their active state, and verifies that each node's authentication
+mode points at the credential slot n8n will actually execute.
 """
 
 from __future__ import annotations
@@ -105,12 +105,45 @@ def node_requires_credentials(node: dict[str, Any]) -> bool:
     return False
 
 
-def credential_key(node: dict[str, Any]) -> tuple[str, str]:
+def expected_credential_slot(node: dict[str, Any]) -> str | None:
     node_type = str(node.get("type", ""))
+    authentication = str(node.get("parameters", {}).get("authentication") or "")
+    if node_type == "n8n-nodes-base.googleBigQuery":
+        return "googleApi" if authentication == "serviceAccount" else "googleBigQueryOAuth2Api"
+    if node_type == "n8n-nodes-base.gmail":
+        return "gmailOAuth2"
     if node_type == "n8n-nodes-base.webhook":
-        auth = str(node.get("parameters", {}).get("authentication") or "")
-        return node_type, auth
-    return node_type, ""
+        return {
+            "headerAuth": "httpHeaderAuth",
+            "basicAuth": "httpBasicAuth",
+            "jwtAuth": "jwtAuth",
+        }.get(authentication)
+    return None
+
+
+def has_usable_binding(node: dict[str, Any]) -> bool:
+    slot = expected_credential_slot(node)
+    binding = (node.get("credentials") or {}).get(slot) if slot else None
+    return isinstance(binding, dict) and bool(binding.get("id"))
+
+
+def align_bigquery_authentication(node: dict[str, Any]) -> bool:
+    """Align BigQuery's auth selector with an existing credential reference."""
+    if node.get("type") != "n8n-nodes-base.googleBigQuery" or has_usable_binding(node):
+        return False
+    credentials = node.get("credentials") or {}
+    parameters = node.setdefault("parameters", {})
+    if isinstance(credentials.get("googleBigQueryOAuth2Api"), dict):
+        parameters["authentication"] = "oAuth2"
+        return has_usable_binding(node)
+    if isinstance(credentials.get("googleApi"), dict):
+        parameters["authentication"] = "serviceAccount"
+        return has_usable_binding(node)
+    return False
+
+
+def credential_key(node: dict[str, Any]) -> tuple[str, str]:
+    return str(node.get("type", "")), expected_credential_slot(node) or ""
 
 
 def main() -> int:
@@ -142,10 +175,11 @@ def main() -> int:
         if workflow.get("name") in TARGET_NAMES:
             continue
         for node in workflow.get("nodes", []):
-            credentials = node.get("credentials")
-            if not credentials or not node_requires_credentials(node):
+            if not node_requires_credentials(node) or not has_usable_binding(node):
                 continue
             key = credential_key(node)
+            slot = key[1]
+            credentials = {slot: copy.deepcopy(node["credentials"][slot])}
             if key in donor_refs and donor_refs[key] != credentials:
                 ambiguous.add(key)
             else:
@@ -170,19 +204,27 @@ def main() -> int:
             encoding="utf-8",
         )
 
-    # First pass: determine exactly what needs repair and fail closed if no unique
-    # known-good donor credential is available.
-    repairs: list[tuple[str, str, tuple[str, str]]] = []
+    # First pass: align mismatched BigQuery auth selectors, then determine any
+    # genuinely missing bindings. The earlier checker only tested whether the
+    # credentials object was non-empty, which missed OAuth2 references attached
+    # to nodes configured for service-account authentication.
+    desired_details = copy.deepcopy(target_details)
+    repairs: list[tuple[str, str, str, tuple[str, str] | None]] = []
     unresolved: list[str] = []
-    for name, workflow in target_details.items():
+    for name, workflow in desired_details.items():
         for node in workflow.get("nodes", []):
-            if not node_requires_credentials(node) or node.get("credentials"):
+            if not node_requires_credentials(node):
+                continue
+            if align_bigquery_authentication(node):
+                repairs.append((name, str(node.get("name", "")), "aligned authentication mode", None))
+                continue
+            if has_usable_binding(node):
                 continue
             key = credential_key(node)
             if key not in donor_refs:
-                unresolved.append(f"{name} -> {node.get('name')} ({key[0]} auth={key[1] or 'default'})")
+                unresolved.append(f"{name} -> {node.get('name')} ({key[0]} credential={key[1] or 'unknown'})")
             else:
-                repairs.append((name, str(node.get("name", "")), key))
+                repairs.append((name, str(node.get("name", "")), "restored binding", key))
 
     print(f"Backups: {backup_dir}")
     print()
@@ -199,13 +241,14 @@ def main() -> int:
         return 1
 
     print("Credential bindings to repair:")
-    for name, node_name, key in repairs:
-        print(f"  - {name} -> {node_name} ({key[0]}{f' / {key[1]}' if key[1] else ''})")
+    for name, node_name, action, key in repairs:
+        detail = f"{key[0]} / {key[1]}" if key else action
+        print(f"  - {name} -> {node_name} ({detail})")
 
     changed_workflows: list[str] = []
     try:
         for name, workflow in target_details.items():
-            needed = [(node_name, key) for wf_name, node_name, key in repairs if wf_name == name]
+            needed = [(node_name, action, key) for wf_name, node_name, action, key in repairs if wf_name == name]
             if not needed:
                 continue
 
@@ -213,10 +256,11 @@ def main() -> int:
             if workflow.get("active"):
                 api(api_key, "POST", f"/workflows/{workflow_id}/deactivate")
 
-            desired = copy.deepcopy(workflow)
+            desired = desired_details[name]
             by_node_name = {str(node.get("name", "")): node for node in desired.get("nodes", [])}
-            for node_name, key in needed:
-                by_node_name[node_name]["credentials"] = copy.deepcopy(donor_refs[key])
+            for node_name, _, key in needed:
+                if key:
+                    by_node_name[node_name]["credentials"] = copy.deepcopy(donor_refs[key])
 
             api(api_key, "PUT", f"/workflows/{workflow_id}", update_payload(desired))
             changed_workflows.append(name)
@@ -229,13 +273,13 @@ def main() -> int:
         for name in TARGET_NAMES:
             workflow_id = str(by_name[name]["id"])
             workflow = api(api_key, "GET", f"/workflows/{workflow_id}")
-            missing = [
-                str(node.get("name", ""))
+            invalid = [
+                f"{node.get('name')} expects {expected_credential_slot(node) or 'an unknown credential'}"
                 for node in workflow.get("nodes", [])
-                if node_requires_credentials(node) and not node.get("credentials")
+                if node_requires_credentials(node) and not has_usable_binding(node)
             ]
-            if missing:
-                raise RuntimeError(f"{name} still has missing credential bindings: {', '.join(missing)}")
+            if invalid:
+                raise RuntimeError(f"{name} still has invalid credential bindings: {', '.join(invalid)}")
             if bool(workflow.get("active")) != original_active[name]:
                 raise RuntimeError(f"{name} active state was not restored correctly.")
             print(f"  OK: {name}")

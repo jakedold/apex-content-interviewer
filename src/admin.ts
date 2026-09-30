@@ -498,7 +498,7 @@ function renderDashboard(data: AdminResponse): void {
             <li><a href="https://apexparent.hostmanpowered.com/wp-admin/upload.php?mlo-category=all-files" target="_blank" rel="noreferrer">Upload each image once to the Apex Parent Media Library</a>.</li>
             <li>For each image, copy the <strong>direct file URL</strong>. It must begin with <code>https://apexparent.hostmanpowered.com/wp-content/uploads/</code>. Do not paste the Media Library page URL.</li>
             <li>Have useful alt text plus the image source type and rights/source reference ready.</li>
-            <li>If you schedule the invitations, choose the local date/time and the timezone where you want the send to occur. The dispatcher checks every five minutes, so delivery begins within a few minutes of the scheduled time.</li>
+            <li>If you schedule the invitations, choose the local date/time and the timezone where you want the send to occur. The dispatcher checks every minute, so delivery begins shortly after the scheduled time.</li>
           </ol>
         </div>
 
@@ -518,6 +518,7 @@ function renderDashboard(data: AdminResponse): void {
             <label>Send
               <select name="send_mode" id="campaign-send-mode" required>
                 <option value="now">As soon as the campaign launches</option>
+                <option value="in_10">In about 10 minutes</option>
                 <option value="scheduled">Schedule for a specific time</option>
               </select>
             </label>
@@ -895,7 +896,7 @@ async function submitCampaign(event: SubmitEvent): Promise<void> {
     if (confirmation !== 'SEND TEST INVITATIONS') throw new Error('Type SEND TEST INVITATIONS exactly to launch.');
 
     const sendMode = String(data.get('send_mode') ?? '').trim();
-    if (!['now', 'scheduled'].includes(sendMode)) throw new Error('Choose when the invitations should send.');
+    if (!['now', 'in_10', 'scheduled'].includes(sendMode)) throw new Error('Choose when the invitations should send.');
     const scheduledSendLocal = String(data.get('scheduled_send_local') ?? '').trim();
     const scheduledSendTimezone = String(data.get('scheduled_send_timezone') ?? '').trim();
     if (sendMode === 'scheduled' && (!scheduledSendLocal || !scheduledSendTimezone)) {

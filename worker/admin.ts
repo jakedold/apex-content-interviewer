@@ -173,7 +173,7 @@ SELECT TO_JSON_STRING(STRUCT(
     ARRAY(SELECT AS STRUCT * FROM campaign_launch_doctors ORDER BY doctor_name) AS doctors
   ) AS campaign_launch_options,
   STRUCT(
-    (SELECT COUNT(*) FROM campaign_rows WHERE status IN ('READY','LAUNCHED','ACTIVE')) AS active_campaigns,
+    (SELECT COUNT(*) FROM campaign_rows WHERE status IN ('SCHEDULED','READY','LAUNCHED','ACTIVE')) AS active_campaigns,
     (SELECT COUNT(*) FROM queue_rows WHERE urgency != 'complete') AS open_work_items,
     (SELECT COUNT(*) FROM event_rows WHERE severity = 'error' AND event_timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR))
       + (SELECT COUNT(*) FROM communication_failures WHERE sent_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)) AS errors_24h,

@@ -1,4 +1,4 @@
-import { handleAdminCommand, handleAdminOverview, handleAdminWorkItem } from './admin';
+import { handleAdminCampaignTemplate, handleAdminCommand, handleAdminOverview, handleAdminWorkItem } from './admin';
 
 const ROUTES: Readonly<Record<string, string>> = {
   '/api/validate': '/webhook/aac/interview/validate',
@@ -23,6 +23,14 @@ export default {
         return new Response(null, { status: 405, headers: { Allow: 'GET' } });
       }
       return handleAdminOverview(request, env);
+    }
+
+    const campaignTemplateMatch = url.pathname.match(/^\/api\/admin\/campaigns\/([^/]+)\/template$/);
+    if (campaignTemplateMatch) {
+      if (request.method !== 'GET') {
+        return new Response(null, { status: 405, headers: { Allow: 'GET' } });
+      }
+      return handleAdminCampaignTemplate(request, env, decodeURIComponent(campaignTemplateMatch[1]));
     }
 
     const workItemMatch = url.pathname.match(/^\/api\/admin\/work-items\/([^/]+)\/([^/]+)$/);

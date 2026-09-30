@@ -488,8 +488,8 @@ function renderDashboard(data: AdminResponse): void {
       <dialog class="admin-detail-dialog" id="admin-detail-dialog"><div id="admin-detail-content"></div><button class="admin-dialog-close" id="admin-dialog-close" type="button" aria-label="Close details">×</button></dialog>
       <dialog class="admin-campaign-dialog" id="admin-campaign-dialog">
         <button class="admin-dialog-close" id="campaign-dialog-close" type="button" aria-label="Close campaign builder">×</button>
-        <span class="admin-kicker">New campaign</span><h2>Start a test article campaign</h2>
-        <p>Matches the existing test-only campaign launcher, with the same topic-image requirements and a clearer setup checklist.</p>
+        <span class="admin-kicker">New campaign</span><h2>Start an article campaign</h2>
+        <p>Create a normal TEST001 campaign or an interview-only presentation preview. Both use the same three topics and approved image records.</p>
 
         <div class="admin-campaign-instructions">
           <strong>Before you start</strong>
@@ -503,11 +503,14 @@ function renderDashboard(data: AdminResponse): void {
 
         <form id="admin-campaign-form" class="admin-campaign-form">
           <label>Audience
-            <select name="audience" required>
-              <option value="Test users only">Test users only</option>
+            <select name="audience" id="campaign-audience" required>
+              <option value="Test users only">Test users only — full TEST001 pipeline</option>
+              <option value="Presentation preview">Presentation preview — interview only</option>
             </select>
           </label>
-          <label>Campaign name<input name="campaign_name" required placeholder="October 2026 test campaign" /></label>
+          <p class="admin-muted" id="campaign-audience-note">TEST001 campaigns can continue into article generation, review, and test-site publishing.</p>
+
+          <label>Campaign name<input name="campaign_name" required placeholder="October 2026 preview campaign" /></label>
           <label>Campaign month<input name="campaign_month" required type="month" /></label>
 
           <fieldset class="admin-topic-assets"><legend>Topic 1</legend>
@@ -555,33 +558,54 @@ function renderDashboard(data: AdminResponse): void {
             <label>Topic 3 featured image rights or source reference<input name="topic_3_featured_image_rights_reference" required placeholder="Asset record, license, commission, or generation reference" /></label>
           </fieldset>
 
-          <label>Test practice to use
-            <select name="practice_id" id="campaign-practice" required>
-              <option value="">Select a test practice</option>
-              ${data.overview.campaign_launch_options.practices.map((practice) =>
-                `<option value="${escapeHtml(practice.practice_id)}">${escapeHtml(practice.practice_name)}</option>`
-              ).join('')}
-            </select>
-          </label>
+          <section id="campaign-test-audience">
+            <label>Test practice to use
+              <select name="practice_id" id="campaign-practice">
+                <option value="">Select a test practice</option>
+                ${data.overview.campaign_launch_options.practices.map((practice) =>
+                  `<option value="${escapeHtml(practice.practice_id)}">${escapeHtml(practice.practice_name)}</option>`
+                ).join('')}
+              </select>
+            </label>
 
-          <fieldset class="admin-recipient-options"><legend>Test recipients to invite</legend>
-            <p class="admin-muted">Choose one or more recipients associated with the selected test practice.</p>
-            <div id="campaign-doctor-options">
-              ${data.overview.campaign_launch_options.doctors.length
-                ? data.overview.campaign_launch_options.doctors.map((doctor) => `
-                    <label class="admin-recipient-option" data-practice-id="${escapeHtml(doctor.practice_id)}">
-                      <input type="checkbox" name="doctor_ids" value="${escapeHtml(doctor.doctor_id)}" />
-                      <span><strong>${escapeHtml(doctor.doctor_name)}</strong><small>${escapeHtml(doctor.email || doctor.doctor_id)}</small></span>
-                    </label>`).join('')
-                : '<div class="admin-empty">No active test recipients are configured in BigQuery.</div>'}
-            </div>
+            <fieldset class="admin-recipient-options"><legend>Test recipients to invite</legend>
+              <p class="admin-muted">Choose one or more recipients associated with the selected test practice.</p>
+              <div id="campaign-doctor-options">
+                ${data.overview.campaign_launch_options.doctors.length
+                  ? data.overview.campaign_launch_options.doctors.map((doctor) => `
+                      <label class="admin-recipient-option" data-practice-id="${escapeHtml(doctor.practice_id)}">
+                        <input type="checkbox" name="doctor_ids" value="${escapeHtml(doctor.doctor_id)}" />
+                        <span><strong>${escapeHtml(doctor.doctor_name)}</strong><small>${escapeHtml(doctor.email || doctor.doctor_id)}</small></span>
+                      </label>`).join('')
+                  : '<div class="admin-empty">No active test recipients are configured in BigQuery.</div>'}
+              </div>
+            </fieldset>
+          </section>
+
+          <section id="campaign-preview-audience" hidden>
+            <label>Preview recipient work emails
+              <small>One person per line. You can paste an email by itself or a line such as Dr. Jane Smith, jane.smith@apexdp.com.</small>
+              <textarea name="recipient_emails" rows="9" placeholder="jane.smith@apexdp.com&#10;john.doe@apexdp.com"></textarea>
+            </label>
+            <p class="admin-preview-safety"><strong>Presentation preview safety:</strong> invitations and interviews are real, transcripts are saved, but the workflow stops after interview completion. It will not generate articles, send review requests, or publish.</p>
+          </section>
+
+          <fieldset class="admin-send-timing"><legend>Invitation timing</legend>
+            <label><input type="radio" name="send_timing" value="now" checked /> Send as soon as the campaign is launched</label>
+            <label><input type="radio" name="send_timing" value="in_10" /> Send in about 10 minutes</label>
+            <label><input type="radio" name="send_timing" value="scheduled" /> Schedule for a specific date and time</label>
+            <label id="campaign-scheduled-time-wrap" hidden>Scheduled date and time
+              <input type="datetime-local" name="scheduled_local" />
+              <small id="campaign-timezone-note"></small>
+            </label>
           </fieldset>
 
-          <label>Type <strong>SEND TEST INVITATIONS</strong> to confirm
+          <label>Confirmation
+            <small id="campaign-confirmation-help">Type <strong>SEND TEST INVITATIONS</strong> exactly.</small>
             <input name="launch_confirmation" required autocomplete="off" placeholder="SEND TEST INVITATIONS" />
           </label>
 
-          <div class="admin-form-actions"><button type="button" id="cancel-campaign">Cancel</button><button class="admin-primary-button" type="submit">Launch test campaign</button></div>
+          <div class="admin-form-actions"><button type="button" id="cancel-campaign">Cancel</button><button class="admin-primary-button" type="submit">Launch campaign</button></div>
           <p class="admin-form-message" id="campaign-form-message" role="status"></p>
         </form>
       </dialog>
@@ -596,6 +620,16 @@ function renderDashboard(data: AdminResponse): void {
   document.querySelector<HTMLButtonElement>('#campaign-dialog-close')?.addEventListener('click', () => campaignDialog?.close());
   document.querySelector<HTMLButtonElement>('#cancel-campaign')?.addEventListener('click', () => campaignDialog?.close());
   const campaignPractice = document.querySelector<HTMLSelectElement>('#campaign-practice');
+  const campaignAudience = document.querySelector<HTMLSelectElement>('#campaign-audience');
+  const testAudience = document.querySelector<HTMLElement>('#campaign-test-audience');
+  const previewAudience = document.querySelector<HTMLElement>('#campaign-preview-audience');
+  const audienceNote = document.querySelector<HTMLElement>('#campaign-audience-note');
+  const confirmationHelp = document.querySelector<HTMLElement>('#campaign-confirmation-help');
+  const confirmationInput = document.querySelector<HTMLInputElement>('input[name="launch_confirmation"]');
+  const scheduledWrap = document.querySelector<HTMLElement>('#campaign-scheduled-time-wrap');
+  const scheduledInput = document.querySelector<HTMLInputElement>('input[name="scheduled_local"]');
+  const timezoneNote = document.querySelector<HTMLElement>('#campaign-timezone-note');
+
   const syncCampaignRecipients = (): void => {
     const selected = campaignPractice?.value ?? '';
     document.querySelectorAll<HTMLElement>('[data-practice-id]').forEach((option) => {
@@ -605,8 +639,39 @@ function renderDashboard(data: AdminResponse): void {
       if (!visible && checkbox) checkbox.checked = false;
     });
   };
+
+  const syncCampaignAudience = (): void => {
+    const preview = campaignAudience?.value === 'Presentation preview';
+    if (testAudience) testAudience.hidden = preview;
+    if (previewAudience) previewAudience.hidden = !preview;
+    if (audienceNote) audienceNote.textContent = preview
+      ? 'Presentation preview sends real interview invitations but intentionally stops after transcript capture.'
+      : 'TEST001 campaigns can continue into article generation, review, and test-site publishing.';
+    const phrase = preview ? 'SEND PREVIEW INVITATIONS' : 'SEND TEST INVITATIONS';
+    if (confirmationHelp) confirmationHelp.innerHTML = 'Type <strong>' + phrase + '</strong> exactly.';
+    if (confirmationInput) {
+      confirmationInput.placeholder = phrase;
+      confirmationInput.value = '';
+    }
+  };
+
+  const syncSendTiming = (): void => {
+    const selected = document.querySelector<HTMLInputElement>('input[name="send_timing"]:checked')?.value ?? 'now';
+    const scheduled = selected === 'scheduled';
+    if (scheduledWrap) scheduledWrap.hidden = !scheduled;
+    if (scheduledInput) scheduledInput.required = scheduled;
+    if (timezoneNote) {
+      const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'your device time zone';
+      timezoneNote.textContent = 'This time will be interpreted in ' + zone + ' on this device.';
+    }
+  };
+
   campaignPractice?.addEventListener('change', syncCampaignRecipients);
+  campaignAudience?.addEventListener('change', syncCampaignAudience);
+  document.querySelectorAll<HTMLInputElement>('input[name="send_timing"]').forEach((input) => input.addEventListener('change', syncSendTiming));
   syncCampaignRecipients();
+  syncCampaignAudience();
+  syncSendTiming();
   document.querySelector<HTMLFormElement>('#admin-campaign-form')?.addEventListener('submit', (event) => void submitCampaign(event));
   for (const button of document.querySelectorAll<HTMLButtonElement>('[data-queue-filter]')) {
     button.addEventListener('click', () => {
@@ -808,19 +873,18 @@ async function submitCampaign(event: SubmitEvent): Promise<void> {
   const form = event.currentTarget as HTMLFormElement;
   const data = new FormData(form);
   const message = form.querySelector<HTMLElement>('#campaign-form-message');
-  const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]');
-  if (submit) submit.disabled = true;
-  if (message) message.textContent = 'Validating and launching test campaign…';
+  const submitButton = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+  if (submitButton) submitButton.disabled = true;
+  if (message) message.textContent = 'Validating campaign…';
 
   try {
     const audience = String(data.get('audience') ?? '').trim();
-    if (audience !== 'Test users only') throw new Error('Only the Test users only audience is enabled.');
+    const previewOnly = audience === 'Presentation preview';
+    if (!previewOnly && audience !== 'Test users only') throw new Error('Choose a valid campaign audience.');
 
+    const expectedConfirmation = previewOnly ? 'SEND PREVIEW INVITATIONS' : 'SEND TEST INVITATIONS';
     const confirmation = String(data.get('launch_confirmation') ?? '').trim();
-    if (confirmation !== 'SEND TEST INVITATIONS') throw new Error('Type SEND TEST INVITATIONS exactly to launch.');
-
-    const doctorIds = data.getAll('doctor_ids').map((value) => String(value).trim()).filter(Boolean);
-    if (!doctorIds.length) throw new Error('Select at least one test recipient.');
+    if (confirmation !== expectedConfirmation) throw new Error('Type ' + expectedConfirmation + ' exactly to launch.');
 
     const topics = [1, 2, 3].map((number) => {
       const sourceUrl = String(data.get(`topic_${number}_featured_image_source_url`) ?? '').trim();
@@ -838,22 +902,62 @@ async function submitCampaign(event: SubmitEvent): Promise<void> {
       };
     });
 
-    await postAdminCommand({
+    const sendTiming = String(data.get('send_timing') ?? 'now');
+    let invitationSendAt: string;
+    if (sendTiming === 'in_10') {
+      invitationSendAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    } else if (sendTiming === 'scheduled') {
+      const localValue = String(data.get('scheduled_local') ?? '').trim();
+      if (!localValue) throw new Error('Choose the scheduled invitation date and time.');
+      const scheduled = new Date(localValue);
+      if (Number.isNaN(scheduled.getTime())) throw new Error('The scheduled invitation time is invalid.');
+      if (scheduled.getTime() < Date.now() + 60 * 1000) throw new Error('Choose a scheduled time at least one minute in the future.');
+      invitationSendAt = scheduled.toISOString();
+    } else {
+      invitationSendAt = new Date().toISOString();
+    }
+
+    const body: Record<string, unknown> = {
       action: 'launch_campaign',
       audience,
       campaign_name: String(data.get('campaign_name') ?? ''),
       campaign_month: String(data.get('campaign_month') ?? ''),
-      practice_id: String(data.get('practice_id') ?? ''),
       topics,
-      doctor_ids: doctorIds,
-    });
+      invitation_send_at: invitationSendAt,
+      browser_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+      launch_confirmation: confirmation,
+    };
 
-    if (message) message.textContent = 'Test campaign launched. Invitations will follow the configured n8n delivery workflow.';
+    if (previewOnly) {
+      const lines = String(data.get('recipient_emails') ?? '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      if (!lines.length) throw new Error('Paste at least one preview recipient.');
+      const recipientEmails = lines.map((line) => {
+        const matches = line.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/ig);
+        if (!matches?.length) throw new Error('Could not find an email address in: ' + line);
+        return matches[matches.length - 1].toLowerCase();
+      });
+      const uniqueEmails = [...new Set(recipientEmails)];
+      if (uniqueEmails.length !== recipientEmails.length) throw new Error('A preview recipient appears more than once.');
+      if (uniqueEmails.length > 50) throw new Error('Presentation preview is limited to 50 recipients per campaign.');
+      body.recipient_emails = uniqueEmails;
+    } else {
+      const doctorIds = data.getAll('doctor_ids').map((value) => String(value).trim()).filter(Boolean);
+      if (!doctorIds.length) throw new Error('Select at least one test recipient.');
+      body.practice_id = String(data.get('practice_id') ?? '');
+      body.doctor_ids = doctorIds;
+    }
+
+    if (message) message.textContent = sendTiming === 'now' ? 'Launching and queuing invitations…' : 'Launching and scheduling invitations…';
+    await postAdminCommand(body);
+
+    const scheduledLabel = new Date(invitationSendAt).toLocaleString();
+    if (message) message.textContent = previewOnly
+      ? 'Presentation preview created. Invitations are queued for ' + scheduledLabel + '. Interviews will stop after transcript capture.'
+      : 'Test campaign created. Invitations are queued for ' + scheduledLabel + '.';
     form.reset();
-    await initializeAdmin();
   } catch (error) {
     if (message) message.textContent = error instanceof Error ? error.message : 'The campaign could not be launched.';
-    if (submit) submit.disabled = false;
+    if (submitButton) submitButton.disabled = false;
   }
 }
 

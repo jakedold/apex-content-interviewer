@@ -113,3 +113,41 @@ The code is complete up to environment activation. An authorized administrator m
 5. A deployment after the placeholders and secret are configured.
 
 No D1 database is used or configured.
+
+## Campaign launcher
+
+The dashboard campaign builder now carries the same topic-asset contract as the n8n test launcher.
+
+Before launch:
+
+1. Enter the campaign name and month.
+2. Prepare exactly three distinct topics.
+3. Upload one approved featured image per topic to the Apex Parent central Media Library:
+   `https://apexparent.hostmanpowered.com/wp-admin/upload.php?mlo-category=all-files`
+4. For each topic, record the direct `https://apexparent.hostmanpowered.com/wp-content/uploads/...` file URL, useful alt text, source type, and rights/source reference.
+5. Choose an audience and invitation timing.
+6. Type `SEND TEST INVITATIONS` exactly before launch.
+
+The dashboard and n8n command workflow validate the image and recipient requirements before campaign state is written. BigQuery remains the source of truth.
+
+### Test users only
+
+This is the existing TEST001 QA route. Select the configured TEST001 practice and one or more configured test recipients. The normal test pipeline may continue beyond the interview according to the existing workflow configuration.
+
+### Presentation demo recipients
+
+This route is for a controlled internal demonstration cohort of up to 50 people. Paste one recipient per line as `Name,email`.
+
+The command workflow creates isolated `doctor_demo_...` identities on TEST001 rather than overwriting production doctor profiles. The campaign is marked `preview_only = TRUE`. Recipients receive real secure topic links and can complete the voice interview; the transcript is saved, but article generation, doctor-review email, marketing review, and publishing are intentionally blocked.
+
+### Invitation timing
+
+The launcher supports:
+
+- send as soon as the campaign launches
+- send in about 10 minutes
+- schedule for a specific local date/time and explicit timezone
+
+Future sends are stored as `SCHEDULED` with `invitation_send_at`. The active **AAC - 02 - Dispatch Campaign Invitations** workflow checks every minute, releases due campaigns, and can process up to 50 recipients in a run. Invitations are sent sequentially through the existing private doctor-message workflow. One failed recipient remains eligible for retry without blocking the rest of the cohort.
+
+The legacy workflow named **AAC - 02 - Create Topic Interview Links** is an old manual POC and should remain inactive. It is not the scheduled invitation workflow.

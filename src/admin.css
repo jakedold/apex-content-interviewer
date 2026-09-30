@@ -391,3 +391,101 @@
 @media (prefers-reduced-motion: reduce) {
   .admin-spinner { animation: none; }
 }
+
+
+.admin-campaign-dialog {
+  width: min(1040px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+}
+
+.admin-campaign-instructions {
+  margin: 20px 0 24px;
+  padding: 18px 20px;
+  border: 1px solid rgba(3, 89, 137, 0.22);
+  border-radius: 14px;
+  background: rgba(3, 89, 137, 0.05);
+}
+
+.admin-campaign-instructions strong {
+  display: block;
+  margin-bottom: 8px;
+  color: #064f77;
+}
+
+.admin-campaign-instructions ol {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.admin-campaign-instructions li + li {
+  margin-top: 6px;
+}
+
+.admin-campaign-instructions code {
+  overflow-wrap: anywhere;
+}
+
+.admin-campaign-form select {
+  width: 100%;
+  border: 1px solid #cad8e1;
+  border-radius: 10px;
+  background: #fff;
+  padding: 13px 14px;
+  font: inherit;
+  color: #19384a;
+}
+
+.admin-topic-assets {
+  padding: 18px;
+  border: 1px solid #cad8e1;
+  border-radius: 14px;
+  background: #fbfdfe;
+}
+
+.admin-topic-assets legend,
+.admin-recipient-options legend {
+  padding: 0 8px;
+  color: #064f77;
+  font-weight: 800;
+}
+
+.admin-topic-assets label + label {
+  margin-top: 14px;
+}
+
+.admin-recipient-options {
+  padding: 18px;
+  border: 1px solid #cad8e1;
+  border-radius: 14px;
+}
+
+.admin-recipient-option {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 12px 14px;
+  border: 1px solid #d7e1e7;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.admin-recipient-option input {
+  width: auto !important;
+  margin-top: 3px;
+}
+
+.admin-recipient-option span {
+  display: grid;
+  gap: 2px;
+}
+
+.admin-recipient-option small {
+  color: #687b87;
+  font-weight: 500;
+}
+
+.admin-recipient-option[hidden] {
+  display: none !important;
+}

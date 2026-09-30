@@ -525,17 +525,44 @@ function parseArticlePackage(value: string | null): { articleHtml: string | null
 
 function stageVisual(detail: WorkItemDetail): string {
   const item = detail.item;
-  const statuses = [item.article_status, item.interview_status, item.campaign_doctor_status].filter(Boolean).map((status) => String(status).toUpperCase());
-  const hasStatus = (pattern: RegExp): boolean => statuses.some((status) => pattern.test(status));
+  const articleStatus = String(item.article_status ?? '').toUpperCase();
+  const interviewStatus = String(item.interview_status ?? '').toUpperCase();
+
+  // Use the current article plus explicit milestone timestamps as the source of
+  // truth. campaign_doctors can legitimately lag or retain a later historical
+  // state in test data, so it must not mark downstream article stages complete.
+  const interviewCompleted = Boolean(
+    item.completed_at ||
+    item.article_id ||
+    /INTERVIEW_COMPLETED|ARTICLE_DRAFTED/.test(interviewStatus),
+  );
+  const articleDrafted = Boolean(item.article_id && item.current_version);
+  const doctorApproved = Boolean(
+    item.doctor_approved_at ||
+    /^(DOCTOR_APPROVED|DOCTOR_AUTO_APPROVED|MARKETING_REVIEW|MARKETING_APPROVED|PUBLISHING|PUBLISHED)$/.test(articleStatus),
+  );
+  const marketingApproved = item.require_marketing_approval
+    ? Boolean(
+        item.marketing_approved_at ||
+        /^(MARKETING_APPROVED|PUBLISHING|PUBLISHED)$/.test(articleStatus),
+      )
+    : doctorApproved;
+  const published = Boolean(
+    item.published_at ||
+    item.published_url ||
+    articleStatus === 'PUBLISHED',
+  );
+
   const steps = [
     ['Invitation sent', Boolean(item.invited_at || detail.communications.some((entry) => entry.status === 'SENT' || entry.delivered_at))],
     ['Topic selected', Boolean(item.topic_id)],
-    ['Interview completed', Boolean(item.completed_at || hasStatus(/INTERVIEW_COMPLETED|ARTICLE_DRAFTED/))],
-    ['Article drafted', Boolean(item.article_id)],
-    ['Doctor approved', hasStatus(/DOCTOR_(AUTO_)?APPROVED|MARKETING_|PUBLISH/)],
-    ['Marketing approved', item.require_marketing_approval ? hasStatus(/MARKETING_APPROVED|PUBLISH/) : hasStatus(/DOCTOR_(AUTO_)?APPROVED|PUBLISH/)],
-    ['Published', hasStatus(/^PUBLISHED$/)],
+    ['Interview completed', interviewCompleted],
+    ['Article drafted', articleDrafted],
+    ['Doctor approved', doctorApproved],
+    ['Marketing approved', marketingApproved],
+    ['Published', published],
   ] as Array<[string, boolean]>;
+
   const activeIndex = steps.findIndex(([, complete]) => !complete);
   return `<ol class="admin-stage-track">${steps.map(([label, complete], index) => `
     <li class="${complete ? 'is-complete' : index === activeIndex ? 'is-current' : ''}">

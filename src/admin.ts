@@ -853,9 +853,22 @@ async function postAdminCommand(body: Record<string, unknown>): Promise<Record<s
     headers: { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
     body: JSON.stringify(body),
   });
-  const result: unknown = await response.json();
-  if (!response.ok) throw new Error(result && typeof result === 'object' && 'message' in result ? String(result.message) : 'The action could not be completed.');
-  return result as Record<string, unknown>;
+  const raw = await response.text();
+  let result: unknown = {};
+  if (raw.trim()) {
+    try {
+      result = JSON.parse(raw);
+    } catch {
+      result = { message: raw.slice(0, 500) };
+    }
+  }
+  if (!response.ok) {
+    const detail = result && typeof result === 'object' && 'message' in result
+      ? String(result.message)
+      : `The action could not be completed (HTTP ${response.status}).`;
+    throw new Error(detail);
+  }
+  return result && typeof result === 'object' ? result as Record<string, unknown> : {};
 }
 
 async function submitDoctorApproval(event: SubmitEvent, item: WorkItemDetail['item']): Promise<void> {

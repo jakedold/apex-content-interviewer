@@ -154,9 +154,24 @@ event_rows AS (
 communication_failures AS (
   SELECT communication_id, doctor_id, article_id, campaign_id, communication_type, channel, recipient, status, sent_at
   FROM ${table('communications')} WHERE status = 'FAILED'
+),
+campaign_launch_practices AS (
+  SELECT practice_id, practice_name, website_domain, publisher_type
+  FROM ${table('practices')}
+  WHERE active = TRUE AND practice_id = 'practice_test_001'
+),
+campaign_launch_doctors AS (
+  SELECT d.doctor_id, d.doctor_name, d.email, d.practice_id
+  FROM ${table('doctors')} d
+  JOIN campaign_launch_practices p USING (practice_id)
+  WHERE d.active = TRUE
 )
 SELECT TO_JSON_STRING(STRUCT(
   CURRENT_TIMESTAMP() AS generated_at,
+  STRUCT(
+    ARRAY(SELECT AS STRUCT * FROM campaign_launch_practices ORDER BY practice_name) AS practices,
+    ARRAY(SELECT AS STRUCT * FROM campaign_launch_doctors ORDER BY doctor_name) AS doctors
+  ) AS campaign_launch_options,
   STRUCT(
     (SELECT COUNT(*) FROM campaign_rows WHERE status IN ('READY','LAUNCHED','ACTIVE')) AS active_campaigns,
     (SELECT COUNT(*) FROM queue_rows WHERE urgency != 'complete') AS open_work_items,

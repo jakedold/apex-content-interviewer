@@ -132,3 +132,13 @@ For each campaign:
 The dashboard and n8n command workflow both validate these requirements. Campaign launch stores the image provenance with the topic in BigQuery before any invitation can be dispatched.
 
 The legacy workflow named **AAC - 02 - Create Topic Interview Links** is an old manual POC and should remain inactive. It is not the scheduled invitation workflow. The scheduled sender is **AAC - 02 - Dispatch Campaign Invitations**.
+
+## Presentation demo scheduling
+
+The admin campaign builder supports a TEST001-only **Presentation demo recipients** audience for internal demonstrations. Administrators can paste up to 50 `Name,email` recipients. n8n creates isolated `doctor_demo_...` identities so existing production doctor records are not overwritten.
+
+Campaign invitations can be sent immediately or scheduled using a local date/time plus an explicit IANA timezone. Scheduled campaigns are stored as `SCHEDULED` with `invitation_send_at`; the invitation dispatcher releases them when that timestamp becomes due.
+
+The dispatcher remains on its five-minute trigger. A due run can prepare up to 50 recipients at once, then loops through those invitations one recipient at a time through the existing private doctor-message workflow. This is intended to let a presentation cohort of roughly 30 doctors begin receiving invitations within a few minutes of the scheduled release without increasing BigQuery polling frequency.
+
+The presentation route is still a test route. Article generation and WordPress publishing remain restricted to `practice_test_001` until the production doctor/site mappings are separately validated.

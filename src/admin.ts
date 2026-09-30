@@ -54,8 +54,26 @@ type CommunicationFailure = {
   sent_at: string | null;
 };
 
+type CampaignLaunchPractice = {
+  practice_id: string;
+  practice_name: string;
+  website_domain: string | null;
+  publisher_type: string | null;
+};
+
+type CampaignLaunchDoctor = {
+  doctor_id: string;
+  doctor_name: string;
+  email: string | null;
+  practice_id: string;
+};
+
 type Overview = {
   generated_at: string;
+  campaign_launch_options: {
+    practices: CampaignLaunchPractice[];
+    doctors: CampaignLaunchDoctor[];
+  };
   summary: {
     active_campaigns: number | string;
     open_work_items: number | string;
@@ -470,18 +488,100 @@ function renderDashboard(data: AdminResponse): void {
       <dialog class="admin-detail-dialog" id="admin-detail-dialog"><div id="admin-detail-content"></div><button class="admin-dialog-close" id="admin-dialog-close" type="button" aria-label="Close details">×</button></dialog>
       <dialog class="admin-campaign-dialog" id="admin-campaign-dialog">
         <button class="admin-dialog-close" id="campaign-dialog-close" type="button" aria-label="Close campaign builder">×</button>
-        <span class="admin-kicker">New campaign</span><h2>Start an article campaign</h2>
-        <p>The launch is validated and recorded before invitations are sent.</p>
+        <span class="admin-kicker">New campaign</span><h2>Start a test article campaign</h2>
+        <p>Matches the existing test-only campaign launcher, with the same topic-image requirements and a clearer setup checklist.</p>
+
+        <div class="admin-campaign-instructions">
+          <strong>Before you start</strong>
+          <ol>
+            <li>Create or obtain one approved featured image for each of the three topics.</li>
+            <li><a href="https://apexparent.hostmanpowered.com/wp-admin/upload.php?mlo-category=all-files" target="_blank" rel="noreferrer">Upload each image once to the Apex Parent Media Library</a>.</li>
+            <li>For each image, copy the <strong>direct file URL</strong>. It must begin with <code>https://apexparent.hostmanpowered.com/wp-content/uploads/</code>. Do not paste the Media Library page URL.</li>
+            <li>Have useful alt text plus the image source type and rights/source reference ready.</li>
+          </ol>
+        </div>
+
         <form id="admin-campaign-form" class="admin-campaign-form">
-          <label>Campaign name<input name="campaign_name" required placeholder="November 2026 article campaign" /></label>
+          <label>Audience
+            <select name="audience" required>
+              <option value="Test users only">Test users only</option>
+            </select>
+          </label>
+          <label>Campaign name<input name="campaign_name" required placeholder="October 2026 test campaign" /></label>
           <label>Campaign month<input name="campaign_month" required type="month" /></label>
-          <label>Practice ID<input name="practice_id" required placeholder="Configured BigQuery practice ID" /></label>
-          <fieldset><legend>Three topics</legend>
-            <label>Topic 1<input name="topic_1" required /></label><label>Topic 2<input name="topic_2" required /></label><label>Topic 3<input name="topic_3" required /></label>
+
+          <fieldset class="admin-topic-assets"><legend>Topic 1</legend>
+            <label>Topic 1<input name="topic_1" required /></label>
+            <label>Topic 1 featured image central source URL<input name="topic_1_featured_image_source_url" type="url" required placeholder="https://apexparent.hostmanpowered.com/wp-content/uploads/..." /></label>
+            <label>Topic 1 featured image alt text<input name="topic_1_featured_image_alt_text" required minlength="8" /></label>
+            <label>Topic 1 featured image source type
+              <select name="topic_1_featured_image_source_type" required>
+                <option value="">Select an option</option>
+                <option>Apex-owned or commissioned</option>
+                <option>Licensed stock</option>
+                <option>AI-generated with approved terms</option>
+              </select>
+            </label>
+            <label>Topic 1 featured image rights or source reference<input name="topic_1_featured_image_rights_reference" required placeholder="Asset record, license, commission, or generation reference" /></label>
           </fieldset>
-          <label>Doctor IDs <small>One configured doctor ID per line</small><textarea name="doctor_ids" required rows="5"></textarea></label>
-          <label class="admin-confirm-check"><input name="confirmation" type="checkbox" required /> I understand launching this campaign can send invitations to the selected doctors.</label>
-          <div class="admin-form-actions"><button type="button" id="cancel-campaign">Cancel</button><button class="admin-primary-button" type="submit">Launch campaign</button></div>
+
+          <fieldset class="admin-topic-assets"><legend>Topic 2</legend>
+            <label>Topic 2<input name="topic_2" required /></label>
+            <label>Topic 2 featured image central source URL<input name="topic_2_featured_image_source_url" type="url" required placeholder="https://apexparent.hostmanpowered.com/wp-content/uploads/..." /></label>
+            <label>Topic 2 featured image alt text<input name="topic_2_featured_image_alt_text" required minlength="8" /></label>
+            <label>Topic 2 featured image source type
+              <select name="topic_2_featured_image_source_type" required>
+                <option value="">Select an option</option>
+                <option>Apex-owned or commissioned</option>
+                <option>Licensed stock</option>
+                <option>AI-generated with approved terms</option>
+              </select>
+            </label>
+            <label>Topic 2 featured image rights or source reference<input name="topic_2_featured_image_rights_reference" required placeholder="Asset record, license, commission, or generation reference" /></label>
+          </fieldset>
+
+          <fieldset class="admin-topic-assets"><legend>Topic 3</legend>
+            <label>Topic 3<input name="topic_3" required /></label>
+            <label>Topic 3 featured image central source URL<input name="topic_3_featured_image_source_url" type="url" required placeholder="https://apexparent.hostmanpowered.com/wp-content/uploads/..." /></label>
+            <label>Topic 3 featured image alt text<input name="topic_3_featured_image_alt_text" required minlength="8" /></label>
+            <label>Topic 3 featured image source type
+              <select name="topic_3_featured_image_source_type" required>
+                <option value="">Select an option</option>
+                <option>Apex-owned or commissioned</option>
+                <option>Licensed stock</option>
+                <option>AI-generated with approved terms</option>
+              </select>
+            </label>
+            <label>Topic 3 featured image rights or source reference<input name="topic_3_featured_image_rights_reference" required placeholder="Asset record, license, commission, or generation reference" /></label>
+          </fieldset>
+
+          <label>Test practice to use
+            <select name="practice_id" id="campaign-practice" required>
+              <option value="">Select a test practice</option>
+              ${data.overview.campaign_launch_options.practices.map((practice) =>
+                `<option value="${escapeHtml(practice.practice_id)}">${escapeHtml(practice.practice_name)}</option>`
+              ).join('')}
+            </select>
+          </label>
+
+          <fieldset class="admin-recipient-options"><legend>Test recipients to invite</legend>
+            <p class="admin-muted">Choose one or more recipients associated with the selected test practice.</p>
+            <div id="campaign-doctor-options">
+              ${data.overview.campaign_launch_options.doctors.length
+                ? data.overview.campaign_launch_options.doctors.map((doctor) => `
+                    <label class="admin-recipient-option" data-practice-id="${escapeHtml(doctor.practice_id)}">
+                      <input type="checkbox" name="doctor_ids" value="${escapeHtml(doctor.doctor_id)}" />
+                      <span><strong>${escapeHtml(doctor.doctor_name)}</strong><small>${escapeHtml(doctor.email || doctor.doctor_id)}</small></span>
+                    </label>`).join('')
+                : '<div class="admin-empty">No active test recipients are configured in BigQuery.</div>'}
+            </div>
+          </fieldset>
+
+          <label>Type <strong>SEND TEST INVITATIONS</strong> to confirm
+            <input name="launch_confirmation" required autocomplete="off" placeholder="SEND TEST INVITATIONS" />
+          </label>
+
+          <div class="admin-form-actions"><button type="button" id="cancel-campaign">Cancel</button><button class="admin-primary-button" type="submit">Launch test campaign</button></div>
           <p class="admin-form-message" id="campaign-form-message" role="status"></p>
         </form>
       </dialog>
@@ -495,6 +595,18 @@ function renderDashboard(data: AdminResponse): void {
   document.querySelector<HTMLButtonElement>('#open-campaign-builder')?.addEventListener('click', () => campaignDialog?.showModal());
   document.querySelector<HTMLButtonElement>('#campaign-dialog-close')?.addEventListener('click', () => campaignDialog?.close());
   document.querySelector<HTMLButtonElement>('#cancel-campaign')?.addEventListener('click', () => campaignDialog?.close());
+  const campaignPractice = document.querySelector<HTMLSelectElement>('#campaign-practice');
+  const syncCampaignRecipients = (): void => {
+    const selected = campaignPractice?.value ?? '';
+    document.querySelectorAll<HTMLElement>('[data-practice-id]').forEach((option) => {
+      const visible = !selected || option.dataset.practiceId === selected;
+      option.hidden = !visible;
+      const checkbox = option.querySelector<HTMLInputElement>('input[type="checkbox"]');
+      if (!visible && checkbox) checkbox.checked = false;
+    });
+  };
+  campaignPractice?.addEventListener('change', syncCampaignRecipients);
+  syncCampaignRecipients();
   document.querySelector<HTMLFormElement>('#admin-campaign-form')?.addEventListener('submit', (event) => void submitCampaign(event));
   for (const button of document.querySelectorAll<HTMLButtonElement>('[data-queue-filter]')) {
     button.addEventListener('click', () => {
@@ -698,17 +810,45 @@ async function submitCampaign(event: SubmitEvent): Promise<void> {
   const message = form.querySelector<HTMLElement>('#campaign-form-message');
   const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]');
   if (submit) submit.disabled = true;
-  if (message) message.textContent = 'Validating and launching campaign…';
+  if (message) message.textContent = 'Validating and launching test campaign…';
+
   try {
+    const audience = String(data.get('audience') ?? '').trim();
+    if (audience !== 'Test users only') throw new Error('Only the Test users only audience is enabled.');
+
+    const confirmation = String(data.get('launch_confirmation') ?? '').trim();
+    if (confirmation !== 'SEND TEST INVITATIONS') throw new Error('Type SEND TEST INVITATIONS exactly to launch.');
+
+    const doctorIds = data.getAll('doctor_ids').map((value) => String(value).trim()).filter(Boolean);
+    if (!doctorIds.length) throw new Error('Select at least one test recipient.');
+
+    const topics = [1, 2, 3].map((number) => {
+      const sourceUrl = String(data.get(`topic_${number}_featured_image_source_url`) ?? '').trim();
+      if (!sourceUrl.startsWith('https://apexparent.hostmanpowered.com/wp-content/uploads/')) {
+        throw new Error(`Topic ${number} featured image must use the direct Apex Parent Media Library file URL.`);
+      }
+      const altText = String(data.get(`topic_${number}_featured_image_alt_text`) ?? '').trim();
+      if (altText.length < 8) throw new Error(`Topic ${number} needs useful featured image alt text.`);
+      return {
+        title: String(data.get(`topic_${number}`) ?? '').trim(),
+        featured_image_source_url: sourceUrl,
+        featured_image_alt_text: altText,
+        featured_image_source_type: String(data.get(`topic_${number}_featured_image_source_type`) ?? '').trim(),
+        featured_image_rights_reference: String(data.get(`topic_${number}_featured_image_rights_reference`) ?? '').trim(),
+      };
+    });
+
     await postAdminCommand({
       action: 'launch_campaign',
+      audience,
       campaign_name: String(data.get('campaign_name') ?? ''),
       campaign_month: String(data.get('campaign_month') ?? ''),
       practice_id: String(data.get('practice_id') ?? ''),
-      topics: [1, 2, 3].map((number) => ({ title: String(data.get(`topic_${number}`) ?? '') })),
-      doctor_ids: String(data.get('doctor_ids') ?? '').split(/\r?\n/).map((value) => value.trim()).filter(Boolean),
+      topics,
+      doctor_ids: doctorIds,
     });
-    if (message) message.textContent = 'Campaign launched. Invitations will follow the configured n8n delivery workflow.';
+
+    if (message) message.textContent = 'Test campaign launched. Invitations will follow the configured n8n delivery workflow.';
     form.reset();
     await initializeAdmin();
   } catch (error) {

@@ -566,3 +566,20 @@
   min-height: 180px;
   resize: vertical;
 }
+
+
+.admin-campaign-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.admin-campaign-title-row h3 {
+  margin: 0;
+}
+
+.admin-campaign-title-row .admin-text-button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}

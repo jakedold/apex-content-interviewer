@@ -48,7 +48,7 @@
           "value": "apex-marketing-n8n",
           "mode": "id"
         },
-        "sqlQuery": "ALTER TABLE `apex-marketing-n8n.automated_article_creation.campaigns`\n  ADD COLUMN IF NOT EXISTS invitation_send_at TIMESTAMP;\n\nUPDATE `apex-marketing-n8n.automated_article_creation.campaigns`\nSET status = 'LAUNCHED',\n    launched_at = COALESCE(launched_at, CURRENT_TIMESTAMP())\nWHERE status = 'SCHEDULED'\n  AND invitation_send_at IS NOT NULL\n  AND invitation_send_at <= CURRENT_TIMESTAMP();\n\nUPDATE `apex-marketing-n8n.automated_article_creation.campaign_doctors` cd\nSET status = 'READY',\n    updated_at = CURRENT_TIMESTAMP()\nWHERE status = 'SCHEDULED'\n  AND EXISTS (\n    SELECT 1\n    FROM `apex-marketing-n8n.automated_article_creation.campaigns` c\n    WHERE c.campaign_id = cd.campaign_id\n      AND c.status = 'LAUNCHED'\n  );\n\nUPDATE `apex-marketing-n8n.automated_article_creation.campaign_doctors` cd\nSET status = 'INVITED',\n    invited_at = COALESCE(invited_at, CURRENT_TIMESTAMP()),\n    updated_at = CURRENT_TIMESTAMP()\nWHERE status = 'READY'\n  AND EXISTS (\n    SELECT 1\n    FROM `apex-marketing-n8n.automated_article_creation.communications` cm\n    WHERE cm.campaign_id = cd.campaign_id\n      AND cm.doctor_id = cd.doctor_id\n      AND cm.communication_type = 'CAMPAIGN_INVITATION'\n      AND cm.status = 'SENT'\n  );\n\nCREATE TEMP TABLE candidates AS\nSELECT cd.campaign_id, cd.doctor_id, c.campaign_name, d.doctor_name\nFROM `apex-marketing-n8n.automated_article_creation.campaign_doctors` cd\nJOIN `apex-marketing-n8n.automated_article_creation.campaigns` c ON c.campaign_id = cd.campaign_id\nJOIN `apex-marketing-n8n.automated_article_creation.doctors` d ON d.doctor_id = cd.doctor_id\nWHERE cd.status = 'READY'\n  AND c.status = 'LAUNCHED'\n  AND d.active = TRUE\nORDER BY COALESCE(c.invitation_send_at, c.launched_at), cd.created_at, cd.doctor_id\nLIMIT 50;\n\nASSERT NOT EXISTS (\n  SELECT 1\n  FROM candidates c\n  WHERE (\n    SELECT COUNT(*)\n    FROM `apex-marketing-n8n.automated_article_creation.campaign_topics` t\n    WHERE t.campaign_id = c.campaign_id AND t.active = TRUE\n  ) != 3\n) AS 'Campaign needs exactly three active topics.';\n\nUPDATE `apex-marketing-n8n.automated_article_creation.interview_links` il\nSET status = 'SUPERSEDED'\nWHERE status IN ('READY', 'OPENED')\n  AND used_at IS NULL\n  AND EXISTS (\n    SELECT 1 FROM candidates c\n    WHERE c.campaign_id = il.campaign_id AND c.doctor_id = il.doctor_id\n  );\n\nCREATE TEMP TABLE new_links AS\nSELECT\n  GENERATE_UUID() AS link_id,\n  c.campaign_id,\n  c.doctor_id,\n  c.campaign_name,\n  c.doctor_name,\n  t.topic_id,\n  t.topic_title,\n  t.topic_sort_order,\n  CONCAT(REPLACE(GENERATE_UUID(), '-', ''), REPLACE(GENERATE_UUID(), '-', '')) AS raw_token,\n  TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 30 DAY) AS expires_at\nFROM candidates c\nJOIN `apex-marketing-n8n.automated_article_creation.campaign_topics` t\n  ON t.campaign_id = c.campaign_id AND t.active = TRUE;\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.interview_links`\n(link_id, campaign_id, doctor_id, topic_id, secure_token_hash, status, created_at, expires_at, first_opened_at, used_at, interview_id)\nSELECT\n  link_id, campaign_id, doctor_id, topic_id,\n  TO_HEX(SHA256(raw_token)), 'READY', CURRENT_TIMESTAMP(), expires_at, NULL, NULL, NULL\nFROM new_links;\n\nSELECT\n  campaign_id,\n  doctor_id,\n  campaign_name,\n  doctor_name,\n  topic_title,\n  topic_sort_order,\n  CONCAT('https://apex-content-interviewer.jdold.workers.dev/interview/', raw_token) AS interview_url\nFROM new_links\nORDER BY campaign_id, doctor_id, topic_sort_order;",
+        "sqlQuery": "ALTER TABLE `apex-marketing-n8n.automated_article_creation.campaigns`\n  ADD COLUMN IF NOT EXISTS invitation_send_at TIMESTAMP;\nALTER TABLE `apex-marketing-n8n.automated_article_creation.campaigns`\n  ADD COLUMN IF NOT EXISTS preview_only BOOL;\n\nUPDATE `apex-marketing-n8n.automated_article_creation.campaigns`\nSET status = 'LAUNCHED',\n    launched_at = COALESCE(launched_at, CURRENT_TIMESTAMP())\nWHERE status = 'SCHEDULED'\n  AND invitation_send_at IS NOT NULL\n  AND invitation_send_at <= CURRENT_TIMESTAMP();\n\nUPDATE `apex-marketing-n8n.automated_article_creation.campaign_doctors` cd\nSET status = 'READY',\n    updated_at = CURRENT_TIMESTAMP()\nWHERE status = 'SCHEDULED'\n  AND EXISTS (\n    SELECT 1\n    FROM `apex-marketing-n8n.automated_article_creation.campaigns` c\n    WHERE c.campaign_id = cd.campaign_id\n      AND c.status = 'LAUNCHED'\n  );\n\nUPDATE `apex-marketing-n8n.automated_article_creation.campaign_doctors` cd\nSET status = 'INVITED',\n    invited_at = COALESCE(invited_at, CURRENT_TIMESTAMP()),\n    updated_at = CURRENT_TIMESTAMP()\nWHERE status = 'READY'\n  AND EXISTS (\n    SELECT 1\n    FROM `apex-marketing-n8n.automated_article_creation.communications` cm\n    WHERE cm.campaign_id = cd.campaign_id\n      AND cm.doctor_id = cd.doctor_id\n      AND cm.communication_type = 'CAMPAIGN_INVITATION'\n      AND cm.status = 'SENT'\n  );\n\nCREATE TEMP TABLE candidates AS\nSELECT cd.campaign_id, cd.doctor_id, c.campaign_name, d.doctor_name, COALESCE(c.preview_only, FALSE) AS preview_only\nFROM `apex-marketing-n8n.automated_article_creation.campaign_doctors` cd\nJOIN `apex-marketing-n8n.automated_article_creation.campaigns` c ON c.campaign_id = cd.campaign_id\nJOIN `apex-marketing-n8n.automated_article_creation.doctors` d ON d.doctor_id = cd.doctor_id\nWHERE cd.status = 'READY'\n  AND c.status = 'LAUNCHED'\n  AND d.active = TRUE\nORDER BY COALESCE(c.invitation_send_at, c.launched_at), cd.created_at, cd.doctor_id\nLIMIT 50;\n\nASSERT NOT EXISTS (\n  SELECT 1\n  FROM candidates c\n  WHERE (\n    SELECT COUNT(*)\n    FROM `apex-marketing-n8n.automated_article_creation.campaign_topics` t\n    WHERE t.campaign_id = c.campaign_id AND t.active = TRUE\n  ) != 3\n) AS 'Campaign needs exactly three active topics.';\n\nUPDATE `apex-marketing-n8n.automated_article_creation.interview_links` il\nSET status = 'SUPERSEDED'\nWHERE status IN ('READY', 'OPENED')\n  AND used_at IS NULL\n  AND EXISTS (\n    SELECT 1 FROM candidates c\n    WHERE c.campaign_id = il.campaign_id AND c.doctor_id = il.doctor_id\n  );\n\nCREATE TEMP TABLE new_links AS\nSELECT\n  GENERATE_UUID() AS link_id,\n  c.campaign_id,\n  c.doctor_id,\n  c.campaign_name,\n  c.doctor_name,\n  c.preview_only,\n  t.topic_id,\n  t.topic_title,\n  t.topic_sort_order,\n  CONCAT(REPLACE(GENERATE_UUID(), '-', ''), REPLACE(GENERATE_UUID(), '-', '')) AS raw_token,\n  TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 30 DAY) AS expires_at\nFROM candidates c\nJOIN `apex-marketing-n8n.automated_article_creation.campaign_topics` t\n  ON t.campaign_id = c.campaign_id AND t.active = TRUE;\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.interview_links`\n(link_id, campaign_id, doctor_id, topic_id, secure_token_hash, status, created_at, expires_at, first_opened_at, used_at, interview_id)\nSELECT\n  link_id, campaign_id, doctor_id, topic_id,\n  TO_HEX(SHA256(raw_token)), 'READY', CURRENT_TIMESTAMP(), expires_at, NULL, NULL, NULL\nFROM new_links;\n\nSELECT\n  campaign_id,\n  doctor_id,\n  campaign_name,\n  doctor_name,\n  preview_only,\n  topic_title,\n  topic_sort_order,\n  CONCAT('https://apex-content-interviewer.jdold.workers.dev/interview/', raw_token) AS interview_url\nFROM new_links\nORDER BY campaign_id, doctor_id, topic_sort_order;",
         "options": {
           "location": "US"
         }
@@ -65,7 +65,7 @@
       ],
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const rows = $input.all().map((item) => item.json);\nif (!rows.length) return [];\n\nconst groups = new Map();\nfor (const row of rows) {\n  const key = String(row.campaign_id) + '::' + String(row.doctor_id);\n  if (!groups.has(key)) groups.set(key, []);\n  groups.get(key).push(row);\n}\n\nconst invitations = [];\nfor (const group of groups.values()) {\n  if (group.length !== 3) throw new Error('Expected exactly three topic links for each doctor.');\n  group.sort((a, b) => Number(a.topic_sort_order) - Number(b.topic_sort_order));\n  const first = group[0];\n  if (group.some((row) => row.doctor_id !== first.doctor_id || row.campaign_id !== first.campaign_id)) {\n    throw new Error('Invitation rows span multiple doctors or campaigns.');\n  }\n  const lines = [\n    'Hello ' + first.doctor_name + ',',\n    '',\n    'We have three article topics for you to choose from. Pick the one you would most like to discuss, then use its secure link to start a voice interview:',\n    ''\n  ];\n  for (const row of group) lines.push(row.topic_sort_order + '. ' + row.topic_title, row.interview_url, '');\n  lines.push(\n    'Before you begin, choose a quiet place. Background conversations and other noise can interrupt the voice interviewer. Headphones with a microphone may help.',\n    '',\n    'These links expire in 30 days. Please do not include patient-identifying information in the interview.',\n    '',\n    'Apex Dental Partners'\n  );\n  invitations.push({\n    json: {\n      doctor_id: first.doctor_id,\n      article_id: '',\n      campaign_id: first.campaign_id,\n      communication_type: 'CAMPAIGN_INVITATION',\n      subject: 'Choose your article topic: ' + first.campaign_name,\n      message_text: lines.join(String.fromCharCode(10)),\n      action_url: ''\n    }\n  });\n}\nreturn invitations;"
+        "jsCode": "const rows = $input.all().map((item) => item.json);\nif (!rows.length) return [];\nconst groups = new Map();\nfor (const row of rows) {\n  const key = String(row.campaign_id) + '::' + String(row.doctor_id);\n  if (!groups.has(key)) groups.set(key, []);\n  groups.get(key).push(row);\n}\nconst invitations = [];\nfor (const group of groups.values()) {\n  if (group.length !== 3) throw new Error('Expected exactly three topic links for each doctor.');\n  group.sort((a, b) => Number(a.topic_sort_order) - Number(b.topic_sort_order));\n  const first = group[0];\n  const previewOnly = first.preview_only === true || String(first.preview_only).toLowerCase() === 'true';\n  const lines = [\n    'Hello ' + first.doctor_name + ',',\n    '',\n    previewOnly ? 'You are invited to preview Apex Dental Partners\\' AI content interview experience.' : 'We have three article topics for you to choose from.',\n    '',\n    previewOnly ? 'Choose whichever topic you would most like to discuss, then use its secure link to try a short voice interview:' : 'Pick the topic you would most like to discuss, then use its secure link to start a voice interview:',\n    ''\n  ];\n  for (const row of group) lines.push(row.topic_sort_order + '. ' + row.topic_title, row.interview_url, '');\n  lines.push('Before you begin, choose a quiet place. Background conversations and other noise can interrupt the voice interviewer. Headphones with a microphone may help.', '');\n  if (previewOnly) lines.push('This presentation preview saves your interview transcript for evaluation, but it will not create, review, or publish an article.', '');\n  lines.push('These links expire in 30 days. Please do not include patient-identifying information in the interview.', '', 'Apex Dental Partners');\n  invitations.push({ json: {\n    doctor_id: first.doctor_id,\n    article_id: '',\n    campaign_id: first.campaign_id,\n    communication_type: 'CAMPAIGN_INVITATION',\n    subject: previewOnly ? 'Try Apex\\'s AI content interview: ' + first.campaign_name : 'Choose your article topic: ' + first.campaign_name,\n    message_text: lines.join(String.fromCharCode(10)),\n    action_url: ''\n  }});\n}\nreturn invitations;"
       }
     },
     {
@@ -143,7 +143,7 @@
     },
     {
       "id": "aac-confirm-invitation",
-      "name": "Require successful delivery",
+      "name": "Normalize invitation delivery",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -152,7 +152,7 @@
       ],
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "if ($json.success !== true && $json.status !== 'SENT') throw new Error('Doctor invitation was not delivered.');\nconst original = $('Compose three-topic invitation').all().find((item) => item.json.doctor_id === $json.doctor_id)?.json;\nif (!original) throw new Error('Could not match the delivery result to its campaign invitation.');\nreturn { json: { campaign_id: original.campaign_id, doctor_id: original.doctor_id } };"
+        "jsCode": "const delivered = $json.status === 'SENT' || $json.success === true;\nreturn { json: {\n  campaign_id: String($json.campaign_id || ''),\n  doctor_id: String($json.doctor_id || ''),\n  delivered,\n  status: String($json.status || (delivered ? 'SENT' : 'FAILED')),\n  error: $json.error ? String($json.error) : ''\n} };"
       }
     },
     {
@@ -161,8 +161,8 @@
       "type": "n8n-nodes-base.googleBigQuery",
       "typeVersion": 2.1,
       "position": [
-        760,
-        120
+        960,
+        40
       ],
       "parameters": {
         "authentication": "serviceAccount",
@@ -199,7 +199,7 @@
         -320
       ],
       "parameters": {
-        "content": "## Campaign invitation delivery\n\nEvery five minutes, release any due scheduled campaigns, then take up to 50 READY recipients across launched campaigns. Create three hashed one-time topic links per recipient and process invitations one recipient at a time through the private doctor-message router.\n\nA successful communication makes the campaign doctor INVITED. Failures remain eligible for retry; old unused links are superseded. This batching is designed so a presentation cohort of roughly 30 doctors can begin receiving email within a few minutes of the scheduled release without increasing the polling frequency.",
+        "content": "## Campaign invitation delivery\n\nEvery minute, release due scheduled campaigns, then take up to 50 READY recipients across launched campaigns. Create three hashed one-time topic links per recipient and process invitations one recipient at a time through the private doctor-message router.\n\nA successful communication makes the campaign doctor INVITED. A failed recipient remains READY for retry, and the loop continues so one bad address cannot block the rest of a presentation cohort. Old unused links are superseded.\n\nPresentation-preview invitations are clearly labeled and explain that the interview transcript is saved but no article is created, reviewed, or published.",
         "height": 260,
         "width": 640
       }
@@ -215,6 +215,39 @@
       ],
       "parameters": {
         "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "aac-invitation-delivered-if",
+      "name": "Was invitation delivered?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        120
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "aac-invitation-delivered-condition",
+              "leftValue": "={{ String($json.delivered) }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
         "options": {}
       }
     }
@@ -264,17 +297,6 @@
         ]
       ]
     },
-    "Require successful delivery": {
-      "main": [
-        [
-          {
-            "node": "Mark doctor invited",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Check for due invitations every minute": {
       "main": [
         [
@@ -300,6 +322,35 @@
     },
     "Mark doctor invited": {
       "main": [
+        [
+          {
+            "node": "Loop Over Invitations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize invitation delivery": {
+      "main": [
+        [
+          {
+            "node": "Was invitation delivered?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Was invitation delivered?": {
+      "main": [
+        [
+          {
+            "node": "Mark doctor invited",
+            "type": "main",
+            "index": 0
+          }
+        ],
         [
           {
             "node": "Loop Over Invitations",

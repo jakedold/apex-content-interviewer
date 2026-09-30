@@ -1,3 +1,5 @@
+import { handleAdminCommand, handleAdminOverview, handleAdminWorkItem } from './admin';
+
 const ROUTES: Readonly<Record<string, string>> = {
   '/api/validate': '/webhook/aac/interview/validate',
   '/api/start': '/webhook/aac/interview/start',
@@ -15,6 +17,34 @@ function jsonError(message: string, status: number): Response {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+
+    if (url.pathname === '/api/admin/overview') {
+      if (request.method !== 'GET') {
+        return new Response(null, { status: 405, headers: { Allow: 'GET' } });
+      }
+      return handleAdminOverview(request, env);
+    }
+
+    const workItemMatch = url.pathname.match(/^\/api\/admin\/work-items\/([^/]+)\/([^/]+)$/);
+    if (workItemMatch) {
+      if (request.method !== 'GET') {
+        return new Response(null, { status: 405, headers: { Allow: 'GET' } });
+      }
+      return handleAdminWorkItem(
+        request,
+        env,
+        decodeURIComponent(workItemMatch[1]),
+        decodeURIComponent(workItemMatch[2]),
+      );
+    }
+
+    if (url.pathname === '/api/admin/commands') {
+      if (request.method !== 'POST') {
+        return new Response(null, { status: 405, headers: { Allow: 'POST' } });
+      }
+      return handleAdminCommand(request, env);
+    }
+
     const upstreamPath = ROUTES[url.pathname];
 
     if (!upstreamPath) {

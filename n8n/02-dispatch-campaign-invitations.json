@@ -328,7 +328,7 @@
       "main": [
         [
           {
-            "node": "Require successful delivery",
+            "node": "Normalize invitation delivery",
             "type": "main",
             "index": 0
           }

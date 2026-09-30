@@ -15,6 +15,37 @@ type Campaign = {
   issue_count: number | string;
 };
 
+type CampaignTemplateTopic = {
+  topic_title: string;
+  featured_image_source_url: string | null;
+  featured_image_alt_text: string | null;
+  featured_image_source_type: string | null;
+  featured_image_rights_reference: string | null;
+  topic_sort_order: number | string;
+};
+
+type CampaignTemplateRecipient = {
+  doctor_id: string;
+  doctor_name: string;
+  email: string | null;
+  practice_id: string | null;
+};
+
+type CampaignTemplate = {
+  campaign_id: string;
+  campaign_name: string;
+  campaign_month: string;
+  audience: 'Test users only' | 'Presentation demo recipients';
+  practice_id: string | null;
+  topics: CampaignTemplateTopic[];
+  recipients: CampaignTemplateRecipient[];
+};
+
+type CampaignTemplateResponse = {
+  viewer: { email: string | null };
+  template: CampaignTemplate;
+};
+
 type WorkItem = {
   work_item_id: string;
   campaign_id: string;
@@ -183,6 +214,17 @@ function formatDate(value: string | null | undefined, includeTime = false): stri
   }).format(date);
 }
 
+function formatCampaignMonth(value: string | null | undefined): string {
+  if (!value) return 'Month not recorded';
+  const match = /^(\d{4})-(\d{2})/.exec(value);
+  if (!match) return value;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (!Number.isInteger(year) || month < 1 || month > 12) return value;
+  return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+    .format(new Date(Date.UTC(year, month - 1, 1)));
+}
+
 function titleCase(value: string): string {
   return value
     .toLowerCase()
@@ -345,10 +387,13 @@ function campaignCard(campaign: Campaign): string {
   return `
     <article class="admin-campaign-card">
       <div class="admin-campaign-topline">
-        <span>${escapeHtml(formatDate(campaign.campaign_month))}</span>
+        <span>${escapeHtml(formatCampaignMonth(campaign.campaign_month))}</span>
         ${statusPill(campaign.status)}
       </div>
-      <h3>${escapeHtml(campaign.campaign_name)}</h3>
+      <div class="admin-campaign-title-row">
+        <h3>${escapeHtml(campaign.campaign_name)}</h3>
+        <button class="admin-text-button" type="button" data-duplicate-campaign="${escapeHtml(campaign.campaign_id)}">Duplicate</button>
+      </div>
       <div class="admin-progress" aria-label="${progress}% published"><span style="width:${progress}%"></span></div>
       <div class="admin-campaign-stats">
         <span><strong>${doctors}</strong> doctors</span>
@@ -450,6 +495,109 @@ function renderAdminControls(data: AdminResponse): string {
         <p class="admin-control-note">Sign-in membership is governed by Cloudflare Access. Action roles are separately allowlisted so broad Workspace access cannot change workflow state.</p>
       </article>
     </section>`;
+}
+
+async function fetchCampaignTemplate(campaignId: string): Promise<CampaignTemplate> {
+  const response = await fetch(`/api/admin/campaigns/${encodeURIComponent(campaignId)}/template`, {
+    headers: { Accept: 'application/json' },
+  });
+  const raw = await response.text();
+  let body: unknown = {};
+  if (raw.trim()) {
+    try { body = JSON.parse(raw); }
+    catch { body = { message: raw.slice(0, 500) }; }
+  }
+  if (!response.ok) {
+    throw new Error(body && typeof body === 'object' && 'message' in body ? String(body.message) : 'The campaign could not be duplicated.');
+  }
+  const result = body as CampaignTemplateResponse;
+  if (!result.template) throw new Error('The campaign template was empty.');
+  return result.template;
+}
+
+function setCampaignField(form: HTMLFormElement, name: string, value: string): void {
+  const field = form.elements.namedItem(name);
+  if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement) {
+    field.value = value;
+  }
+}
+
+async function duplicateCampaign(campaignId: string): Promise<void> {
+  const dialog = document.querySelector<HTMLDialogElement>('#admin-campaign-dialog');
+  const form = document.querySelector<HTMLFormElement>('#admin-campaign-form');
+  const message = document.querySelector<HTMLElement>('#campaign-form-message');
+  if (!dialog || !form) return;
+
+  if (message) message.textContent = 'Loading campaign…';
+  dialog.showModal();
+
+  try {
+    const template = await fetchCampaignTemplate(campaignId);
+    form.reset();
+
+    setCampaignField(form, 'campaign_name', `${template.campaign_name} Copy`);
+    setCampaignField(form, 'campaign_month', template.campaign_month.slice(0, 7));
+    setCampaignField(form, 'send_mode', 'now');
+    setCampaignField(form, 'scheduled_send_local', '');
+    setCampaignField(form, 'launch_confirmation', '');
+
+    const audience = form.elements.namedItem('audience') as HTMLSelectElement | null;
+    if (audience) {
+      audience.value = template.audience;
+      audience.dispatchEvent(new Event('change'));
+    }
+
+    const practice = form.elements.namedItem('practice_id') as HTMLSelectElement | null;
+    if (practice) {
+      const available = Array.from(practice.options).some((option) => option.value === template.practice_id);
+      practice.value = available && template.practice_id ? template.practice_id : (practice.options[1]?.value ?? '');
+      practice.dispatchEvent(new Event('change'));
+    }
+
+    const sendMode = form.elements.namedItem('send_mode') as HTMLSelectElement | null;
+    sendMode?.dispatchEvent(new Event('change'));
+
+    const topics = [...template.topics].sort((a, b) => Number(a.topic_sort_order) - Number(b.topic_sort_order));
+    for (let index = 0; index < 3; index += 1) {
+      const number = index + 1;
+      const topic = topics[index];
+      setCampaignField(form, `topic_${number}`, topic?.topic_title ?? '');
+      setCampaignField(form, `topic_${number}_featured_image_source_url`, topic?.featured_image_source_url ?? '');
+      setCampaignField(form, `topic_${number}_featured_image_alt_text`, topic?.featured_image_alt_text ?? '');
+      setCampaignField(form, `topic_${number}_featured_image_source_type`, topic?.featured_image_source_type ?? '');
+      setCampaignField(form, `topic_${number}_featured_image_rights_reference`, topic?.featured_image_rights_reference ?? '');
+    }
+
+    if (template.audience === 'Presentation demo recipients') {
+      setCampaignField(
+        form,
+        'demo_recipients',
+        template.recipients
+          .filter((recipient) => recipient.email)
+          .map((recipient) => `${recipient.doctor_name},${recipient.email}`)
+          .join('\n'),
+      );
+    } else {
+      const recipientIds = new Set(template.recipients.map((recipient) => recipient.doctor_id));
+      form.querySelectorAll<HTMLInputElement>('input[name="doctor_ids"]').forEach((checkbox) => {
+        checkbox.checked = recipientIds.has(checkbox.value) && !checkbox.closest<HTMLElement>('[data-practice-id]')?.hidden;
+      });
+    }
+
+    const missingAssetFields = topics.some((topic) =>
+      !topic?.featured_image_source_url ||
+      !topic?.featured_image_alt_text ||
+      !topic?.featured_image_source_type ||
+      !topic?.featured_image_rights_reference
+    );
+    if (message) {
+      message.textContent = missingAssetFields
+        ? 'Campaign duplicated. This older campaign is missing one or more image fields; complete those before launch.'
+        : 'Campaign duplicated. Review the new name, month, recipients, and send timing before launch.';
+    }
+  } catch (error) {
+    if (message) message.textContent = error instanceof Error ? error.message : 'The campaign could not be duplicated.';
+  }
 }
 
 function renderDashboard(data: AdminResponse): void {
@@ -625,6 +773,9 @@ function renderDashboard(data: AdminResponse): void {
   });
   const campaignDialog = document.querySelector<HTMLDialogElement>('#admin-campaign-dialog');
   document.querySelector<HTMLButtonElement>('#open-campaign-builder')?.addEventListener('click', () => campaignDialog?.showModal());
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-duplicate-campaign]')) {
+    button.addEventListener('click', () => void duplicateCampaign(button.dataset.duplicateCampaign ?? ''));
+  }
   document.querySelector<HTMLButtonElement>('#campaign-dialog-close')?.addEventListener('click', () => campaignDialog?.close());
   document.querySelector<HTMLButtonElement>('#cancel-campaign')?.addEventListener('click', () => campaignDialog?.close());
 
@@ -853,9 +1004,21 @@ async function postAdminCommand(body: Record<string, unknown>): Promise<Record<s
     headers: { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
     body: JSON.stringify(body),
   });
-  const result: unknown = await response.json();
-  if (!response.ok) throw new Error(result && typeof result === 'object' && 'message' in result ? String(result.message) : 'The action could not be completed.');
-  return result as Record<string, unknown>;
+  const raw = await response.text();
+  let result: unknown = {};
+  if (raw.trim()) {
+    try {
+      result = JSON.parse(raw);
+    } catch {
+      result = { message: raw.slice(0, 500) };
+    }
+  }
+  if (!response.ok) {
+    throw new Error(result && typeof result === 'object' && 'message' in result
+      ? String(result.message)
+      : `The action could not be completed (HTTP ${response.status}).`);
+  }
+  return result && typeof result === 'object' ? result as Record<string, unknown> : {};
 }
 
 async function submitDoctorApproval(event: SubmitEvent, item: WorkItemDetail['item']): Promise<void> {

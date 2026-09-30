@@ -186,6 +186,55 @@ SELECT TO_JSON_STRING(STRUCT(
 )) AS payload;`;
 }
 
+function campaignTemplateQuery(project: string, dataset: string): string {
+  const table = tableFactory(project, dataset);
+  return `
+WITH campaign AS (
+  SELECT campaign_id, campaign_name, CAST(campaign_month AS STRING) AS campaign_month
+  FROM ${table('campaigns')}
+  WHERE campaign_id = @campaign_id
+),
+topics AS (
+  SELECT
+    topic_title,
+    featured_image_source_url,
+    featured_image_alt_text,
+    featured_image_source_type,
+    featured_image_rights_reference,
+    topic_sort_order
+  FROM ${table('campaign_topics')}
+  WHERE campaign_id = @campaign_id
+  ORDER BY topic_sort_order
+),
+recipients AS (
+  SELECT d.doctor_id, d.doctor_name, d.email, d.practice_id
+  FROM ${table('campaign_doctors')} cd
+  JOIN ${table('doctors')} d USING (doctor_id)
+  WHERE cd.campaign_id = @campaign_id
+  ORDER BY d.doctor_name
+)
+SELECT TO_JSON_STRING(STRUCT(
+  (SELECT campaign_id FROM campaign LIMIT 1) AS campaign_id,
+  (SELECT campaign_name FROM campaign LIMIT 1) AS campaign_name,
+  (SELECT campaign_month FROM campaign LIMIT 1) AS campaign_month,
+  CASE
+    WHEN (SELECT COUNT(*) FROM recipients) > 0
+      AND (SELECT COUNTIF(STARTS_WITH(doctor_id, 'doctor_demo_')) FROM recipients) = (SELECT COUNT(*) FROM recipients)
+      THEN 'Presentation demo recipients'
+    ELSE 'Test users only'
+  END AS audience,
+  CASE
+    WHEN (SELECT COUNT(DISTINCT practice_id) FROM recipients) = 1
+      THEN (SELECT ANY_VALUE(practice_id) FROM recipients)
+    ELSE NULL
+  END AS practice_id,
+  ARRAY(SELECT AS STRUCT * FROM topics) AS topics,
+  ARRAY(SELECT AS STRUCT * FROM recipients) AS recipients
+)) AS payload
+FROM campaign
+LIMIT 1;`;
+}
+
 function workItemDetailQuery(project: string, dataset: string): string {
   const table = tableFactory(project, dataset);
   return `
@@ -269,6 +318,27 @@ export async function handleAdminOverview(request: Request, env: Env): Promise<R
   }
 }
 
+export async function handleAdminCampaignTemplate(request: Request, env: Env, campaignId: string): Promise<Response> {
+  const adminEnv: AdminEnv = env;
+  const missing = configurationMissing(adminEnv);
+  if (missing.length) return Response.json({ error: 'ADMIN_CONFIGURATION_REQUIRED', message: 'The protected dashboard data connection is not configured.', missing }, { status: 503 });
+  let viewer: AccessClaims;
+  try { viewer = await authenticateAdmin(request, adminEnv); }
+  catch { return Response.json({ error: 'UNAUTHORIZED', message: 'Cloudflare Access authentication is required.' }, { status: 401 }); }
+  if (!campaignId || campaignId.length > 200) return Response.json({ error: 'INVALID_CAMPAIGN', message: 'The campaign identifier is invalid.' }, { status: 400 });
+  try {
+    const template = await queryJson(
+      adminEnv,
+      campaignTemplateQuery(adminEnv.BQ_PROJECT_ID, adminEnv.BQ_DATASET),
+      [stringParameter('campaign_id', campaignId)],
+    );
+    return Response.json({ viewer: { email: viewer.email ?? null }, template }, { headers: { 'Cache-Control': 'private, no-store' } });
+  } catch (error) {
+    console.error(JSON.stringify({ event: 'admin_campaign_template_failed', viewer: viewer.email ?? viewer.sub ?? 'unknown', campaignId, error: error instanceof Error ? error.message : String(error) }));
+    return unavailable(error);
+  }
+}
+
 export async function handleAdminWorkItem(request: Request, env: Env, campaignId: string, doctorId: string): Promise<Response> {
   const adminEnv: AdminEnv = env;
   const missing = configurationMissing(adminEnv);
@@ -307,7 +377,28 @@ export async function handleAdminCommand(request: Request, env: Env): Promise<Re
       headers: { 'Content-Type': 'application/json', 'X-AAC-Admin-Secret': adminEnv.ADMIN_COMMAND_SECRET },
       body: JSON.stringify({ ...command, actor_email: viewer.email, idempotency_key: idempotencyKey, requested_at: new Date().toISOString() }),
     });
-    return new Response(response.body, { status: response.status, statusText: response.statusText,
+    const raw = await response.text();
+    if (!response.ok) {
+      let message = `The n8n command workflow failed with HTTP ${response.status}.`;
+      if (raw.trim()) {
+        try {
+          const parsed = JSON.parse(raw) as { message?: unknown; error?: unknown };
+          message = String(parsed.message ?? parsed.error ?? message);
+        } catch {
+          message = raw.slice(0, 500);
+        }
+      }
+      console.error(JSON.stringify({ event: 'admin_command_upstream_failed', viewer: viewer.email, action: command.action, status: response.status, message }));
+      return Response.json({ error: 'N8N_COMMAND_FAILED', message, upstream_status: response.status }, { status: 502, headers: { 'Cache-Control': 'no-store' } });
+    }
+    if (!raw.trim()) {
+      console.error(JSON.stringify({ event: 'admin_command_empty_response', viewer: viewer.email, action: command.action, status: response.status }));
+      return Response.json({
+        error: 'N8N_EMPTY_RESPONSE',
+        message: 'The n8n command workflow returned an empty response. The campaign was not confirmed; check the workflow execution before retrying.',
+      }, { status: 502, headers: { 'Cache-Control': 'no-store' } });
+    }
+    return new Response(raw, { status: response.status, statusText: response.statusText,
       headers: { 'Content-Type': response.headers.get('Content-Type') ?? 'application/json', 'Cache-Control': 'no-store' } });
   } catch (error) {
     console.error(JSON.stringify({ event: 'admin_command_failed', viewer: viewer.email, action: command.action, error: error instanceof Error ? error.message : String(error) }));

@@ -1,0 +1,733 @@
+{
+  "name": "AAC - Test-Only Campaign Launcher",
+  "nodes": [
+    {
+      "parameters": {
+        "authentication": "basicAuth",
+        "formTitle": "Start a test article campaign",
+        "formDescription": "Test User entries only. Choose the practice and recipients, then review before sending test invitations. No dentist emails or live-site release.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Audience",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Test users only"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Campaign name",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Campaign month",
+              "fieldType": "date",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Topic 1",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Topic 1 featured image central source URL",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "https://central-assets.example/path/image.jpg"
+            },
+            {
+              "fieldLabel": "Topic 1 featured image alt text",
+              "fieldType": "text",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Topic 1 featured image source type",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Apex-owned or commissioned"
+                  },
+                  {
+                    "option": "Licensed stock"
+                  },
+                  {
+                    "option": "AI-generated with approved terms"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Topic 1 featured image rights or source reference",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "Asset record, license, commission, or generation reference"
+            },
+            {
+              "fieldLabel": "Topic 2",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Topic 2 featured image central source URL",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "https://central-assets.example/path/image.jpg"
+            },
+            {
+              "fieldLabel": "Topic 2 featured image alt text",
+              "fieldType": "text",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Topic 2 featured image source type",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Apex-owned or commissioned"
+                  },
+                  {
+                    "option": "Licensed stock"
+                  },
+                  {
+                    "option": "AI-generated with approved terms"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Topic 2 featured image rights or source reference",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "Asset record, license, commission, or generation reference"
+            },
+            {
+              "fieldLabel": "Topic 3",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Topic 3 featured image central source URL",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "https://central-assets.example/path/image.jpg"
+            },
+            {
+              "fieldLabel": "Topic 3 featured image alt text",
+              "fieldType": "text",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Topic 3 featured image source type",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Apex-owned or commissioned"
+                  },
+                  {
+                    "option": "Licensed stock"
+                  },
+                  {
+                    "option": "AI-generated with approved terms"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Topic 3 featured image rights or source reference",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "Asset record, license, commission, or generation reference"
+            }
+          ]
+        },
+        "responseMode": "lastNode",
+        "options": {
+          "buttonLabel": "Choose locations",
+          "path": "aac-test-campaign-launch",
+          "ignoreBots": true
+        }
+      },
+      "id": "22b075a1-4c80-4aaa-8475-1ef30d02b1a0",
+      "name": "Start selection preview",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        -3840,
+        176
+      ],
+      "webhookId": "55e6c269-04c6-414e-ae7e-ed9cb6b7f627"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1M0arM4jnZzalySGUKq60Hp1yhTDz2RQTXqMeOWfaOUA",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Locations",
+          "mode": "name"
+        },
+        "options": {
+          "dataLocationOnSheet": {
+            "values": {
+              "rangeDefinition": "specifyRangeA1",
+              "range": "A1:N250"
+            }
+          }
+        }
+      },
+      "id": "9b7cc285-14fd-4e9b-92e3-e354f2473fb4",
+      "name": "Read location codes and names",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -3568,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { rows: $input.all().map((item) => item.json) } }];"
+      },
+      "id": "66601f04-07f1-4ad9-bae1-d3d6f58530da",
+      "name": "Keep location rows together",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3312,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1M0arM4jnZzalySGUKq60Hp1yhTDz2RQTXqMeOWfaOUA",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Wordpress Sites",
+          "mode": "name"
+        },
+        "options": {
+          "dataLocationOnSheet": {
+            "values": {
+              "rangeDefinition": "specifyRangeA1",
+              "range": "A1:C250"
+            }
+          }
+        }
+      },
+      "id": "b763e22a-bebd-4364-b9ca-a859e3783a14",
+      "name": "Read public website URLs",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -3056,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { rows: $input.all().map((item) => item.json) } }];"
+      },
+      "id": "d4801424-30a4-4c0e-8f8d-9a3c0d76d6d9",
+      "name": "Keep website rows together",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2800,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1M0arM4jnZzalySGUKq60Hp1yhTDz2RQTXqMeOWfaOUA",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Doctor Census",
+          "mode": "name"
+        },
+        "options": {
+          "dataLocationOnSheet": {
+            "values": {
+              "rangeDefinition": "specifyRangeA1",
+              "range": "A2:D250"
+            }
+          }
+        }
+      },
+      "id": "c06ab9bc-99b1-4c90-a657-2a79468618ec",
+      "name": "Read general dentist census",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -2528,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { rows: $input.all().map((item) => item.json) } }];"
+      },
+      "id": "dbacd7e6-1202-4064-bb0b-0c5ac5e8adf7",
+      "name": "Keep dentist rows together",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2272,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1M0arM4jnZzalySGUKq60Hp1yhTDz2RQTXqMeOWfaOUA",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Test User",
+          "mode": "name"
+        },
+        "options": {
+          "dataLocationOnSheet": {
+            "values": {
+              "rangeDefinition": "specifyRangeA1",
+              "range": "A1:D100"
+            }
+          }
+        }
+      },
+      "id": "efe73ecb-f0c8-4932-ba38-3655c0450a26",
+      "name": "Read test users",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -976,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pure roster validation. Do not persist a snapshot of people or credentials.\nconst text = (value) => String(value ?? '').trim();\nconst codeFromPrimaryLocation = (value) => text(value).match(/\\(([^)]+)\\)\\s*$/)?.[1] ?? '';\nconst validEmail = (value) => /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value);\n\nfunction siteUrl(value) {\n  const raw = text(value);\n  if (!raw) return '';\n  // n8n Code nodes don't consistently expose the URL constructor.\n  const match = raw.match(/^(?:https:\\/\\/)?([a-z0-9.-]+)(\\/[^?#\\\\\\s]*)?$/i);\n  if (!match) return '';\n  const host = match[1].toLowerCase();\n  const labels = host.split('.');\n  if (labels.length < 2 || labels.some((label) => !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(label))) return '';\n  const path = match[2] || '/';\n  return 'https://' + host + path.replace(/\\/*$/, '/');\n}\n\nfunction buildCampaignRoster(locationRows, wordpressRows, dentistRows, testRows = []) {\n  const heldLocations = new Set(['DFW-24', 'DFW-25']);\n  const wordpressByCode = new Map();\n  for (const [rawCode, rawName, rawUrl] of wordpressRows) {\n    const code = text(rawCode);\n    if (!code) continue;\n    if (wordpressByCode.has(code)) throw new Error(`Duplicate WordPress location code: ${code}`);\n    wordpressByCode.set(code, { name: text(rawName), url: siteUrl(rawUrl) });\n  }\n\n  const locations = [];\n  const excludedLocations = [];\n  const locationByCode = new Map();\n  for (const [rawCode, rawName, rawType, rawPublicUrl] of locationRows) {\n    const code = text(rawCode);\n    if (!code) continue;\n    if (locationByCode.has(code)) throw new Error(`Duplicate location code: ${code}`);\n    const name = text(rawName);\n    const wordpress = wordpressByCode.get(code);\n    const publicUrl = siteUrl(rawPublicUrl);\n    const reason = heldLocations.has(code) ? 'not_launched'\n      : /-(E|O|P)$/i.test(code) || text(rawType) !== 'GD' ? 'specialty_or_nonpractice'\n        : /test/i.test(`${code} ${name}`) ? 'test_location'\n          : !publicUrl ? 'missing_or_invalid_public_website'\n            : !wordpress?.url ? 'missing_or_invalid_wordpress_site'\n              : wordpress.name !== name ? 'wordpress_name_mismatch' : null;\n    if (reason) {\n      excludedLocations.push({ code, name, reason });\n      continue;\n    }\n    const location = { code, name, public_website_url: publicUrl, wordpress_site_url: wordpress.url };\n    locationByCode.set(code, location);\n    locations.push(location);\n  }\n\n  const doctors = [];\n  const excludedDoctors = [];\n  const seenEmails = new Set();\n  for (const [rawName, rawPrimary, rawDepartment, rawEmployment, rawEmail] of dentistRows) {\n    const name = text(rawName);\n    if (!name) continue;\n    const primary = text(rawPrimary);\n    const code = codeFromPrimaryLocation(primary);\n    const email = text(rawEmail).toLowerCase();\n    const reason = text(rawDepartment) !== 'General Dentist' ? 'not_general_dentist'\n      : !['Full-Time', 'Part-Time'].includes(text(rawEmployment)) ? 'not_employee'\n        : /test/i.test(primary) || code === 'DFW-T' ? 'test_location'\n          : !locationByCode.has(code) ? 'location_unavailable'\n            : !validEmail(email) ? 'missing_or_invalid_work_email' : null;\n    if (reason) {\n      excludedDoctors.push({ name, code, reason });\n      continue;\n    }\n    if (seenEmails.has(email)) throw new Error(`Duplicate work email in census: ${email}`);\n    seenEmails.add(email);\n    doctors.push({ name, email, location_code: code });\n  }\n\n  const testUsers = [];\n  const seenTestEmails = new Set();\n  for (const [rawEmail, rawName, rawLocation, rawWordpressUrl] of testRows) {\n    const email = text(rawEmail).toLowerCase();\n    if (!email) continue;\n    const name = text(rawName);\n    const location = text(rawLocation);\n    const wordpressUrl = siteUrl(rawWordpressUrl);\n    if (!validEmail(email) || !name || !location || !wordpressUrl) throw new Error(`Incomplete test user row: ${email}`);\n    if (seenTestEmails.has(email)) throw new Error(`Duplicate test email: ${email}`);\n    seenTestEmails.add(email);\n    testUsers.push({ name, email, location_name: location, wordpress_site_url: wordpressUrl });\n  }\n  return { locations, doctors, testUsers, excludedLocations, excludedDoctors };\n}\n\nconst rows = (nodeName, columns) => {\n  const observed = $(nodeName).first().json.rows;\n  if (!Array.isArray(observed)) throw new Error('Sheet read unavailable: ' + nodeName);\n  return observed.map((row) => columns.map((column) => row[column] ?? ''));\n};\nconst censusRows = $('Keep dentist rows together').first().json.rows;\nconst emailByRow = new Map($('Keep email rows together').first().json.rows.map((row) => [Number(row.row_number), row['Work Email'] ?? '']));\nconst dentists = censusRows.map((row) => {\n  const rowNumber = Number(row.row_number);\n  if (!Number.isInteger(rowNumber)) throw new Error('Doctor census row number missing.');\n  return [row.Employee ?? '', row['Primary Location'] ?? '', row.Department ?? '', row['Employment Type'] ?? '', emailByRow.get(rowNumber) ?? ''];\n});\nconst roster = buildCampaignRoster(\n  rows('Keep location rows together', ['Code', 'Name', 'Type', 'URL']),\n  rows('Keep website rows together', ['Codes', 'Locations', 'Wordpress Site']),\n  dentists,\n  $('Read test users').all().map((item) => ['Email', 'Name', 'Location', 'Wordpress URL'].map((column) => item.json[column] ?? ''))\n);\nconst start = $('Start selection preview').first().json;\nconst audience = start.audience ?? start.Audience;\nif (!['Test users only', 'General dentists (preview only)'].includes(audience)) throw new Error('Choose a valid audience.');\nconst testOnly = audience === 'Test users only';\nif (testOnly && !roster.testUsers.length) throw new Error('The Test User tab has no complete entries.');\nif (!testOnly && (!roster.locations.length || !roster.doctors.length)) throw new Error('No eligible general-dentist locations or doctors.');\nconst locationByName = new Map();\nconst testLocations = [];\nfor (const user of roster.testUsers) {\n  const key = user.location_name + '|' + user.wordpress_site_url;\n  if (!locationByName.has(user.location_name)) {\n    const location = { code: 'TEST-' + (testLocations.length + 1), name: user.location_name, wordpress_site_url: user.wordpress_site_url };\n    locationByName.set(user.location_name, location);\n    testLocations.push(location);\n  } else if (locationByName.get(user.location_name).wordpress_site_url !== user.wordpress_site_url) {\n    throw new Error('Conflicting WordPress URLs for test location: ' + user.location_name);\n  }\n}\nreturn [{ json: { audience, test_only: testOnly, locations: testOnly ? testLocations : roster.locations,\n  doctors: testOnly ? roster.testUsers.map((user) => ({ name: user.name, email: user.email, location_code: locationByName.get(user.location_name).code })) : roster.doctors,\n  excluded_location_count: roster.excludedLocations.length, excluded_doctor_count: roster.excludedDoctors.length } }];"
+      },
+      "id": "df5b96b0-20ca-48a7-a788-dc9e1094da12",
+      "name": "Validate current roster",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -720,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const roster = $('Validate current roster').first().json;\nif (roster.test_only !== true || roster.audience !== 'Test users only') throw new Error('Only Test User recipients can launch this workflow.');\nconst input = $input.first().json;\nconst raw = input['Test practice to use (select exactly one)'];\nconst selections = Array.isArray(raw) ? raw : raw ? [raw] : [];\nif (selections.length !== 1) throw new Error('Select exactly one test practice.');\nconst byLabel = new Map(roster.locations.map((x) => [x.code + ' — ' + x.name, x]));\nconst location = byLabel.get(selections[0]);\nif (!location) throw new Error('Unknown test practice selection.');\nconst doctors = roster.doctors.filter((x) => x.location_code === location.code);\nif (!doctors.length) throw new Error('No test recipients at this practice.');\nreturn [{ json: { locations: [location], doctors } }];"
+      },
+      "id": "46392301-f58a-4bcc-8a97-391dc02ab4f6",
+      "name": "Filter doctors by selected locations",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -192,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "defineForm": "json",
+        "jsonOutput": "={{ JSON.stringify([{fieldLabel:\"Test recipients to invite (select one or more)\",fieldType:\"checkbox\",fieldOptions:{values:$json.doctors.map((x)=>({option:x.name+\" (\"+x.location_code+\") — \"+x.email}))} }]) }}",
+        "options": {
+          "formTitle": "Select test recipients",
+          "buttonLabel": "Continue"
+        }
+      },
+      "id": "5b85af50-ae3e-46c8-a863-fff3db82788a",
+      "name": "Choose doctors",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.3,
+      "position": [
+        64,
+        176
+      ],
+      "webhookId": "85e9b3f1-5ac8-4e9a-9efc-6539d87ae0ba"
+    },
+    {
+      "parameters": {
+        "jsCode": "const available = $('Filter doctors by selected locations').first().json;\nconst roster = $('Validate current roster').first().json;\nif (roster.test_only !== true || roster.audience !== 'Test users only') throw new Error('Real dentists are blocked from this test launcher.');\nconst input = $input.first().json;\nconst raw = input['Test recipients to invite (select one or more)'];\nconst selections = Array.isArray(raw) ? raw : raw ? [raw] : [];\nif (!selections.length) throw new Error('Select at least one test recipient.');\nconst byLabel = new Map(available.doctors.map((x) => [x.name + ' (' + x.location_code + ') — ' + x.email, x]));\nconst doctors = selections.map((label) => {\n  const doctor = byLabel.get(label);\n  if (!doctor) throw new Error('Unknown test recipient: ' + label);\n  return doctor;\n});\nif (new Set(doctors.map((x) => x.email)).size !== doctors.length) throw new Error('A test recipient was selected twice.');\nif (available.locations.length !== 1) throw new Error('Exactly one test practice is required.');\nconst details = $('Start selection preview').first().json;\nconst campaignName = String(details.campaign_name ?? details['Campaign name'] ?? '').trim();\nconst month = String(details.campaign_month ?? details['Campaign month'] ?? '').slice(0,7);\nconst normalizeCentralAssetUrl = (value, number) => {\n  const rawUrl = String(value ?? '').trim();\n  if (!rawUrl) throw new Error('Topic ' + number + ' needs a featured image URL.');\n  const match = rawUrl.match(/^https?:\\/\\/apexparent\\.hostmanpowered\\.com(\\/wp-content\\/uploads\\/[^?#]+)(?:\\?[^#]*)?(?:#.*)?$/i);\n  if (!match) throw new Error('Topic ' + number + ' featured image must be an HTTP or HTTPS URL from the Apex Parent media library.');\n  return 'https://apexparent.hostmanpowered.com' + match[1];\n};\nconst topics = [1, 2, 3].map((number) => ({\n  title: String(details['Topic ' + number] ?? '').trim(),\n  featured_image_source_url: normalizeCentralAssetUrl(details['Topic ' + number + ' featured image central source URL'], number),\n  featured_image_alt_text: String(details['Topic ' + number + ' featured image alt text'] ?? '').trim(),\n  featured_image_source_type: String(details['Topic ' + number + ' featured image source type'] ?? '').trim(),\n  featured_image_rights_reference: String(details['Topic ' + number + ' featured image rights or source reference'] ?? '').trim()\n}));\nif (!campaignName) throw new Error('Enter a campaign name.');\nif (!/^\\d{4}-\\d{2}$/.test(month)) throw new Error('Choose a valid campaign month.');\nfor (let index = 0; index < topics.length; index++) {\n  const topic = topics[index];\n  const number = index + 1;\n  if (!topic.title) throw new Error('Enter Topic ' + number + '.');\n  if (topic.featured_image_alt_text.length < 8) throw new Error('Topic ' + number + ' needs useful featured image alt text.');\n  if (!topic.featured_image_source_type) throw new Error('Choose the image source type for Topic ' + number + '.');\n  if (!topic.featured_image_rights_reference) throw new Error('Enter the image rights or source reference for Topic ' + number + '.');\n}\nif (new Set(topics.map((topic) => topic.title.toLowerCase())).size !== 3) throw new Error('Enter three distinct topics.');\nreturn [{ json: { test_only:true, campaign_name:campaignName, campaign_month:month, topics,\n  location:available.locations[0], recipients:doctors, recipient_count:doctors.length,\n  message:'Selection preview only. No invitations have been sent.' } }];"
+      },
+      "id": "4ee917ca-c1a4-4229-aaa7-b5554525331a",
+      "name": "Preview selection without sending",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Test-only campaign launcher\n\nRoster source: Authoritative Blog Article Distribution workbook (Locations, Wordpress Sites, Doctor Census, Test User). Only Test users at TEST-1 can be selected. The final page shows recipients and requires the exact SEND TEST INVITATIONS phrase. The guarded BigQuery write creates a test campaign and queues invitations for the existing dispatcher. No general-dentist campaign, WordPress publication, or static-site release occurs here. Keep the original launcher inactive.",
+        "height": 260,
+        "width": 640
+      },
+      "id": "6db94e88-7d8e-48c0-86a7-6beb80e7e3a5",
+      "name": "Selection Preview Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -3840,
+        -208
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { rows: $input.all().map((item) => item.json) } }];"
+      },
+      "id": "481ef886-e9aa-4d7a-9740-a96e7320278d",
+      "name": "Keep email rows together",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1760,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1M0arM4jnZzalySGUKq60Hp1yhTDz2RQTXqMeOWfaOUA",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Doctor Census",
+          "mode": "name"
+        },
+        "options": {
+          "dataLocationOnSheet": {
+            "values": {
+              "rangeDefinition": "specifyRangeA1",
+              "range": "I2:I250"
+            }
+          }
+        }
+      },
+      "id": "364cc7ec-bcef-4ae1-be34-8eb08fe0f06a",
+      "name": "Read dentist work emails",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -2016,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "defineForm": "json",
+        "jsonOutput": "={{ JSON.stringify([{fieldLabel:\"Test practice to use (select exactly one)\",fieldType:\"checkbox\",fieldOptions:{values:$json.locations.map((x)=>({option:x.code+\" — \"+x.name}))} }]) }}",
+        "options": {
+          "formTitle": "Select one test practice",
+          "buttonLabel": "Continue"
+        }
+      },
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.3,
+      "position": [
+        -464,
+        -208
+      ],
+      "id": "6899bfea-0d71-4059-8cfe-22da9ce94f9c",
+      "name": "Choose locations",
+      "webhookId": "3647da4a-14cc-4619-846b-bd0ce816b665"
+    },
+    {
+      "parameters": {
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Type SEND TEST INVITATIONS to confirm",
+              "placeholder": "SEND TEST INVITATIONS",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {
+          "formTitle": "Confirm selected test invitations",
+          "formDescription": "={{ 'Test practice: ' + $json.location.name + ' | Recipients (' + $json.recipient_count + '): ' + $json.recipients.map(x => x.name + ' (' + x.email + ')').join(', ') + ' | Topics: ' + $json.topics.map(x => x.title + ' — ' + x.featured_image_alt_text).join(' / ') + '. Type the exact phrase below to create the campaign and send invitations to these test recipients only.' }}",
+          "buttonLabel": "Launch test campaign"
+        }
+      },
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.3,
+      "position": [
+        528,
+        176
+      ],
+      "id": "d38fd1f0-735e-4edf-8299-88d709a37319",
+      "name": "Form",
+      "webhookId": "c192697a-f902-4174-a2e6-d790647049f6"
+    },
+    {
+      "parameters": {
+        "jsCode": "const confirmation = String($input.first().json['Type SEND TEST INVITATIONS to confirm'] ?? '').trim();\nif (confirmation !== 'SEND TEST INVITATIONS') throw new Error('Type SEND TEST INVITATIONS exactly to launch.');\nconst preview = $('Preview selection without sending').first().json;\nconst roster = $('Validate current roster').first().json;\nif (preview.test_only !== true || roster.test_only !== true || roster.audience !== 'Test users only') throw new Error('Dentist campaigns are disabled in this launcher.');\nif (!preview.location || !Array.isArray(preview.recipients) || preview.recipients.length < 1 || preview.recipients.length > 10) throw new Error('Select one test practice and 1–10 test recipients.');\nconst wordpressUrl = String(preview.location.wordpress_site_url ?? '').replace(/\\/+$/, '').toLowerCase();\nif (wordpressUrl !== 'https://apexparent.hostmanpowered.com/test001') throw new Error('Only the verified TEST001 WordPress subsite is enabled.');\nconst allowed = new Map(roster.doctors.map(x => [x.email, x]));\nfor (const recipient of preview.recipients) {\n  const source = allowed.get(recipient.email);\n  if (!source || source.name !== recipient.name || source.location_code !== preview.location.code) throw new Error('Selected recipient is not a current Test User at TEST001.');\n}\nif (new Set(preview.recipients.map(x => x.email)).size !== preview.recipients.length) throw new Error('Duplicate test recipient.');\nconst campaignName = String(preview.campaign_name ?? '').trim();\nconst month = String(preview.campaign_month ?? '');\nconst topics = preview.topics;\nif (!campaignName || !/^\\d{4}-\\d{2}$/.test(month) || !Array.isArray(topics) || topics.length !== 3 || topics.some((topic) => !topic.title || !/^https:\\/\\//i.test(topic.featured_image_source_url) || topic.featured_image_alt_text.length < 8 || !topic.featured_image_source_type || !topic.featured_image_rights_reference) || new Set(topics.map(x => String(x.title).toLowerCase())).size !== 3) throw new Error('Campaign details are incomplete.');\nconst slug = campaignName.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'').slice(0,48);\nif (!slug) throw new Error('Campaign name needs letters or numbers.');\nconst campaignId = 'campaign_test_' + month.replace('-','') + '_' + slug;\nconst doctors = preview.recipients.map(x => ({doctor_id:'doctor_' + x.email.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,''),name:x.name,email:x.email.toLowerCase()}));\nconst payload = {test_only:true,practice_id:'practice_test_001',wordpress_site_url:wordpressUrl,campaign_id:campaignId,campaign_name:campaignName,campaign_month:month+'-01',topics,doctors};\nreturn [{json:{payload_json:JSON.stringify(payload),campaign_id:campaignId,recipient_count:doctors.length,test_only:true}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        736,
+        176
+      ],
+      "id": "68663f30-b2af-48ba-98ba-df7773410075",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "value": "apex-marketing-n8n",
+          "mode": "id"
+        },
+        "sqlQuery": "DECLARE p JSON DEFAULT PARSE_JSON(@payload);\nDECLARE v_campaign_id STRING DEFAULT JSON_VALUE(p, '$.campaign_id');\nDECLARE v_practice_id STRING DEFAULT JSON_VALUE(p, '$.practice_id');\nASSERT JSON_VALUE(p, '$.test_only') = 'true' AS 'Only test campaigns can be launched here.';\nASSERT v_practice_id = 'practice_test_001' AS 'Only TEST001 is enabled.';\nASSERT JSON_VALUE(p, '$.wordpress_site_url') = 'https://apexparent.hostmanpowered.com/test001' AS 'Unexpected WordPress site.';\nASSERT ARRAY_LENGTH(JSON_QUERY_ARRAY(p, '$.doctors')) BETWEEN 1 AND 10 AS 'Select 1–10 test recipients.';\nASSERT EXISTS (SELECT 1 FROM `apex-marketing-n8n.automated_article_creation.practices` WHERE practice_id = v_practice_id AND active = TRUE AND UPPER(COALESCE(publisher_type,'')) = 'WORDPRESS' AND JSON_VALUE(publisher_config_reference, '$.wordpress_base_url') = 'https://apexparent.hostmanpowered.com/test001') AS 'TEST001 WordPress publishing configuration is missing.';\nASSERT NOT EXISTS (SELECT 1 FROM `apex-marketing-n8n.automated_article_creation.doctors` d JOIN UNNEST(JSON_QUERY_ARRAY(p, '$.doctors')) doctor ON LOWER(d.email) = LOWER(JSON_VALUE(doctor, '$.email')) WHERE COALESCE(d.practice_id, '') != v_practice_id) AS 'An existing doctor email belongs to a different practice.';\nASSERT NOT EXISTS (SELECT 1 FROM `apex-marketing-n8n.automated_article_creation.doctors` d JOIN UNNEST(JSON_QUERY_ARRAY(p, '$.doctors')) doctor ON LOWER(d.email) = LOWER(JSON_VALUE(doctor, '$.email')) WHERE d.doctor_id != JSON_VALUE(doctor, '$.doctor_id') AND COALESCE(d.practice_id, '') != v_practice_id) AS 'An existing doctor email has a different non-test profile ID.';\nASSERT NOT EXISTS (SELECT 1 FROM `apex-marketing-n8n.automated_article_creation.doctors` d JOIN UNNEST(JSON_QUERY_ARRAY(p, '$.doctors')) doctor ON d.doctor_id = JSON_VALUE(doctor, '$.doctor_id') WHERE COALESCE(d.practice_id, '') != v_practice_id) AS 'A selected test doctor ID belongs to another practice.';\nASSERT NOT EXISTS (SELECT 1 FROM `apex-marketing-n8n.automated_article_creation.campaigns` WHERE campaign_id = v_campaign_id) AS 'This campaign name and month have already been launched.';\nASSERT ARRAY_LENGTH(JSON_QUERY_ARRAY(p, '$.topics')) = 3 AS 'Exactly three topics are required.';\nALTER TABLE `apex-marketing-n8n.automated_article_creation.campaign_topics`\n  ADD COLUMN IF NOT EXISTS featured_image_source_url STRING;\nALTER TABLE `apex-marketing-n8n.automated_article_creation.campaign_topics`\n  ADD COLUMN IF NOT EXISTS featured_image_alt_text STRING;\nALTER TABLE `apex-marketing-n8n.automated_article_creation.campaign_topics`\n  ADD COLUMN IF NOT EXISTS featured_image_source_type STRING;\nALTER TABLE `apex-marketing-n8n.automated_article_creation.campaign_topics`\n  ADD COLUMN IF NOT EXISTS featured_image_rights_reference STRING;\nBEGIN TRANSACTION;\nINSERT INTO `apex-marketing-n8n.automated_article_creation.campaigns`\n(campaign_id, campaign_name, campaign_month, status, doctor_review_days, require_marketing_approval, created_at, launched_at)\nVALUES (v_campaign_id, JSON_VALUE(p, '$.campaign_name'), DATE(JSON_VALUE(p, '$.campaign_month')), 'LAUNCHED', 5, TRUE, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP());\nINSERT INTO `apex-marketing-n8n.automated_article_creation.campaign_topics`\n(topic_id, campaign_id, topic_title, topic_description, interview_guidance,\n  featured_image_source_url, featured_image_alt_text, featured_image_source_type,\n  featured_image_rights_reference, topic_sort_order, active, created_at)\nSELECT CONCAT(v_campaign_id, '_topic_', CAST(sort_order AS STRING)), v_campaign_id,\n  JSON_VALUE(topic, '$.title'), JSON_VALUE(topic, '$.title'), NULL,\n  JSON_VALUE(topic, '$.featured_image_source_url'), JSON_VALUE(topic, '$.featured_image_alt_text'),\n  JSON_VALUE(topic, '$.featured_image_source_type'), JSON_VALUE(topic, '$.featured_image_rights_reference'),\n  sort_order, TRUE, CURRENT_TIMESTAMP()\nFROM UNNEST(JSON_QUERY_ARRAY(p, '$.topics')) AS topic WITH OFFSET AS zero_order\nCROSS JOIN UNNEST([zero_order + 1]) AS sort_order;\nMERGE `apex-marketing-n8n.automated_article_creation.doctors` T\nUSING (SELECT JSON_VALUE(doctor, '$.doctor_id') AS doctor_id, JSON_VALUE(doctor, '$.name') AS doctor_name, JSON_VALUE(doctor, '$.email') AS email\n  FROM UNNEST(JSON_QUERY_ARRAY(p, '$.doctors')) AS doctor) S\nON T.doctor_id = S.doctor_id\nWHEN MATCHED THEN UPDATE SET doctor_name = S.doctor_name, email = S.email, practice_id = v_practice_id, active = TRUE, updated_at = CURRENT_TIMESTAMP()\nWHEN NOT MATCHED THEN INSERT (doctor_id, doctor_name, email, practice_id, preferred_communication_channel, fallback_communication_channel, active, created_at, updated_at)\n  VALUES (S.doctor_id, S.doctor_name, S.email, v_practice_id, 'email', 'email', TRUE, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP());\nINSERT INTO `apex-marketing-n8n.automated_article_creation.campaign_doctors`\n(campaign_id, doctor_id, status, invited_at, created_at, updated_at)\nSELECT v_campaign_id, JSON_VALUE(doctor, '$.doctor_id'), 'READY', NULL, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP()\nFROM UNNEST(JSON_QUERY_ARRAY(p, '$.doctors')) AS doctor;\nINSERT INTO `apex-marketing-n8n.automated_article_creation.workflow_events`\n(event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id, payload)\nVALUES (GENERATE_UUID(), 'campaign', v_campaign_id, 'campaign.started', CURRENT_TIMESTAMP(), 'n8n:campaign-form', NULL,\n  TO_JSON(STRUCT(ARRAY_LENGTH(JSON_QUERY_ARRAY(p, '$.topics')) AS topic_count, ARRAY_LENGTH(JSON_QUERY_ARRAY(p, '$.doctors')) AS doctor_count)));\nCOMMIT TRANSACTION;\nSELECT v_campaign_id AS campaign_id, 'LAUNCHED' AS status, ARRAY_LENGTH(JSON_QUERY_ARRAY(p, '$.doctors')) AS doctor_count;",
+        "options": {
+          "location": "US",
+          "queryParameters": {
+            "namedParameters": [
+              {
+                "name": "payload",
+                "value": "={{ $json.payload_json }}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "dc3965b5-df3a-4e9c-9a28-5a4b10b05247",
+      "name": "Store selected test campaign",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [
+        1216,
+        448
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Start selection preview": {
+      "main": [
+        [
+          {
+            "node": "Read location codes and names",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read location codes and names": {
+      "main": [
+        [
+          {
+            "node": "Keep location rows together",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keep location rows together": {
+      "main": [
+        [
+          {
+            "node": "Read public website URLs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read public website URLs": {
+      "main": [
+        [
+          {
+            "node": "Keep website rows together",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keep website rows together": {
+      "main": [
+        [
+          {
+            "node": "Read general dentist census",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read general dentist census": {
+      "main": [
+        [
+          {
+            "node": "Keep dentist rows together",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keep dentist rows together": {
+      "main": [
+        [
+          {
+            "node": "Read dentist work emails",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read test users": {
+      "main": [
+        [
+          {
+            "node": "Validate current roster",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keep email rows together": {
+      "main": [
+        [
+          {
+            "node": "Read test users",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read dentist work emails": {
+      "main": [
+        [
+          {
+            "node": "Keep email rows together",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate current roster": {
+      "main": [
+        [
+          {
+            "node": "Choose locations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Choose locations": {
+      "main": [
+        [
+          {
+            "node": "Filter doctors by selected locations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter doctors by selected locations": {
+      "main": [
+        [
+          {
+            "node": "Choose doctors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Choose doctors": {
+      "main": [
+        [
+          {
+            "node": "Preview selection without sending",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preview selection without sending": {
+      "main": [
+        [
+          {
+            "node": "Form",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Form": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Store selected test campaign",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "b039f2ff-4eba-4a88-b4d2-958a8ac9d71f",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b59c6cd121035127274545b21d03f1d440998c9d628fc8357138d0c085b90180"
+  },
+  "id": "KvuBYWElqsvKx8lf",
+  "tags": []
+}

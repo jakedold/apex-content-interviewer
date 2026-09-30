@@ -11,13 +11,22 @@ const execute = (code, input) => runInNewContext(`(() => { ${code} })()`, { $jso
 const publisher = load('15-publish-approved-article-to-wordpress');
 const prepare = node(publisher, 'Prepare WordPress Publication').parameters.jsCode;
 const publicationPackage = {
-  metadata: { h1: 'Pilot title', slug: 'pilot-slug', meta_description: 'Pilot excerpt' },
-  article_html: '<h1>Pilot title</h1><p>Call {{PRACTICE_NAME}} at {{APPOINTMENT_URL}}.</p>',
+  metadata: {
+    h1: 'Pilot title',
+    seo_title: 'A useful pilot article for dental patients',
+    slug: 'pilot-slug',
+    meta_description: 'This pilot summary explains a useful dental topic clearly, accurately, and concisely so patients know what to discuss at their next visit.',
+    focus_keyphrase: 'useful dental article',
+  },
+  article_html: '<h1>Pilot title</h1><p>Call {{PRACTICE_NAME}} at {{APPOINTMENT_URL}}.</p><h2>FAQ</h2><h3>Question one?</h3><p>Answer.</p><h3>Question two?</h3><p>Answer.</p><h3>Question three?</h3><p>Answer.</p>',
 };
 const row = (overrides = {}) => ({
   article_id: 'article_test', campaign_id: campaignId,
   practice_id: 'practice_test_001', doctor_email: 'jdold@apexdp.com',
   doctor_name: 'Dr. Dold', credentials: 'DDS',
+  topic_id: 'topic_pilot_cleaning',
+  featured_image_source_url: 'https://apexparent.hostmanpowered.com/wp-content/uploads/2026/09/pilot-cleaning.png',
+  featured_image_alt_text: 'Dentist discussing preventive care with a patient',
   publisher_type: 'WORDPRESS', website_domain: 'https://test.example.test',
   publisher_config_reference: JSON.stringify({
     credential_name: 'Wordpress account',

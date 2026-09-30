@@ -12,6 +12,12 @@ The WordPress editing sites use Shortcoder. The names below come from the Septem
 
 The supplied list also includes `[sc name="practice_online_scheduling_booking_header"][/sc]`, but that is a booking *header*, not a verified appointment URL. Do not place it in a link or insert it automatically until its output and intended placement are checked on each WordPress subsite. The `doctor_01` and `doctor_02` tags are generic site fields, not a reliable identity for the interviewed doctor. Use the verified interview context for doctor attribution.
 
+Doctor photo, biography, and profile-link discovery was not consistent enough
+across the subsites for unattended publication. Use the verified
+`doctor_profiles` mapping described in
+[`WORDPRESS_ARTICLE_PRESENTATION.md`](WORDPRESS_ARTICLE_PRESENTATION.md), with a
+name-only fallback when no active mapping exists.
+
 The article-generation and revision instructions live in [`prompts/`](../prompts/README.md). The WordPress publisher preserves Shortcoder tags in post content and converts an older `{{PRACTICE_NAME}}` token to the practice-name shortcode for test-site compatibility. Confirm that each target subsite has the relevant Shortcoder entries before expanding publishing beyond TEST-1.
 
 Shortcoder tags resolve on the WordPress editing site. The separate Headless Hausman static-site release is manual and may need its own rendering check; a WordPress post alone does not update the live static site.

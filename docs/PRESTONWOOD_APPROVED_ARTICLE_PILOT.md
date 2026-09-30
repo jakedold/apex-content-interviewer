@@ -32,10 +32,22 @@ Do not add real doctors to the `Test User` tab.
 Jake must complete the voice interview, review the article, and approve the
 marketing review. The first completed interview triggers drafting; a doctor
 change request triggers revision and a fresh review link. Final marketing
-approval invokes the [WordPress publisher](https://n8n.apexdentalautomation.com/workflow/kGd2YSJ2MVJwRld0)
+approval invokes the [revised v2 WordPress publisher](https://n8n.apexdentalautomation.com/workflow/IAZwCVXtPGN97BnC)
 with `publish` status. Confirm the resulting post in the DFW-03 WordPress
 dashboard and the corresponding workflow execution. Do not trigger a static
 site release as part of this pilot.
+
+## Rendered QA result
+
+On September 24, 2026, the exact pilot QA harness updated existing post `9988`
+twice with explicit confirmation. The rendered page showed one interviewed-
+doctor byline, one centrally selected topic image, one deterministic fallback
+About section, and the six-question FAQ with clean spacing and heading order.
+The second run reused target attachment `9992`; the target Media Library search
+returned exactly one attachment with the deterministic topic slug. No email,
+other practice, or Headless Hostman release was triggered. See
+[`WORDPRESS_ARTICLE_PRESENTATION.md`](WORDPRESS_ARTICLE_PRESENTATION.md) for the
+full presentation and metadata notes.
 
 ## Limits
 

@@ -550,6 +550,21 @@ Both must accurately represent the article.
 
 Do not stuff either with geographic terms or keywords.
 
+Create the complete SEO metadata deliberately rather than copying the H1 into
+every field:
+
+- SEO title: usually 50–60 characters before the site's automatic suffix;
+  accurate, compelling, and centered on the primary search intent.
+- Slug: 3–8 concise lowercase ASCII words separated only by hyphens; normally
+  no date, practice name, or filler words; maximum 75 characters.
+- Meta description: one accurate, useful sentence of 120–165 characters that
+  describes the benefit of the article without unsupported claims.
+- Focus keyphrase: a natural 2–6-word phrase that matches the article's primary
+  search intent. It is an editorial label, not a phrase to repeat mechanically.
+
+All four values must be unique to this article and must remain consistent with
+the final approved copy.
+
 ==================================================
 STEP 15: OPEN STRONGLY
 ==================================================
@@ -831,9 +846,11 @@ as a source from which search systems can accurately extract useful passages.
 STEP 25: FAQ
 ==================================================
 
-An FAQ is OPTIONAL supporting content.
+Every article must end with a useful FAQ section containing 3 to 6 items.
 
-Include 3 to 6 FAQ items only when they provide genuine additional value.
+Choose questions that provide genuine additional value for this article and
+topic. The FAQ is required even when the main article already answers the
+primary search question.
 
 Use the FAQ primarily to answer:
 
@@ -845,6 +862,10 @@ Use the FAQ primarily to answer:
 Do not use the FAQ to repeat the article.
 
 Do not structure the entire article as FAQ content.
+
+Use one H2 for the FAQ section and one H3 for each question. The FAQ must be
+the final public section so its structure is predictable for publishing and
+rendered-page QA.
 
 ==================================================
 STEP 26: LENGTH
@@ -908,6 +929,26 @@ Do not append geographic terms to unrelated sentences.
 Local relevance should feel legitimate.
 
 The article must remain valuable even if the geographic references are removed.
+
+==================================================
+STEP 27A: AUTHOR ATTRIBUTION AND PROFILE
+==================================================
+
+Immediately after the H1, include a concise byline in this exact semantic
+shape:
+
+<p class="article-byline">By <strong>[verified doctor name and credentials]</strong></p>
+
+Use only the doctor name and credentials supplied in the interview context.
+Never use a generic `doctor_01` or `doctor_02` field.
+
+Near the end of the article, before the required FAQ, include an
+`<section class="article-doctor-profile">` with an H2 titled
+`About Dr. [Name]`. Use a supplied verified short bio, profile URL, and photo
+URL when present. Do not search for, infer, or invent profile details. Omit an
+individual photo, bio, or link when that exact field is not supplied and
+verified; the publishing adapter will apply the maintained doctor-profile
+mapping consistently.
 
 ==================================================
 STEP 28: EXTERNAL SOURCES IN THE PUBLISHED ARTICLE
@@ -1037,6 +1078,9 @@ Use semantic HTML such as:
 <tr>
 <th>
 <td>
+<section>
+<figure>
+<img>
 
 Do not add:
 
@@ -1085,6 +1129,7 @@ At the very beginning of article.html include:
 <!-- SEO_TITLE: [SEO title] -->
 <!-- SLUG: [recommended-slug] -->
 <!-- META_DESCRIPTION: [meta description] -->
+<!-- FOCUS_KEYPHRASE: [focus keyphrase] -->
 <!-- PRIMARY_TOPIC: [primary topic/search intent] -->
 <!-- AUTHOR: [interviewed doctor's verified name and credentials] -->
 
@@ -1136,6 +1181,10 @@ RECOMMENDED URL SLUG
 META DESCRIPTION
 
 [meta description]
+
+FOCUS KEYPHRASE
+
+[focus keyphrase]
 
 PRIMARY SEARCH INTENT
 

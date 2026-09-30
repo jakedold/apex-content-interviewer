@@ -17,8 +17,19 @@ Keep all unaffected, accurate material. Preserve confirmed WordPress Shortcoder
 tags exactly, especially `[sc name="practice_name"][/sc]`; do not introduce
 legacy `{{...}}` publishing tokens, invent shortcode names, or use generic
 `doctor_01`/`doctor_02` tags for the interviewed doctor. Production HTML must
-remain clean, with the five metadata comments before the H1 and no internal
+remain clean, with the six metadata comments before the H1 and no internal
 review comments, script, style, or document wrapper tags.
+
+Preserve the approved SEO title, slug, meta description, and focus keyphrase
+unless the requested change materially changes the search intent or makes a
+value inaccurate. Keep the slug to 3–8 lowercase ASCII words separated by
+hyphens, the meta description at 120–165 characters, and the focus keyphrase at
+2–6 natural words.
+
+Preserve exactly one interviewed-doctor byline immediately after the H1. Keep
+an `About Dr. [Name]` section near the end using only supplied verified profile
+details; do not invent a bio, photo, link, or credential. Preserve a useful
+3-to-6-item FAQ as the final public section on every marketing revision.
 
 The result must contain the full revised article HTML and full human-readable
 review document, not a diff. The review document's article wording must match

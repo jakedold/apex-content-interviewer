@@ -164,14 +164,15 @@
       "parameters": {
         "workflowId": {
           "__rl": true,
-          "value": "kGd2YSJ2MVJwRld0",
+          "value": "IAZwCVXtPGN97BnC",
           "mode": "list",
-          "cachedResultName": "AAC - 15 - Publish Approved Article to WordPress"
+          "cachedResultName": "AAC - 15 - Publish Approved Article to WordPress (Revised v2)"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
-            "article_id": "={{ $json.article_id }}"
+            "article_id": "={{ $json.article_id }}",
+            "qa_republish": false
           },
           "matchingColumns": [],
           "schema": [
@@ -179,6 +180,11 @@
               "id": "article_id",
               "displayName": "article_id",
               "type": "string"
+            },
+            {
+              "id": "qa_republish",
+              "displayName": "qa_republish",
+              "type": "boolean"
             }
           ],
           "attemptToConvertTypes": false,
@@ -278,13 +284,7 @@
             "index": 0
           }
         ],
-        [
-          {
-            "node": "If1",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "If1": {

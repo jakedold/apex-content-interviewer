@@ -1,13 +1,15 @@
 import { readFileSync, writeFileSync } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 
 const source = JSON.parse(readFileSync('n8n/10-revise-article-from-doctor-feedback.json', 'utf8'));
 const prompt = readFileSync('prompts/marketing-revision-master-prompt.md', 'utf8');
 const workflow = structuredClone(source);
 workflow.name = 'AAC - 20 - Revise Article from Marketing Feedback';
 workflow.active = false;
-workflow.versionId = randomUUID();
-workflow.nodes.forEach((node) => { node.id = randomUUID(); });
+const stableUuid = (value) => {
+  const hex = createHash('sha256').update(value).digest('hex').slice(0, 32);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20)}`;
+};
 
 function rename(oldName, newName) {
   const selected = workflow.nodes.find((node) => node.name === oldName);
@@ -104,5 +106,8 @@ send.parameters.workflowId.cachedResultName = 'AAC - 18 - Send Marketing Review 
 
 const note = workflow.nodes.find((node) => node.name === 'Marketing Revision Notes');
 note.parameters.content = 'Marketing change request → new immutable AI_MARKETING_REVISION → fresh marketing approval → marketing invitation. The doctor is not re-asked. Only the exact TEST001 article selected by the caller may run. WordPress publishing remains behind a new marketing approval.';
+
+workflow.versionId = stableUuid(`${workflow.name}:${prompt}`);
+workflow.nodes.forEach((node) => { node.id = stableUuid(`${workflow.name}:${node.name}`); });
 
 writeFileSync('n8n/20-revise-article-from-marketing-feedback.json', `${JSON.stringify(workflow, null, 2)}\n`);

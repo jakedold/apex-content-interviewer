@@ -333,6 +333,33 @@ function historyToTranscript(history: RealtimeItem[]): string {
   return lines.join('\n\n');
 }
 
+function historyToTranscriptHtml(history: RealtimeItem[]): string {
+  const turns: string[] = [];
+  for (const item of history) {
+    if (!item || item.type !== 'message') continue;
+    if (item.role !== 'user' && item.role !== 'assistant') continue;
+    const parts = Array.isArray(item.content) ? item.content.map(contentText).filter(Boolean) : [];
+    const turnText = parts.join(' ').trim();
+    if (!turnText) continue;
+    const speaker = item.role === 'user' ? 'You' : 'Interviewer';
+    turns.push(`
+      <div class="transcript-turn transcript-turn-${item.role}">
+        <strong>${speaker}</strong>
+        <p>${escapeHtml(turnText)}</p>
+      </div>`);
+  }
+  return turns.join('');
+}
+
+type InterviewActivity = 'connecting' | 'thinking' | 'speaking' | 'listening' | 'paused' | 'saving' | 'error';
+
+function microphoneIcon(): string {
+  return `<svg class="microphone-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M12 15.25a4 4 0 0 0 4-4V6a4 4 0 1 0-8 0v5.25a4 4 0 0 0 4 4Z" />
+    <path d="M5.75 10.75v.5a6.25 6.25 0 0 0 12.5 0v-.5M12 17.5V21M9.5 21h5" />
+  </svg>`;
+}
+
 async function waitForTranscriptSettle(session: RealtimeSession, maxWaitMs = 2500): Promise<RealtimeItem[]> {
   const start = Date.now();
   let lastSnapshot = JSON.stringify(session.history);
@@ -373,17 +400,55 @@ function renderInterview(context: InterviewContext, token: string): void {
         <p>This is a conversational voice interview. Speak naturally, just as you would if someone were interviewing you in person.</p>
         <p>Choose a quiet place before you begin. Background conversations and other noise can interrupt the voice interviewer. Headphones with a microphone may help.</p>
       </div>
+      <div id="interview-activity" class="interview-activity" data-state="idle">
+        <div class="microphone-stage" aria-hidden="true">
+          <span class="sound-wave sound-wave-one"></span>
+          <span class="sound-wave sound-wave-two"></span>
+          <span class="sound-wave sound-wave-three"></span>
+          <div class="microphone-indicator">${microphoneIcon()}</div>
+        </div>
+        <div class="activity-copy">
+          <strong id="activity-label">Ready when you are</strong>
+          <div id="status" class="status" aria-live="polite">Your microphone will be requested when you begin.</div>
+        </div>
+      </div>
       <div class="interview-controls">
         <button id="interview-button" class="primary-button" type="button">Start Interview</button>
         <button id="pause-button" class="secondary-button" type="button" hidden>Pause Interview</button>
       </div>
-      <div id="status" class="status" aria-live="polite">Your microphone will be requested when you begin.</div>
+      <details id="transcript-panel" class="transcript-panel" hidden>
+        <summary>Show live transcript</summary>
+        <p class="transcript-note">This is a live draft and may update as you speak.</p>
+        <div id="live-transcript" class="live-transcript" aria-live="polite">
+          <p class="transcript-empty">The conversation will appear here after it begins.</p>
+        </div>
+      </details>
     </section></main>`;
 
   const button = document.querySelector<HTMLButtonElement>('#interview-button');
   const pauseButton = document.querySelector<HTMLButtonElement>('#pause-button');
   const status = document.querySelector<HTMLDivElement>('#status');
-  if (!button || !pauseButton || !status) throw new Error('Interview controls not found.');
+  const activity = document.querySelector<HTMLDivElement>('#interview-activity');
+  const activityLabel = document.querySelector<HTMLElement>('#activity-label');
+  const transcriptPanel = document.querySelector<HTMLDetailsElement>('#transcript-panel');
+  const transcript = document.querySelector<HTMLDivElement>('#live-transcript');
+  if (!button || !pauseButton || !status || !activity || !activityLabel || !transcriptPanel || !transcript) {
+    throw new Error('Interview controls not found.');
+  }
+
+  let startupMuteActive = false;
+
+  const setActivity = (state: InterviewActivity, label: string, detail: string): void => {
+    activity.dataset.state = state;
+    activityLabel.textContent = label;
+    status.textContent = detail;
+  };
+
+  const updateLiveTranscript = (history: RealtimeItem[]): void => {
+    const transcriptHtml = historyToTranscriptHtml(history);
+    transcript.innerHTML = transcriptHtml || '<p class="transcript-empty">The conversation will appear here after it begins.</p>';
+    if (transcriptPanel.open) transcript.scrollTop = transcript.scrollHeight;
+  };
 
   pauseButton.addEventListener('click', () => {
     if (!connected || !liveSession) return;
@@ -392,13 +457,13 @@ function renderInterview(context: InterviewContext, token: string): void {
       liveSession.mute(false);
       paused = false;
       pauseButton.textContent = 'Pause Interview';
-      status.innerHTML = `<span class="live-dot"></span> Connected. Your interviewer is listening.`;
+      setActivity('listening', 'Microphone on', 'Your interviewer is listening.');
     } else {
       liveSession.interrupt();
       liveSession.mute(true);
       paused = true;
       pauseButton.textContent = 'Resume Interview';
-      status.innerHTML = `<strong>Interview paused.</strong> Your microphone is muted. Resume when you're ready.`;
+      setActivity('paused', 'Interview paused', "Your microphone is muted. Resume when you're ready.");
     }
   });
 
@@ -407,7 +472,7 @@ function renderInterview(context: InterviewContext, token: string): void {
       button.disabled = true;
       pauseButton.disabled = true;
       button.textContent = 'Saving Interview';
-      status.innerHTML = `<span class="spinner spinner-small" aria-hidden="true"></span> Finishing the transcript and saving your interview...`;
+      setActivity('saving', 'Saving interview', 'Finishing the transcript and saving your interview...');
 
       try {
         const finalHistory = await waitForTranscriptSettle(liveSession);
@@ -433,7 +498,7 @@ function renderInterview(context: InterviewContext, token: string): void {
         renderComplete(context);
       } catch (error) {
         console.error(error);
-        status.textContent = error instanceof Error ? error.message : 'Unable to save the interview.';
+        setActivity('error', 'Interview not saved', error instanceof Error ? error.message : 'Unable to save the interview.');
         button.disabled = false;
         pauseButton.disabled = false;
         button.textContent = 'Try Saving Again';
@@ -442,7 +507,7 @@ function renderInterview(context: InterviewContext, token: string): void {
     }
 
     button.disabled = true;
-    status.innerHTML = `<span class="spinner spinner-small" aria-hidden="true"></span> Connecting to your interviewer...`;
+    setActivity('connecting', 'Connecting', 'Requesting microphone access...');
 
     try {
       const startResponse = await postJson<StartSessionResponse>('/api/start', { token });
@@ -461,23 +526,56 @@ function renderInterview(context: InterviewContext, token: string): void {
         }),
       });
 
-      liveSession = new RealtimeSession(agent, { model: 'gpt-realtime-2.1' });
+      liveSession = new RealtimeSession(agent, {
+        model: 'gpt-realtime-2.1',
+        config: {
+          audio: {
+            input: {
+              noiseReduction: { type: 'near_field' },
+              turnDetection: {
+                type: 'semantic_vad',
+                eagerness: 'low',
+                createResponse: true,
+                interruptResponse: true,
+              },
+            },
+          },
+        },
+      });
 
       liveSession.on('agent_start', () => {
         if (!paused) {
-          status.innerHTML = `<span class="spinner spinner-small" aria-hidden="true"></span> Thinking...`;
+          setActivity('thinking', 'Thinking', 'Your interviewer is preparing the next question.');
         }
       });
 
       liveSession.on('audio_start', () => {
         if (!paused) {
-          status.innerHTML = `<span class="speaking-bars" aria-hidden="true"><i></i><i></i><i></i></span> Interviewer speaking...`;
+          setActivity(
+            'speaking',
+            'Interviewer speaking',
+            startupMuteActive ? 'Your microphone will turn on after the opening question.' : 'You can interrupt naturally at any time.',
+          );
         }
       });
 
       liveSession.on('audio_stopped', () => {
         if (!paused) {
-          status.innerHTML = `<span class="live-dot"></span> Connected. Your interviewer is listening.`;
+          if (startupMuteActive) {
+            liveSession?.mute(false);
+            startupMuteActive = false;
+          }
+          setActivity('listening', 'Microphone on', 'Your interviewer is listening.');
+        }
+      });
+
+      liveSession.on('history_updated', (history) => {
+        updateLiveTranscript(history);
+      });
+
+      liveSession.on('audio_interrupted', () => {
+        if (!paused && !startupMuteActive) {
+          setActivity('listening', 'I heard you', 'Your interviewer stopped speaking and is listening.');
         }
       });
 
@@ -486,19 +584,22 @@ function renderInterview(context: InterviewContext, token: string): void {
       interviewStartedAt = new Date().toISOString();
       connected = true;
       paused = false;
+      startupMuteActive = true;
+      liveSession.mute(true);
       button.disabled = false;
       button.textContent = 'End Interview';
       pauseButton.hidden = false;
       pauseButton.disabled = false;
       pauseButton.textContent = 'Pause Interview';
-      status.innerHTML = `<span class="live-dot"></span> Connected. Your interviewer is listening.`;
+      transcriptPanel.hidden = false;
+      setActivity('thinking', 'Starting interview', 'The interviewer is preparing the opening question.');
 
       liveSession.transport.sendEvent({
         type: 'response.create',
       });
     } catch (error) {
       console.error(error);
-      status.textContent = error instanceof Error ? error.message : 'Unable to start the interview.';
+      setActivity('error', 'Unable to start', error instanceof Error ? error.message : 'Unable to start the interview.');
       button.disabled = false;
       button.textContent = 'Try Again';
       liveSession?.close();
@@ -579,7 +680,9 @@ async function initializeMarketingReview(): Promise<void> {
   }
 }
 
-if (/^\/marketing-review\//.test(window.location.pathname)) {
+if (/^\/admin(?:\/|$)/.test(window.location.pathname)) {
+  void import('./admin').then(({ initializeAdmin }) => initializeAdmin());
+} else if (/^\/marketing-review\//.test(window.location.pathname)) {
   void initializeMarketingReview();
 } else if (/^\/review\//.test(window.location.pathname)) {
   void initializeReview();

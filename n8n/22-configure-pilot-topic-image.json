@@ -1,0 +1,64 @@
+{
+  "name": "AAC - 22 - Configure Pilot Topic Image",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "aaf3b62a-7df7-47b4-a37b-e9f663fdb1d1",
+      "name": "Run Exact Pilot Image Setup",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-420, 40]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "projectId": {
+          "__rl": true,
+          "value": "apex-marketing-n8n",
+          "mode": "list",
+          "cachedResultName": "apex-marketing-n8n"
+        },
+        "sqlQuery": "-- One-time TEST-1 pilot setup. This records the centrally stored topic image in BigQuery.\nDECLARE v_article_id STRING DEFAULT 'article_6296aabf938f492eafd5a2b010b3f8c9';\nDECLARE v_campaign_id STRING DEFAULT 'campaign_test_202609_aac_prestonwood_pilot_2026_09_23';\nDECLARE v_topic_id STRING;\n\nASSERT (\n  SELECT COUNT(*)\n  FROM `apex-marketing-n8n.automated_article_creation.articles` a\n  JOIN `apex-marketing-n8n.automated_article_creation.interviews` i USING (interview_id)\n  JOIN `apex-marketing-n8n.automated_article_creation.doctors` d ON d.doctor_id = a.doctor_id\n  WHERE a.article_id = v_article_id\n    AND a.campaign_id = v_campaign_id\n    AND a.practice_id = 'practice_test_001'\n    AND LOWER(d.email) = 'jdold@apexdp.com'\n) = 1 AS 'The exact TEST-1 pilot article mapping was not found.';\n\nSET v_topic_id = (\n  SELECT i.topic_id\n  FROM `apex-marketing-n8n.automated_article_creation.articles` a\n  JOIN `apex-marketing-n8n.automated_article_creation.interviews` i USING (interview_id)\n  WHERE a.article_id = v_article_id\n  LIMIT 1\n);\n\nALTER TABLE `apex-marketing-n8n.automated_article_creation.campaign_topics`\n  ADD COLUMN IF NOT EXISTS featured_image_source_url STRING;\nALTER TABLE `apex-marketing-n8n.automated_article_creation.campaign_topics`\n  ADD COLUMN IF NOT EXISTS featured_image_alt_text STRING;\nALTER TABLE `apex-marketing-n8n.automated_article_creation.campaign_topics`\n  ADD COLUMN IF NOT EXISTS featured_image_source_type STRING;\nALTER TABLE `apex-marketing-n8n.automated_article_creation.campaign_topics`\n  ADD COLUMN IF NOT EXISTS featured_image_rights_reference STRING;\n\nUPDATE `apex-marketing-n8n.automated_article_creation.campaign_topics`\nSET featured_image_source_url = 'https://apexparent.hostmanpowered.com/wp-content/uploads/2026/09/dental-cleaning-frequency-pilot.png',\n    featured_image_alt_text = 'Dentist discussing preventive dental care with a patient in a bright treatment room.',\n    featured_image_source_type = 'OPENAI_GENERATED',\n    featured_image_rights_reference = 'OpenAI-generated AAC pilot asset; versioned at assets/featured-images/dental-cleaning-frequency-pilot.png; uploaded 2026-09-24.'\nWHERE topic_id = v_topic_id AND campaign_id = v_campaign_id;\n\nASSERT @@row_count = 1 AS 'Exactly one pilot topic must be updated.';\n\nSELECT v_article_id AS article_id, v_topic_id AS topic_id,\n  featured_image_source_url, featured_image_alt_text, featured_image_source_type,\n  featured_image_rights_reference, 'CONFIGURED' AS status\nFROM `apex-marketing-n8n.automated_article_creation.campaign_topics`\nWHERE topic_id = v_topic_id AND campaign_id = v_campaign_id;",
+        "options": {
+          "location": "US"
+        }
+      },
+      "id": "41640e8f-9721-40a8-adb5-d84a84515439",
+      "name": "Configure Exact Pilot Topic Image",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [-120, 40]
+    },
+    {
+      "parameters": {
+        "content": "## Exact TEST-1 pilot image setup\n\nManual and inactive. Records the already approved, centrally stored topic image for the exact Prestonwood pilot article in BigQuery. It cannot email anyone, publish a post, or trigger a Headless Hostman release.",
+        "height": 220,
+        "width": 520
+      },
+      "id": "38c1e504-79e8-457e-beb9-52dd6832c611",
+      "name": "Safety note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-430, -260]
+    }
+  ],
+  "connections": {
+    "Run Exact Pilot Image Setup": {
+      "main": [[{
+        "node": "Configure Exact Pilot Topic Image",
+        "type": "main",
+        "index": 0
+      }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "b72d433f-1083-4f50-9438-1c8faee2bf21",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "AAC22PilotTopicImage",
+  "tags": []
+}

@@ -1,5 +1,5 @@
 {
-  "name": "AAC - 15 - Publish Approved Article to WordPress",
+  "name": "AAC - 15 - Publish Approved Article to WordPress (Revised v2)",
   "nodes": [
     {
       "parameters": {},
@@ -21,13 +21,17 @@
           "mode": "list",
           "cachedResultName": "apex-marketing-n8n"
         },
-        "sqlQuery": "-- TEST-1 only. Select the exact article approved by marketing.\nCREATE TABLE IF NOT EXISTS `apex-marketing-n8n.automated_article_creation.publication_records` (\n  publication_id STRING NOT NULL, article_id STRING NOT NULL, version_number INT64 NOT NULL,\n  publisher_type STRING NOT NULL, publisher_config_reference STRING, external_post_id STRING,\n  status STRING NOT NULL, requested_at TIMESTAMP NOT NULL, published_at TIMESTAMP,\n  published_url STRING, last_error STRING\n);\nSELECT a.article_id, a.interview_id, a.doctor_id, a.practice_id, a.campaign_id,\n  a.status AS article_status, a.current_version, d.doctor_name, d.credentials, LOWER(d.email) AS doctor_email,\n  p.practice_name, p.website_domain, p.publisher_type, p.publisher_config_reference,\n  v.content AS publication_package_json\nFROM `apex-marketing-n8n.automated_article_creation.articles` a\nJOIN `apex-marketing-n8n.automated_article_creation.article_versions` v\n  ON v.article_id = a.article_id AND v.version_number = a.current_version\nJOIN `apex-marketing-n8n.automated_article_creation.doctors` d ON d.doctor_id = a.doctor_id\nJOIN `apex-marketing-n8n.automated_article_creation.practices` p ON p.practice_id = a.practice_id\nLEFT JOIN `apex-marketing-n8n.automated_article_creation.publication_records` pr\n  ON pr.article_id = a.article_id AND pr.version_number = a.current_version\n  AND pr.publisher_type = 'WORDPRESS' AND pr.status = 'PUBLISHED'\nWHERE a.article_id = @article_id\n  AND a.status = 'MARKETING_APPROVED'\n  AND a.published_at IS NULL AND pr.article_id IS NULL\n  AND a.practice_id = 'practice_test_001'\n  AND UPPER(COALESCE(p.publisher_type, '')) = 'WORDPRESS'\n  AND NULLIF(TRIM(p.publisher_config_reference), '') IS NOT NULL\n  AND NULLIF(TRIM(p.website_domain), '') IS NOT NULL\nLIMIT 1;",
+        "sqlQuery": "-- TEST-1 only. Select the exact article approved by marketing.\nCREATE TABLE IF NOT EXISTS `apex-marketing-n8n.automated_article_creation.publication_records` (\n  publication_id STRING NOT NULL, article_id STRING NOT NULL, version_number INT64 NOT NULL,\n  publisher_type STRING NOT NULL, publisher_config_reference STRING, external_post_id STRING,\n  status STRING NOT NULL, requested_at TIMESTAMP NOT NULL, published_at TIMESTAMP,\n  published_url STRING, last_error STRING\n);\nCREATE TABLE IF NOT EXISTS `apex-marketing-n8n.automated_article_creation.doctor_profiles` (\n  doctor_id STRING NOT NULL, practice_id STRING NOT NULL, work_email STRING,\n  doctor_name STRING, credentials STRING, location_code STRING, profile_url STRING, photo_url STRING, short_bio STRING,\n  source STRING, verified_at TIMESTAMP, active BOOL\n);\nALTER TABLE `apex-marketing-n8n.automated_article_creation.doctor_profiles`\n  ADD COLUMN IF NOT EXISTS credentials STRING;\nSELECT LOWER(@qa_republish) = 'true' AS qa_republish,\n  a.article_id, a.interview_id, a.doctor_id, a.practice_id, a.campaign_id,\n  a.status AS article_status, a.current_version,\n  COALESCE(NULLIF(TRIM(dp.doctor_name), ''), d.doctor_name) AS doctor_name,\n  COALESCE(NULLIF(TRIM(dp.credentials), ''), d.credentials) AS credentials,\n  LOWER(d.email) AS doctor_email,\n  p.practice_name, p.website_domain, p.publisher_type, p.publisher_config_reference,\n  dp.profile_url AS doctor_profile_url, dp.photo_url AS doctor_photo_url,\n  dp.short_bio AS doctor_short_bio, dp.source AS doctor_profile_source,\n  dp.verified_at AS doctor_profile_verified_at,\n  t.topic_id, t.featured_image_source_url, t.featured_image_alt_text,\n  t.featured_image_source_type, t.featured_image_rights_reference,\n  v.content AS publication_package_json\nFROM `apex-marketing-n8n.automated_article_creation.articles` a\nJOIN `apex-marketing-n8n.automated_article_creation.article_versions` v\n  ON v.article_id = a.article_id AND v.version_number = a.current_version\nJOIN `apex-marketing-n8n.automated_article_creation.interviews` i ON i.interview_id = a.interview_id\nJOIN `apex-marketing-n8n.automated_article_creation.campaign_topics` t ON t.topic_id = i.topic_id\nJOIN `apex-marketing-n8n.automated_article_creation.doctors` d ON d.doctor_id = a.doctor_id\nJOIN `apex-marketing-n8n.automated_article_creation.practices` p ON p.practice_id = a.practice_id\nLEFT JOIN `apex-marketing-n8n.automated_article_creation.doctor_profiles` dp\n  ON dp.doctor_id = a.doctor_id AND dp.practice_id = a.practice_id AND dp.active = TRUE\nLEFT JOIN `apex-marketing-n8n.automated_article_creation.publication_records` pr\n  ON pr.article_id = a.article_id AND pr.version_number = a.current_version\n  AND pr.publisher_type = 'WORDPRESS' AND pr.status = 'PUBLISHED'\nWHERE a.article_id = @article_id\n  AND (\n    (\n      LOWER(@qa_republish) != 'true'\n      AND a.status = 'MARKETING_APPROVED'\n      AND a.published_at IS NULL\n      AND pr.article_id IS NULL\n    )\n    OR (\n      LOWER(@qa_republish) = 'true'\n      AND a.article_id = 'article_6296aabf938f492eafd5a2b010b3f8c9'\n      AND a.campaign_id = 'campaign_test_202609_aac_prestonwood_pilot_2026_09_23'\n      AND a.status = 'PUBLISHED'\n      AND a.published_at IS NOT NULL\n      AND pr.external_post_id = '9988'\n      AND LOWER(d.email) = 'jdold@apexdp.com'\n    )\n  )\n  AND a.practice_id = 'practice_test_001'\n  AND UPPER(COALESCE(p.publisher_type, '')) = 'WORDPRESS'\n  AND NULLIF(TRIM(p.publisher_config_reference), '') IS NOT NULL\n  AND NULLIF(TRIM(p.website_domain), '') IS NOT NULL\nLIMIT 1;",
         "options": {
           "queryParameters": {
             "namedParameters": [
               {
                 "name": "article_id",
                 "value": "={{ $json.article_id }}"
+              },
+              {
+                "name": "qa_republish",
+                "value": "={{ String($json.qa_republish ?? false) }}"
               }
             ]
           }
@@ -44,13 +48,13 @@
     },
     {
       "parameters": {
-        "jsCode": "const row = $json;\n\nif (!row.article_id) {\n  throw new Error('No approved article has a complete WordPress practice configuration.');\n}\nif (String(row.publisher_type || '').toUpperCase() !== 'WORDPRESS') {\n  throw new Error('The selected practice is not configured for the WordPress adapter.');\n}\n\nlet config = {};\ntry {\n  config = JSON.parse(row.publisher_config_reference);\n} catch {\n  config = { credential_name: row.publisher_config_reference };\n}\nif (!config.credential_name) {\n  throw new Error('publisher_config_reference must name the n8n WordPress credential or contain JSON with credential_name.');\n}\n\nlet publicationPackage;\ntry {\n  publicationPackage = typeof row.publication_package_json === 'string'\n    ? JSON.parse(row.publication_package_json)\n    : row.publication_package_json;\n} catch (error) {\n  throw new Error('The approved publication package is not valid JSON: ' + error.message);\n}\n\nconst metadata = publicationPackage?.metadata || {};\nlet html = String(publicationPackage?.article_html || '');\nif (!html || !/<h1(?:\\s|>)/i.test(html)) {\n  throw new Error('The approved package does not contain publishable article HTML.');\n}\nif (/<(?:script|style|html|head|body)(?:\\s|>)/i.test(html)) {\n  throw new Error('The approved article contains a forbidden document or executable tag.');\n}\n\nconst requireHttpsUrl = (value, label) => {\n  const raw = String(value || '').trim();\n  const candidate = /^https?:\\/\\//i.test(raw) ? raw : 'https://' + raw;\n  const match = /^https:\\/\\/([A-Za-z0-9.-]+)(\\/[A-Za-z0-9._~%!$&'()*+,;=:@-]*)?\\/?$/.exec(candidate);\n  const host = match?.[1] || '';\n  if (!match || !host.includes('.') || host.split('.').some(part => !part || part.startsWith('-') || part.endsWith('-')) || /(^|\\.)example\\.com$/i.test(host)) {\n    throw new Error(label + ' must be an explicitly configured real HTTPS URL without credentials, query, or fragment.');\n  }\n  return candidate.replace(/\\/+$/, '');\n};\nconst publicUrl = requireHttpsUrl(row.website_domain, 'Public static website');\nif (!config.wordpress_base_url) {\n  throw new Error('WordPress multisite subsite base URL must be configured separately from the public static website.');\n}\nconst wordpressBaseUrl = requireHttpsUrl(config.wordpress_base_url, 'WordPress subsite base');\nif (row.practice_id !== 'practice_test_001' || wordpressBaseUrl !== 'https://apexparent.hostmanpowered.com/test001') {\n  throw new Error('Automatic publication is restricted to the TEST-1 practice and its verified base configuration.');\n}\nconst pilotCampaign = 'campaign_test_202609_aac_prestonwood_pilot_2026_09_23';\nconst isPrestonwoodPilot = row.campaign_id === pilotCampaign;\nif (isPrestonwoodPilot && String(row.doctor_email || '').toLowerCase() !== 'jdold@apexdp.com') {\n  throw new Error('The Prestonwood pilot permits only the named test identity.');\n}\nconst publicationBaseUrl = isPrestonwoodPilot ? 'https://apexparent.hostmanpowered.com/dfw-03' : wordpressBaseUrl;\nconst appointmentUrl = isPrestonwoodPilot ? 'https://prestonwooddentistry.com' : String(config.appointment_url || publicUrl);\nconst replacements = {\n  '{{DOCTOR_NAME}}': row.doctor_name || '',\n  '{{DOCTOR_CREDENTIALS}}': row.credentials || '',\n  '{{PRACTICE_NAME}}': '[sc name=\"practice_name\"][/sc]',\n  '{{APPOINTMENT_URL}}': appointmentUrl\n};\nfor (const [token, value] of Object.entries(replacements)) {\n  html = html.split(token).join(String(value));\n}\nif (/{{[A-Z0-9_]+}}/.test(html)) {\n  throw new Error('The article still contains unresolved publishing tokens.');\n}\n\nhtml = html\n  .replace(/^(?:\\s*<!--[\\s\\S]*?-->\\s*)+/, '')\n  .replace(/\\s*<h1[^>]*>[\\s\\S]*?<\\/h1>\\s*/i, '\\n')\n  .trim();\n\nconst title = String(metadata.h1 || '').trim() || String(publicationPackage.article_html).match(/<h1[^>]*>([\\s\\S]*?)<\\/h1>/i)?.[1]?.replace(/<[^>]+>/g, '').trim();\nconst slug = String(metadata.slug || '').trim();\nconst excerpt = String(metadata.meta_description || '').trim();\nif (!title || !slug || !excerpt) {\n  throw new Error('The approved package is missing its title, slug, or meta description.');\n}\n\nreturn [{ json: {\n  ...row,\n  credential_name: config.credential_name,\n  wordpress_api_url: `${publicationBaseUrl}/wp-json/wp/v2`,\n  title, slug, excerpt, content: html,\n  wordpress_body: {\n    title, content: html, slug, excerpt, status: 'publish',\n    comment_status: 'closed', ping_status: 'closed', format: 'standard'\n  }\n} }];"
+        "jsCode": "const row = $json;\n\nif (!row.article_id) {\n  throw new Error('No approved article has a complete WordPress practice configuration.');\n}\nif (String(row.publisher_type || '').toUpperCase() !== 'WORDPRESS') {\n  throw new Error('The selected practice is not configured for the WordPress adapter.');\n}\n\nlet config = {};\ntry {\n  config = JSON.parse(row.publisher_config_reference);\n} catch {\n  config = { credential_name: row.publisher_config_reference };\n}\nif (!config.credential_name) {\n  throw new Error('publisher_config_reference must name the n8n WordPress credential or contain JSON with credential_name.');\n}\n\nlet publicationPackage;\ntry {\n  publicationPackage = typeof row.publication_package_json === 'string'\n    ? JSON.parse(row.publication_package_json)\n    : row.publication_package_json;\n} catch (error) {\n  throw new Error('The approved publication package is not valid JSON: ' + error.message);\n}\n\nconst metadata = publicationPackage?.metadata || {};\nlet html = String(publicationPackage?.article_html || '');\nif (!html || !/<h1(?:\\s|>)/i.test(html)) {\n  throw new Error('The approved package does not contain publishable article HTML.');\n}\nif (/<(?:script|style|html|head|body)(?:\\s|>)/i.test(html)) {\n  throw new Error('The approved article contains a forbidden document or executable tag.');\n}\n\nconst requireHttpsUrl = (value, label) => {\n  const raw = String(value || '').trim();\n  const candidate = /^https?:\\/\\//i.test(raw) ? raw : 'https://' + raw;\n  const match = /^https:\\/\\/([A-Za-z0-9.-]+)(\\/[\\/A-Za-z0-9._~%!$&'()*+,;=:@-]*)?\\/?$/.exec(candidate);\n  const host = match?.[1] || '';\n  if (!match || !host.includes('.') || host.split('.').some(part => !part || part.startsWith('-') || part.endsWith('-')) || /(^|\\.)example\\.com$/i.test(host)) {\n    throw new Error(label + ' must be an explicitly configured real HTTPS URL without credentials, query, or fragment.');\n  }\n  return candidate.replace(/\\/+$/, '');\n};\nconst publicUrl = requireHttpsUrl(row.website_domain, 'Public static website');\nif (!config.wordpress_base_url) {\n  throw new Error('WordPress multisite subsite base URL must be configured separately from the public static website.');\n}\nconst wordpressBaseUrl = requireHttpsUrl(config.wordpress_base_url, 'WordPress subsite base');\nif (row.practice_id !== 'practice_test_001' || wordpressBaseUrl !== 'https://apexparent.hostmanpowered.com/test001') {\n  throw new Error('Automatic publication is restricted to the TEST-1 practice and its verified WordPress subsite.');\n}\nif (row.practice_id !== 'practice_test_001' || wordpressBaseUrl !== 'https://apexparent.hostmanpowered.com/test001') {\n  throw new Error('Automatic publication is restricted to the TEST-1 practice and its verified base configuration.');\n}\nconst pilotCampaign = 'campaign_test_202609_aac_prestonwood_pilot_2026_09_23';\nconst isPrestonwoodPilot = row.campaign_id === pilotCampaign;\nif (isPrestonwoodPilot && String(row.doctor_email || '').toLowerCase() !== 'jdold@apexdp.com') {\n  throw new Error('The Prestonwood pilot permits only the named test identity.');\n}\nconst publicationBaseUrl = isPrestonwoodPilot ? 'https://apexparent.hostmanpowered.com/dfw-03' : wordpressBaseUrl;\nconst appointmentUrl = isPrestonwoodPilot ? 'https://prestonwooddentistry.com' : String(config.appointment_url || publicUrl);\nconst replacements = {\n  '{{DOCTOR_NAME}}': row.doctor_name || '',\n  '{{DOCTOR_CREDENTIALS}}': row.credentials || '',\n  '{{PRACTICE_NAME}}': '[sc name=\"practice_name\"][/sc]',\n  '{{APPOINTMENT_URL}}': appointmentUrl\n};\nfor (const [token, value] of Object.entries(replacements)) {\n  html = html.split(token).join(String(value));\n}\nif (/{{[A-Z0-9_]+}}/.test(html)) {\n  throw new Error('The article still contains unresolved publishing tokens.');\n}\n\nhtml = html\n  .replace(/^(?:\\s*<!--[\\s\\S]*?-->\\s*)+/, '')\n  .replace(/\\s*<h1[^>]*>[\\s\\S]*?<\\/h1>\\s*/i, '\\n')\n  .trim();\n\nconst escapeHtml = (value) => String(value ?? '').replace(/[&<>\"']/g, (character) => ({\n  '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;'\n}[character]));\nconst doctorName = String(row.doctor_name || '').trim();\nconst credentials = String(row.credentials || '').trim();\nif (!doctorName) throw new Error('The interviewed doctor name is required for attribution.');\nconst doctorLabel = credentials ? doctorName + ', ' + credentials : doctorName;\nhtml = html.replace(/<p\\b[^>]*class=[\"'][^\"']*\\barticle-byline\\b[^\"']*[\"'][^>]*>[\\s\\S]*?<\\/p>\\s*/gi, '');\nconst leadingByline = /^\\s*<p\\b[^>]*>([\\s\\S]*?)<\\/p>\\s*/i.exec(html);\nif (leadingByline) {\n  const leadingBylineText = leadingByline[1]\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&amp;/gi, '&')\n    .replace(/&#39;|&apos;/gi, \"'\")\n    .replace(/&quot;/gi, '\"')\n    .replace(/\\s+/g, ' ')\n    .trim();\n  if (leadingBylineText.toLowerCase() === ('By ' + doctorLabel).toLowerCase()) {\n    html = html.slice(leadingByline[0].length);\n  }\n}\nhtml = '<p class=\"article-byline\">By <strong>' + escapeHtml(doctorLabel) + '</strong></p>\\n' + html;\nconst featuredImageSourceUrl = requireHttpsUrl(row.featured_image_source_url, 'Featured image central source');\nif (!featuredImageSourceUrl.startsWith('https://apexparent.hostmanpowered.com/wp-content/uploads/')) throw new Error('Featured images must come from the designated Apex Parent central Media Library.');\nconst featuredImageAlt = String(row.featured_image_alt_text || '').trim();\nif (!featuredImageAlt) throw new Error('The selected topic image must include useful alt text.');\nconst faqHeading = /<h2\\b[^>]*>[^<]*(?:frequently asked questions|faq)[^<]*<\\/h2>/i.exec(html);\nif (!faqHeading) throw new Error('The approved article must include a clearly labeled FAQ.');\nconst faqHtml = html.slice(faqHeading.index);\nconst faqItems = faqHtml.match(/<h3\\b[^>]*>/gi) || [];\nif (faqItems.length < 3 || faqItems.length > 6 || /<h2\\b/i.test(faqHtml.slice(faqHeading[0].length))) {\n  throw new Error('The approved article FAQ must contain 3 to 6 questions and be the final public section.');\n}\nhtml = html.replace(/<(section|div)\\b[^>]*class=[\"'][^\"']*\\barticle-doctor-profile\\b[^\"']*[\"'][^>]*>[\\s\\S]*?<\\/\\1>\\s*/gi, '');\nconst bio = String(row.doctor_short_bio || '').trim();\nconst profileUrl = String(row.doctor_profile_url || '').trim();\nconst photoUrl = String(row.doctor_photo_url || '').trim();\nlet profile = '<section class=\"article-doctor-profile\"><h2>About ' + escapeHtml(doctorName) + '</h2>';\nif (photoUrl) {\n  const safePhotoUrl = requireHttpsUrl(photoUrl, 'Doctor profile photo');\n  profile += '<figure><img src=\"' + escapeHtml(safePhotoUrl) + '\" alt=\"' + escapeHtml(doctorName) + '\" loading=\"lazy\"></figure>';\n}\nprofile += '<p>' + escapeHtml(bio || (doctorName + ' is the dentist interviewed for this article.')) + '</p>';\nif (profileUrl) {\n  const safeProfileUrl = requireHttpsUrl(profileUrl, 'Doctor public profile');\n  profile += '<p><a href=\"' + escapeHtml(safeProfileUrl) + '\">Read more about ' + escapeHtml(doctorName) + '</a></p>';\n}\nprofile += '</section>';\nhtml = html.slice(0, faqHeading.index) + profile + '\\n' + html.slice(faqHeading.index);\n\nconst exactPilotQa = String(row.qa_republish).toLowerCase() === 'true'\n  && row.article_id === 'article_6296aabf938f492eafd5a2b010b3f8c9'\n  && row.campaign_id === 'campaign_test_202609_aac_prestonwood_pilot_2026_09_23';\nlet title = String(metadata.h1 || '').trim() || String(publicationPackage.article_html).match(/<h1[^>]*>([\\s\\S]*?)<\\/h1>/i)?.[1]?.replace(/<[^>]+>/g, '').trim();\nlet slug = String(metadata.slug || '').trim();\nlet seoTitle = String(metadata.seo_title || '').trim();\nlet excerpt = String(metadata.meta_description || '').trim();\nlet focusKeyphrase = String(metadata.focus_keyphrase || '').trim();\nif (!focusKeyphrase && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {\n  const slugWords = slug.split('-').filter(Boolean);\n  if (slugWords.length >= 2 && slugWords.length <= 6) focusKeyphrase = slugWords.join(' ');\n}\nif (exactPilotQa) {\n  title ||= 'Two Dental Cleanings a Year: Too Many, Too Few, or Just Right?';\n  slug ||= 'do-you-need-two-dental-cleanings-a-year';\n  seoTitle ||= 'How Often Do You Need Dental Cleanings? | Prestonwood';\n  excerpt ||= 'Learn how dentists personalize cleaning schedules based on gum health, cavity risk, tartar buildup, and each patient’s preventive care needs.';\n  focusKeyphrase ||= 'dental cleaning frequency';\n}\nif (!title || !seoTitle || !slug || !excerpt || !focusKeyphrase) {\n  throw new Error('The approved package is missing its title, SEO title, slug, meta description, or focus keyphrase.');\n}\nif (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || slug.length > 75) throw new Error('The slug must be concise lowercase ASCII words separated by hyphens.');\nif (excerpt.length < 120 || excerpt.length > 165) throw new Error('The meta description must be 120 to 165 characters.');\nif (focusKeyphrase.split(/\\s+/).length < 2 || focusKeyphrase.split(/\\s+/).length > 6) throw new Error('The focus keyphrase must contain 2 to 6 words.');\n\nreturn [{ json: {\n  ...row,\n  credential_name: config.credential_name,\n  wordpress_api_url: `${publicationBaseUrl}/wp-json/wp/v2`,\n  title, seo_title: seoTitle, slug, excerpt, focus_keyphrase: focusKeyphrase, content: html,\n  wordpress_publication_base_url: publicationBaseUrl,\n  featured_image_source_url: featuredImageSourceUrl,\n  featured_image_alt_text: featuredImageAlt,\n  featured_image_media_slug: 'aac-' + String(row.topic_id || row.article_id).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),\n  featured_image_upload_filename: 'aac-' + String(row.topic_id || row.article_id).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + (featuredImageSourceUrl.match(/\\.(?:jpe?g|png|webp)$/i)?.[0].toLowerCase() || '.jpg'),\n  wordpress_body: {\n    title, content: html, slug, excerpt, status: 'publish',\n    ...(config.supports_yoast_meta === true ? { meta: {\n      _yoast_wpseo_title: seoTitle,\n      _yoast_wpseo_metadesc: excerpt,\n      _yoast_wpseo_focuskw: focusKeyphrase\n    } } : {}),\n    comment_status: 'closed', ping_status: 'closed', format: 'standard'\n  }\n} }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         -280,
-        100
+        -40
       ],
       "id": "2ab3d4e6-e702-49da-9165-b7de03702042",
       "name": "Prepare WordPress Publication"
@@ -67,8 +71,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        -40,
-        100
+        1400,
+        -40
       ],
       "id": "520d626b-57a1-4de1-8575-934ca2024191",
       "name": "Find Existing WordPress Post",
@@ -76,13 +80,13 @@
     },
     {
       "parameters": {
-        "jsCode": "const context = $('Prepare WordPress Publication').first().json;\nconst existing = $input.all().map((item) => item.json).find((post) => post?.id && post?.slug === context.slug);\nreturn [{ json: {\n  ...context,\n  existing_post_id: existing?.id ? String(existing.id) : null,\n  wordpress_publish_url: existing?.id\n    ? `${context.wordpress_api_url}/posts/${existing.id}`\n    : `${context.wordpress_api_url}/posts`\n} }];"
+        "jsCode": "const context = $('Attach Uploaded Campaign Image').first().json;\nconst existing = $input.all().map((item) => item.json).find((post) => post?.id && post?.slug === context.slug);\nreturn [{ json: {\n  ...context,\n  existing_post_id: existing?.id ? String(existing.id) : null,\n  wordpress_publish_url: existing?.id\n    ? `${context.wordpress_api_url}/posts/${existing.id}`\n    : `${context.wordpress_api_url}/posts`\n} }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        200,
-        100
+        1640,
+        -40
       ],
       "id": "dbbc4c52-ac9b-4516-86a9-250f0414ca61",
       "name": "Choose WordPress Create or Update"
@@ -104,21 +108,21 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        440,
-        100
+        1880,
+        -40
       ],
       "id": "7464df81-c4f4-4588-9d77-c7a2d2debc55",
       "name": "Publish WordPress Post"
     },
     {
       "parameters": {
-        "jsCode": "const response = $json;\nconst context = $('Choose WordPress Create or Update').first().json;\nif (!response?.id || response?.status !== 'publish' || !response?.link) {\n  throw new Error('WordPress did not return a published post ID and URL.');\n}\nreturn [{ json: {\n  article_id: context.article_id,\n  doctor_id: context.doctor_id,\n  campaign_id: context.campaign_id,\n  current_version: Number(context.current_version),\n  publisher_config_reference: context.publisher_config_reference,\n  external_post_id: String(response.id),\n  published_url: String(response.link),\n  wordpress_status: response.status,\n  slug: response.slug || context.slug\n} }];"
+        "jsCode": "const response = $json;\nconst context = $('Choose WordPress Create or Update').first().json;\nif (!response?.id || response?.status !== 'publish' || !response?.link) {\n  throw new Error('WordPress did not return a published post ID and URL.');\n}\nif (String(response.slug || '') !== context.slug) throw new Error('WordPress returned a different slug than the approved package.');\nif (Number(response.featured_media) !== Number(context.uploaded_featured_image_media_id)) throw new Error('WordPress did not retain the automatically uploaded topic image.');\nreturn [{ json: {\n  article_id: context.article_id,\n  doctor_id: context.doctor_id,\n  campaign_id: context.campaign_id,\n  current_version: Number(context.current_version),\n  publisher_config_reference: context.publisher_config_reference,\n  external_post_id: String(response.id),\n  published_url: String(response.link),\n  wordpress_status: response.status,\n  slug: response.slug || context.slug\n} }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        680,
-        100
+        2120,
+        -40
       ],
       "id": "5ad269ea-5fd8-40bd-9709-9f8dde21885a",
       "name": "Validate WordPress Publication"
@@ -171,8 +175,8 @@
       "type": "n8n-nodes-base.googleBigQuery",
       "typeVersion": 2.1,
       "position": [
-        920,
-        100
+        2360,
+        -40
       ],
       "id": "f464cfe3-4584-4c24-b918-da87f8f47e24",
       "name": "Record Successful Publication"
@@ -198,6 +202,10 @@
           "values": [
             {
               "name": "article_id"
+            },
+            {
+              "name": "qa_republish",
+              "type": "boolean"
             }
           ]
         }
@@ -210,6 +218,157 @@
       ],
       "id": "ae7200a4-b781-4a84-bb28-c7c84747ee34",
       "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.wordpress_api_url + '/media?slug=' + encodeURIComponent($json.featured_image_media_slug) + '&per_page=1' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "wordpressApi",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -40,
+        -40
+      ],
+      "id": "6904d2ba-6055-5ac3-a151-956ef52fe8bd",
+      "name": "Find Existing Topic Image in Target WordPress",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const context = $('Prepare WordPress Publication').first().json;\nconst candidates = $input.all().flatMap((item) => Array.isArray(item.json) ? item.json : [item.json]).filter((item) => item?.id);\nconst reusable = candidates.find((item) => String(item.slug || '') === context.featured_image_media_slug) || null;\nreturn [{ json: { ...context, media_exists: Boolean(reusable), reusable_media: reusable } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        200,
+        -40
+      ],
+      "id": "d64164fe-44c7-5587-ae8e-569945d2a80d",
+      "name": "Choose Existing or New Topic Image"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "topic-media-exists",
+              "leftValue": "={{ String($json.media_exists) }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        -40
+      ],
+      "id": "10177b5b-8ef8-5e78-8bf7-d4b2fbaf6dbe",
+      "name": "If Topic Image Already Exists"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const media = $json.reusable_media;\nif (!media?.id) throw new Error('The reusable topic image record is missing.');\nreturn [{ json: media }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        -160
+      ],
+      "id": "7ae13e34-cf62-58a7-b350-c3806aa93d4e",
+      "name": "Reuse Existing Topic Image"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.featured_image_source_url }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        680,
+        120
+      ],
+      "id": "28c94083-1cf2-50ec-8bf1-c7ec4d02826f",
+      "name": "Download Selected Campaign Image"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Prepare WordPress Publication').first().json.wordpress_api_url + '/media' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "wordpressApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Disposition",
+              "value": "={{ 'attachment; filename=\\\"' + $('Prepare WordPress Publication').first().json.featured_image_upload_filename + '\\\"' }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "={{ $binary.data.mimeType || 'image/jpeg' }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "data",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        920,
+        120
+      ],
+      "id": "f17742bb-d7d0-5233-845c-27d4af025687",
+      "name": "Upload Campaign Image to Target WordPress"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const media = $json;\nconst context = $('Prepare WordPress Publication').first().json;\nif (!media?.id || !/^image\\//i.test(String(media.mime_type || ''))) throw new Error('WordPress did not return a valid uploaded image.');\nconst mediaUrl = String(media.source_url || media.guid?.rendered || '').trim();\nif (!mediaUrl.startsWith(context.wordpress_publication_base_url + '/wp-content/uploads/')) throw new Error('WordPress returned an image outside the target subsite.');\nconst escapeHtml = (value) => String(value ?? '').replace(/[&<>\"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' }[character]));\nconst figure = '<figure class=\"article-featured-image\"><img src=\"' + escapeHtml(mediaUrl) + '\" alt=\"' + escapeHtml(context.featured_image_alt_text) + '\"></figure>';\nconst content = context.content.replace(/(<p\\b[^>]*class=[\"'][^\"']*\\barticle-byline\\b[^\"']*[\"'][^>]*>[\\s\\S]*?<\\/p>)/i, '$1\\n' + figure);\nreturn [{ json: { ...context, content, uploaded_featured_image_media_id: Number(media.id), uploaded_featured_image_url: mediaUrl, wordpress_body: { ...context.wordpress_body, content, featured_media: Number(media.id) } } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1160,
+        -40
+      ],
+      "id": "3674ed2d-6f25-5169-a8ba-c844de156706",
+      "name": "Attach Uploaded Campaign Image"
     }
   ],
   "pinData": {},
@@ -240,7 +399,7 @@
       "main": [
         [
           {
-            "node": "Find Existing WordPress Post",
+            "node": "Find Existing Topic Image in Target WordPress",
             "type": "main",
             "index": 0
           }
@@ -296,6 +455,90 @@
         [
           {
             "node": "Load Approved WordPress Article",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Selected Campaign Image": {
+      "main": [
+        [
+          {
+            "node": "Upload Campaign Image to Target WordPress",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Campaign Image to Target WordPress": {
+      "main": [
+        [
+          {
+            "node": "Attach Uploaded Campaign Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attach Uploaded Campaign Image": {
+      "main": [
+        [
+          {
+            "node": "Find Existing WordPress Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Existing Topic Image in Target WordPress": {
+      "main": [
+        [
+          {
+            "node": "Choose Existing or New Topic Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Choose Existing or New Topic Image": {
+      "main": [
+        [
+          {
+            "node": "If Topic Image Already Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Topic Image Already Exists": {
+      "main": [
+        [
+          {
+            "node": "Reuse Existing Topic Image",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Download Selected Campaign Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reuse Existing Topic Image": {
+      "main": [
+        [
+          {
+            "node": "Attach Uploaded Campaign Image",
             "type": "main",
             "index": 0
           }

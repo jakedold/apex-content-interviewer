@@ -1,0 +1,84 @@
+{
+  "name": "AAC - 21 - Sync Doctor Profiles from Workbook",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "3478fe58-0a5a-49d7-9524-967df5019d11",
+      "name": "Run TEST-1 Profile Sync",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-660, 40]
+    },
+    {
+      "parameters": {
+        "documentId": {"__rl": true, "value": "1M0arM4jnZzalySGUKq60Hp1yhTDz2RQTXqMeOWfaOUA", "mode": "id"},
+        "sheetName": {"__rl": true, "value": "Doctor Profiles", "mode": "name"},
+        "options": {"dataLocationOnSheet": {"values": {"rangeDefinition": "specifyRangeA1", "range": "A1:K500"}}}
+      },
+      "id": "579a8f8d-b18c-4230-8e54-ccdb98bd18cb",
+      "name": "Read Doctor Profiles",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-420, 40]
+    },
+    {
+      "parameters": {
+        "jsCode": "const text = (value) => String(value ?? '').trim();\nconst active = (value) => value === true || ['true', 'yes', '1'].includes(text(value).toLowerCase());\nconst httpsUrl = (value, label) => {\n  const url = text(value);\n  if (!/^https:\\/\\/[^\\s?#]+(?:\\/[^\\s?#]*)?$/i.test(url)) throw new Error(label + ' must be a direct HTTPS URL without a query or fragment.');\n  return url;\n};\nconst rows = $input.all().map(item => item.json).filter(row => active(row.Active));\nif (!rows.length) throw new Error('The Doctor Profiles tab has no active rows.');\nconst pilot = rows.filter(row => text(row['Location Code']).toUpperCase() === 'TEST-1');\nif (pilot.length !== 1) throw new Error('Exactly one active TEST-1 doctor profile is required for the pilot.');\nconst row = pilot[0];\nconst email = text(row['Work Email']).toLowerCase();\nif (email !== 'jdold@apexdp.com') throw new Error('The pilot sync is restricted to the TEST-1 recipient.');\nconst doctorName = text(row['Doctor Name']);\nconst shortBio = text(row['Short Bio']);\nif (!doctorName || !shortBio) throw new Error('Doctor Name and Short Bio are required.');\nconst verifiedAt = text(row['Verified At']);\nif (!verifiedAt) throw new Error('Verified At is required.');\nreturn [{ json: {\n  work_email: email, doctor_name: doctorName, credentials: text(row.Credentials), location_code: 'TEST-1',\n  profile_url: httpsUrl(row['Profile URL'], 'Profile URL'), photo_url: httpsUrl(row['Photo Source URL'], 'Photo Source URL'),\n  short_bio: shortBio, source: text(row.Source), verified_at: verifiedAt, active: true\n} }];"
+      },
+      "id": "b9418978-6581-41e4-baa4-46fa7059fc19",
+      "name": "Validate TEST-1 Profile",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-160, 40]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "projectId": {"__rl": true, "value": "apex-marketing-n8n", "mode": "list", "cachedResultName": "apex-marketing-n8n"},
+        "sqlQuery": "-- TEST-1 pilot only. The workbook is the maintainable editing surface; BigQuery remains the runtime system of record.\nCREATE TABLE IF NOT EXISTS `apex-marketing-n8n.automated_article_creation.doctor_profiles` (\n  doctor_id STRING NOT NULL, practice_id STRING NOT NULL, work_email STRING,\n  doctor_name STRING, credentials STRING, location_code STRING, profile_url STRING,\n  photo_url STRING, short_bio STRING, source STRING, verified_at TIMESTAMP, active BOOL\n);\nALTER TABLE `apex-marketing-n8n.automated_article_creation.doctor_profiles`\n  ADD COLUMN IF NOT EXISTS credentials STRING;\n\nMERGE `apex-marketing-n8n.automated_article_creation.doctor_profiles` T\nUSING (\n  SELECT d.doctor_id, d.practice_id, @work_email AS work_email, @doctor_name AS doctor_name,\n    NULLIF(@credentials, '') AS credentials, @location_code AS location_code,\n    @profile_url AS profile_url, @photo_url AS photo_url, @short_bio AS short_bio,\n    @source AS source, TIMESTAMP(@verified_at) AS verified_at, CAST(@active AS BOOL) AS active\n  FROM `apex-marketing-n8n.automated_article_creation.doctors` d\n  JOIN `apex-marketing-n8n.automated_article_creation.practices` p USING (practice_id)\n  WHERE LOWER(d.email) = LOWER(@work_email)\n    AND d.practice_id = 'practice_test_001'\n    AND @location_code = 'TEST-1'\n  LIMIT 1\n) S\nON T.doctor_id = S.doctor_id AND T.practice_id = S.practice_id\nWHEN MATCHED THEN UPDATE SET\n  work_email = S.work_email, doctor_name = S.doctor_name, credentials = S.credentials,\n  location_code = S.location_code, profile_url = S.profile_url, photo_url = S.photo_url,\n  short_bio = S.short_bio, source = S.source, verified_at = S.verified_at, active = S.active\nWHEN NOT MATCHED THEN INSERT\n  (doctor_id, practice_id, work_email, doctor_name, credentials, location_code, profile_url, photo_url, short_bio, source, verified_at, active)\nVALUES\n  (S.doctor_id, S.practice_id, S.work_email, S.doctor_name, S.credentials, S.location_code, S.profile_url, S.photo_url, S.short_bio, S.source, S.verified_at, S.active);\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.workflow_events`\n  (event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id, payload)\nSELECT GENERATE_UUID(), 'doctor', d.doctor_id, 'doctor.profile_synced', CURRENT_TIMESTAMP(),\n  'n8n:doctor-profile-sync', NULL, TO_JSON(STRUCT(@location_code AS location_code, @profile_url AS profile_url, @photo_url AS photo_url))\nFROM `apex-marketing-n8n.automated_article_creation.doctors` d\nWHERE LOWER(d.email) = LOWER(@work_email) AND d.practice_id = 'practice_test_001';\n\nSELECT d.doctor_id, d.practice_id, @work_email AS work_email, @doctor_name AS doctor_name,\n  @location_code AS location_code, 'SYNCED' AS sync_status\nFROM `apex-marketing-n8n.automated_article_creation.doctors` d\nWHERE LOWER(d.email) = LOWER(@work_email) AND d.practice_id = 'practice_test_001'\nLIMIT 1;",
+        "options": {
+          "queryParameters": {"namedParameters": [
+            {"name": "work_email", "value": "={{ $json.work_email }}"},
+            {"name": "doctor_name", "value": "={{ $json.doctor_name }}"},
+            {"name": "credentials", "value": "={{ $json.credentials }}"},
+            {"name": "location_code", "value": "={{ $json.location_code }}"},
+            {"name": "profile_url", "value": "={{ $json.profile_url }}"},
+            {"name": "photo_url", "value": "={{ $json.photo_url }}"},
+            {"name": "short_bio", "value": "={{ $json.short_bio }}"},
+            {"name": "source", "value": "={{ $json.source }}"},
+            {"name": "verified_at", "value": "={{ $json.verified_at }}"},
+            {"name": "active", "value": "={{ $json.active }}"}
+          ]}
+        }
+      },
+      "id": "d6f133b3-b896-4b8a-9706-0b32cc3a0a01",
+      "name": "Upsert TEST-1 Profile in BigQuery",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [100, 40]
+    },
+    {
+      "parameters": {
+        "content": "## Doctor profile workbook sync\n\nManual, inactive pilot workflow. It reads the **Doctor Profiles** tab and synchronizes exactly one active **TEST-1** row for **jdold@apexdp.com** into BigQuery. It does not email anyone or publish anything.\n\nConnect the existing **Google Sheets account** and **Google BigQuery account** credentials before the first run. Production expansion should reuse the same workbook columns but replace the TEST-1 guard with the canonical location-to-practice mapping.",
+        "height": 250,
+        "width": 520
+      },
+      "id": "15ff3981-4d16-4d62-a5ed-67b3343f994c",
+      "name": "Pilot safety note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-650, -300]
+    }
+  ],
+  "connections": {
+    "Run TEST-1 Profile Sync": {"main": [[{"node": "Read Doctor Profiles", "type": "main", "index": 0}]]},
+    "Read Doctor Profiles": {"main": [[{"node": "Validate TEST-1 Profile", "type": "main", "index": 0}]]},
+    "Validate TEST-1 Profile": {"main": [[{"node": "Upsert TEST-1 Profile in BigQuery", "type": "main", "index": 0}]]}
+  },
+  "active": false,
+  "settings": {"executionOrder": "v1"},
+  "versionId": "2a8a4a49-99d7-469b-b11c-8f82d88f111a",
+  "meta": {"templateCredsSetupCompleted": true},
+  "id": "AAC21DoctorProfiles",
+  "tags": []
+}

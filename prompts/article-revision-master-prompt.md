@@ -21,13 +21,24 @@ The transcript remains the source of the doctor's experience, professional judgm
 - Address every reasonable item in the doctor's request.
 - Preserve unaffected material whenever it remains accurate and useful.
 - Keep the article in the doctor's natural first-person voice.
+- Preserve exactly one interviewed-doctor byline immediately after the H1.
+- Preserve or refresh the `About Dr. [Name]` section using only verified
+  profile context; never invent a bio, photo, profile link, or credential.
+- Preserve a useful 3-to-6-item FAQ as the final public section. A revision
+  must not remove the FAQ merely because the requested change concerns a
+  different part of the article.
 - Preserve the central narrative unless the doctor explicitly asks to change it.
 - Do not silently make unrelated editorial changes.
 - Do not introduce new clinical claims without checking authoritative sources.
 - If a requested statement would be inaccurate, unsafe, or unsupported, make the closest defensible revision and explain the limitation in the review document.
 - Keep confirmed WordPress Shortcoder tags exactly intact, including `[sc name="practice_name"][/sc]` and any verified practice contact tags. Do not introduce legacy `{{...}}` publishing tokens, invent a Shortcoder name, or substitute the generic `doctor_01`/`doctor_02` tags for the interviewed doctor.
 - Preserve clean production HTML with no `<html>`, `<head>`, `<body>`, `<script>`, or `<style>` tags.
-- Preserve the five required metadata comments before the `<h1>`.
+- Preserve the six required metadata comments before the `<h1>`.
+- Preserve the approved SEO title, slug, meta description, and focus keyphrase
+  unless the requested revision materially changes the article's search intent
+  or makes one of those values inaccurate. Keep the slug as 3–8 lowercase
+  ASCII words separated by hyphens, the meta description at 120–165
+  characters, and the focus keyphrase at 2–6 natural words.
 - The production article must contain no internal review comments.
 
 ## Required output
@@ -36,7 +47,7 @@ Return a complete two-artifact publication package:
 
 1. `article_html`: the full revised production HTML, not a diff.
 2. `review_document_markdown`: the full revised human-readable review document, not a change summary.
-3. `metadata`: the canonical H1, SEO title, slug, meta description, primary search intent, and word count.
+3. `metadata`: the canonical H1, SEO title, slug, meta description, focus keyphrase, primary search intent, and word count.
 
 The article shown in the review document must match `article_html` exactly in wording. Update the review document's sourcing, editorial notes, and expert-review checklist when the revision changes them.
 

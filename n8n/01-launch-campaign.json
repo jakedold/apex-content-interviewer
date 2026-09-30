@@ -51,16 +51,133 @@
               "requiredField": true
             },
             {
+              "fieldName": "topic_1_featured_image_source_url",
+              "fieldLabel": "Topic 1 featured image central source URL",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "https://central-assets.example/path/image.jpg"
+            },
+            {
+              "fieldName": "topic_1_featured_image_alt_text",
+              "fieldLabel": "Topic 1 featured image alt text",
+              "fieldType": "text",
+              "requiredField": true
+            },
+            {
+              "fieldName": "topic_1_featured_image_source_type",
+              "fieldLabel": "Topic 1 featured image source type",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Apex-owned or commissioned"
+                  },
+                  {
+                    "option": "Licensed stock"
+                  },
+                  {
+                    "option": "AI-generated with approved terms"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldName": "topic_1_featured_image_rights_reference",
+              "fieldLabel": "Topic 1 featured image rights or source reference",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "Asset record, license, commission, or generation reference"
+            },
+            {
               "fieldName": "topic_2",
               "fieldLabel": "Topic 2",
               "fieldType": "text",
               "requiredField": true
             },
             {
+              "fieldName": "topic_2_featured_image_source_url",
+              "fieldLabel": "Topic 2 featured image central source URL",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "https://central-assets.example/path/image.jpg"
+            },
+            {
+              "fieldName": "topic_2_featured_image_alt_text",
+              "fieldLabel": "Topic 2 featured image alt text",
+              "fieldType": "text",
+              "requiredField": true
+            },
+            {
+              "fieldName": "topic_2_featured_image_source_type",
+              "fieldLabel": "Topic 2 featured image source type",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Apex-owned or commissioned"
+                  },
+                  {
+                    "option": "Licensed stock"
+                  },
+                  {
+                    "option": "AI-generated with approved terms"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldName": "topic_2_featured_image_rights_reference",
+              "fieldLabel": "Topic 2 featured image rights or source reference",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "Asset record, license, commission, or generation reference"
+            },
+            {
               "fieldName": "topic_3",
               "fieldLabel": "Topic 3",
               "fieldType": "text",
               "requiredField": true
+            },
+            {
+              "fieldName": "topic_3_featured_image_source_url",
+              "fieldLabel": "Topic 3 featured image central source URL",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "https://central-assets.example/path/image.jpg"
+            },
+            {
+              "fieldName": "topic_3_featured_image_alt_text",
+              "fieldLabel": "Topic 3 featured image alt text",
+              "fieldType": "text",
+              "requiredField": true
+            },
+            {
+              "fieldName": "topic_3_featured_image_source_type",
+              "fieldLabel": "Topic 3 featured image source type",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Apex-owned or commissioned"
+                  },
+                  {
+                    "option": "Licensed stock"
+                  },
+                  {
+                    "option": "AI-generated with approved terms"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldName": "topic_3_featured_image_rights_reference",
+              "fieldLabel": "Topic 3 featured image rights or source reference",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "Asset record, license, commission, or generation reference"
             },
             {
               "fieldName": "doctors",
@@ -90,7 +207,7 @@
       ],
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const input = $json;\nconst value = (name, label) => String(input[name] ?? input[label] ?? '').trim();\nconst campaignName = value('campaign_name', 'Campaign name');\nconst month = value('campaign_month', 'Campaign month').slice(0, 7);\nconst practiceName = value('practice_name', 'Location / practice name');\nconst websiteInput = value('website_url', 'Website URL for this location');\nlet websiteUrl;\ntry {\n  const parsed = new URL(websiteInput);\n  if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.search || parsed.hash) throw new Error('invalid URL');\n  websiteUrl = parsed.href.replace(/\\/$/, '').toLowerCase();\n} catch {\n  throw new Error('Enter the configured HTTPS website URL for this location, without query parameters or fragments.');\n}\nconst topics = [1, 2, 3].map((number) => value('topic_' + number, 'Topic ' + number));\nconst lines = value('doctors', 'Doctors (one Name,email per line)').split(/\\r?\\n/).map((line) => line.trim()).filter(Boolean);\nif (!campaignName || !/^\\d{4}-\\d{2}$/.test(month) || !practiceName || topics.some((topic) => !topic) || !lines.length) throw new Error('Complete the campaign, month, location, website, three topics, and at least one doctor.');\nif (new Set(topics.map((topic) => topic.toLowerCase())).size !== 3) throw new Error('The three topics must be distinct.');\nconst doctors = lines.map((line) => {\n  const comma = line.lastIndexOf(',');\n  if (comma < 1) throw new Error('Each doctor line must be Name,email.');\n  const name = line.slice(0, comma).trim();\n  const email = line.slice(comma + 1).trim().toLowerCase();\n  if (!name || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) throw new Error('Invalid doctor name or email: ' + line);\n  return { doctor_id: 'doctor_' + email.replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''), name, email };\n});\nif (new Set(doctors.map((doctor) => doctor.email)).size !== doctors.length) throw new Error('Each doctor email must appear only once.');\nconst slug = campaignName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 48);\nif (!slug) throw new Error('Campaign name must contain letters or numbers.');\nconst campaignId = 'campaign_' + month.replace('-', '') + '_' + slug;\nconst payload = { campaign_id: campaignId, campaign_name: campaignName, campaign_month: month + '-01', practice_name: practiceName, website_url: websiteUrl, topics, doctors };\nreturn { json: { payload_json: JSON.stringify(payload), campaign_id: campaignId, doctor_count: doctors.length } };"
+        "jsCode": "const input = $json;\nconst value = (name, label) => String(input[name] ?? input[label] ?? '').trim();\nconst campaignName = value('campaign_name', 'Campaign name');\nconst month = value('campaign_month', 'Campaign month').slice(0, 7);\nconst practiceName = value('practice_name', 'Location / practice name');\nconst websiteInput = value('website_url', 'Website URL for this location');\nlet websiteUrl;\ntry {\n  const parsed = new URL(websiteInput);\n  if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.search || parsed.hash) throw new Error('invalid URL');\n  websiteUrl = parsed.href.replace(/\\/$/, '').toLowerCase();\n} catch {\n  throw new Error('Enter the configured HTTPS website URL for this location, without query parameters or fragments.');\n}\nconst topics = [1, 2, 3].map((number) => ({\n  title: value('topic_' + number, 'Topic ' + number),\n  featured_image_source_url: value('topic_' + number + '_featured_image_source_url', 'Topic ' + number + ' featured image central source URL'),\n  featured_image_alt_text: value('topic_' + number + '_featured_image_alt_text', 'Topic ' + number + ' featured image alt text'),\n  featured_image_source_type: value('topic_' + number + '_featured_image_source_type', 'Topic ' + number + ' featured image source type'),\n  featured_image_rights_reference: value('topic_' + number + '_featured_image_rights_reference', 'Topic ' + number + ' featured image rights or source reference')\n}));\nconst lines = value('doctors', 'Doctors (one Name,email per line)').split(/\\r?\\n/).map((line) => line.trim()).filter(Boolean);\nif (!campaignName || !/^\\d{4}-\\d{2}$/.test(month) || !practiceName || topics.some((topic) => !topic.title || !/^https:\\/\\//i.test(topic.featured_image_source_url) || topic.featured_image_alt_text.length < 8 || !topic.featured_image_source_type || !topic.featured_image_rights_reference) || !lines.length) throw new Error('Complete the campaign, month, location, website, three topics with central image records, and at least one doctor.');\nif (new Set(topics.map((topic) => topic.title.toLowerCase())).size !== 3) throw new Error('The three topics must be distinct.');\nconst doctors = lines.map((line) => {\n  const comma = line.lastIndexOf(',');\n  if (comma < 1) throw new Error('Each doctor line must be Name,email.');\n  const name = line.slice(0, comma).trim();\n  const email = line.slice(comma + 1).trim().toLowerCase();\n  if (!name || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) throw new Error('Invalid doctor name or email: ' + line);\n  return { doctor_id: 'doctor_' + email.replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''), name, email };\n});\nif (new Set(doctors.map((doctor) => doctor.email)).size !== doctors.length) throw new Error('Each doctor email must appear only once.');\nconst slug = campaignName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 48);\nif (!slug) throw new Error('Campaign name must contain letters or numbers.');\nconst campaignId = 'campaign_' + month.replace('-', '') + '_' + slug;\nconst payload = { campaign_id: campaignId, campaign_name: campaignName, campaign_month: month + '-01', practice_name: practiceName, website_url: websiteUrl, topics, doctors };\nreturn { json: { payload_json: JSON.stringify(payload), campaign_id: campaignId, doctor_count: doctors.length } };"
       }
     },
     {
@@ -109,7 +226,7 @@
           "value": "apex-marketing-n8n",
           "mode": "id"
         },
-        "sqlQuery": "DECLARE p JSON DEFAULT PARSE_JSON(@payload);\nDECLARE v_campaign_id STRING DEFAULT JSON_VALUE(p, '$.campaign_id');\nDECLARE v_practice_id STRING;\nASSERT (\n  SELECT COUNT(*) FROM `apex-marketing-n8n.automated_article_creation.practices`\n  WHERE active = TRUE\n    AND LOWER(TRIM(practice_name)) = LOWER(JSON_VALUE(p, '$.practice_name'))\n    AND REGEXP_REPLACE(LOWER(TRIM(website_domain)), r'/$', '') = JSON_VALUE(p, '$.website_url')\n) = 1 AS 'Location and website must match exactly one active, configured practice profile.';\nSET v_practice_id = (\n  SELECT practice_id FROM `apex-marketing-n8n.automated_article_creation.practices`\n  WHERE active = TRUE\n    AND LOWER(TRIM(practice_name)) = LOWER(JSON_VALUE(p, '$.practice_name'))\n    AND REGEXP_REPLACE(LOWER(TRIM(website_domain)), r'/$', '') = JSON_VALUE(p, '$.website_url')\n  LIMIT 1\n);\nASSERT NOT EXISTS (\n  SELECT 1 FROM `apex-marketing-n8n.automated_article_creation.doctors` d\n  JOIN UNNEST(JSON_QUERY_ARRAY(p, '$.doctors')) AS doctor\n    ON LOWER(d.email) = LOWER(JSON_VALUE(doctor, '$.email'))\n  WHERE d.practice_id IS NOT NULL AND d.practice_id != v_practice_id\n) AS 'A doctor is already mapped to a different location. Resolve the doctor-to-website mapping before launch.';\nASSERT NOT EXISTS (\n  SELECT 1 FROM `apex-marketing-n8n.automated_article_creation.doctors` d\n  JOIN UNNEST(JSON_QUERY_ARRAY(p, '$.doctors')) AS doctor\n    ON LOWER(d.email) = LOWER(JSON_VALUE(doctor, '$.email'))\n  WHERE d.doctor_id != JSON_VALUE(doctor, '$.doctor_id')\n) AS 'A doctor email already uses a different profile ID. Reconcile duplicate doctor profiles before launch.';\nASSERT NOT EXISTS (SELECT 1 FROM `apex-marketing-n8n.automated_article_creation.campaigns` WHERE campaign_id = v_campaign_id) AS 'This campaign name and month have already been launched.';\nASSERT ARRAY_LENGTH(JSON_QUERY_ARRAY(p, '$.topics')) = 3 AS 'Exactly three topics are required.';\nBEGIN TRANSACTION;\nINSERT INTO `apex-marketing-n8n.automated_article_creation.campaigns`\n(campaign_id, campaign_name, campaign_month, status, doctor_review_days, require_marketing_approval, created_at, launched_at)\nVALUES (v_campaign_id, JSON_VALUE(p, '$.campaign_name'), DATE(JSON_VALUE(p, '$.campaign_month')), 'LAUNCHED', 5, TRUE, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP());\nINSERT INTO `apex-marketing-n8n.automated_article_creation.campaign_topics`\n(topic_id, campaign_id, topic_title, topic_description, interview_guidance, topic_sort_order, active, created_at)\nSELECT CONCAT(v_campaign_id, '_topic_', CAST(sort_order AS STRING)), v_campaign_id, JSON_VALUE(topic), JSON_VALUE(topic), NULL, sort_order, TRUE, CURRENT_TIMESTAMP()\nFROM UNNEST(JSON_QUERY_ARRAY(p, '$.topics')) AS topic WITH OFFSET AS zero_order\nCROSS JOIN UNNEST([zero_order + 1]) AS sort_order;\nMERGE `apex-marketing-n8n.automated_article_creation.doctors` T\nUSING (SELECT JSON_VALUE(doctor, '$.doctor_id') AS doctor_id, JSON_VALUE(doctor, '$.name') AS doctor_name, JSON_VALUE(doctor, '$.email') AS email\n  FROM UNNEST(JSON_QUERY_ARRAY(p, '$.doctors')) AS doctor) S\nON T.doctor_id = S.doctor_id\nWHEN MATCHED THEN UPDATE SET doctor_name = S.doctor_name, email = S.email, practice_id = v_practice_id, active = TRUE, updated_at = CURRENT_TIMESTAMP()\nWHEN NOT MATCHED THEN INSERT (doctor_id, doctor_name, email, practice_id, preferred_communication_channel, fallback_communication_channel, active, created_at, updated_at)\n  VALUES (S.doctor_id, S.doctor_name, S.email, v_practice_id, 'email', 'email', TRUE, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP());\nINSERT INTO `apex-marketing-n8n.automated_article_creation.campaign_doctors`\n(campaign_id, doctor_id, status, invited_at, created_at, updated_at)\nSELECT v_campaign_id, JSON_VALUE(doctor, '$.doctor_id'), 'READY', NULL, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP()\nFROM UNNEST(JSON_QUERY_ARRAY(p, '$.doctors')) AS doctor;\nINSERT INTO `apex-marketing-n8n.automated_article_creation.workflow_events`\n(event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id, payload)\nVALUES (GENERATE_UUID(), 'campaign', v_campaign_id, 'campaign.started', CURRENT_TIMESTAMP(), 'n8n:campaign-form', NULL,\n  TO_JSON(STRUCT(ARRAY_LENGTH(JSON_QUERY_ARRAY(p, '$.topics')) AS topic_count, ARRAY_LENGTH(JSON_QUERY_ARRAY(p, '$.doctors')) AS doctor_count)));\nCOMMIT TRANSACTION;\nSELECT v_campaign_id AS campaign_id, 'LAUNCHED' AS status, ARRAY_LENGTH(JSON_QUERY_ARRAY(p, '$.doctors')) AS doctor_count;",
+        "sqlQuery": "DECLARE p JSON DEFAULT PARSE_JSON(@payload);\nDECLARE v_campaign_id STRING DEFAULT JSON_VALUE(p, '$.campaign_id');\nDECLARE v_practice_id STRING;\nASSERT (\n  SELECT COUNT(*) FROM `apex-marketing-n8n.automated_article_creation.practices`\n  WHERE active = TRUE\n    AND LOWER(TRIM(practice_name)) = LOWER(JSON_VALUE(p, '$.practice_name'))\n    AND REGEXP_REPLACE(LOWER(TRIM(website_domain)), r'/$', '') = JSON_VALUE(p, '$.website_url')\n) = 1 AS 'Location and website must match exactly one active, configured practice profile.';\nSET v_practice_id = (\n  SELECT practice_id FROM `apex-marketing-n8n.automated_article_creation.practices`\n  WHERE active = TRUE\n    AND LOWER(TRIM(practice_name)) = LOWER(JSON_VALUE(p, '$.practice_name'))\n    AND REGEXP_REPLACE(LOWER(TRIM(website_domain)), r'/$', '') = JSON_VALUE(p, '$.website_url')\n  LIMIT 1\n);\nASSERT NOT EXISTS (\n  SELECT 1 FROM `apex-marketing-n8n.automated_article_creation.doctors` d\n  JOIN UNNEST(JSON_QUERY_ARRAY(p, '$.doctors')) AS doctor\n    ON LOWER(d.email) = LOWER(JSON_VALUE(doctor, '$.email'))\n  WHERE d.practice_id IS NOT NULL AND d.practice_id != v_practice_id\n) AS 'A doctor is already mapped to a different location. Resolve the doctor-to-website mapping before launch.';\nASSERT NOT EXISTS (\n  SELECT 1 FROM `apex-marketing-n8n.automated_article_creation.doctors` d\n  JOIN UNNEST(JSON_QUERY_ARRAY(p, '$.doctors')) AS doctor\n    ON LOWER(d.email) = LOWER(JSON_VALUE(doctor, '$.email'))\n  WHERE d.doctor_id != JSON_VALUE(doctor, '$.doctor_id')\n) AS 'A doctor email already uses a different profile ID. Reconcile duplicate doctor profiles before launch.';\nASSERT NOT EXISTS (SELECT 1 FROM `apex-marketing-n8n.automated_article_creation.campaigns` WHERE campaign_id = v_campaign_id) AS 'This campaign name and month have already been launched.';\nASSERT ARRAY_LENGTH(JSON_QUERY_ARRAY(p, '$.topics')) = 3 AS 'Exactly three topics are required.';\nALTER TABLE `apex-marketing-n8n.automated_article_creation.campaign_topics`\n  ADD COLUMN IF NOT EXISTS featured_image_source_url STRING;\nALTER TABLE `apex-marketing-n8n.automated_article_creation.campaign_topics`\n  ADD COLUMN IF NOT EXISTS featured_image_alt_text STRING;\nALTER TABLE `apex-marketing-n8n.automated_article_creation.campaign_topics`\n  ADD COLUMN IF NOT EXISTS featured_image_source_type STRING;\nALTER TABLE `apex-marketing-n8n.automated_article_creation.campaign_topics`\n  ADD COLUMN IF NOT EXISTS featured_image_rights_reference STRING;\nBEGIN TRANSACTION;\nINSERT INTO `apex-marketing-n8n.automated_article_creation.campaigns`\n(campaign_id, campaign_name, campaign_month, status, doctor_review_days, require_marketing_approval, created_at, launched_at)\nVALUES (v_campaign_id, JSON_VALUE(p, '$.campaign_name'), DATE(JSON_VALUE(p, '$.campaign_month')), 'LAUNCHED', 5, TRUE, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP());\nINSERT INTO `apex-marketing-n8n.automated_article_creation.campaign_topics`\n(topic_id, campaign_id, topic_title, topic_description, interview_guidance,\n  featured_image_source_url, featured_image_alt_text, featured_image_source_type,\n  featured_image_rights_reference, topic_sort_order, active, created_at)\nSELECT CONCAT(v_campaign_id, '_topic_', CAST(sort_order AS STRING)), v_campaign_id,\n  JSON_VALUE(topic, '$.title'), JSON_VALUE(topic, '$.title'), NULL,\n  JSON_VALUE(topic, '$.featured_image_source_url'), JSON_VALUE(topic, '$.featured_image_alt_text'),\n  JSON_VALUE(topic, '$.featured_image_source_type'), JSON_VALUE(topic, '$.featured_image_rights_reference'),\n  sort_order, TRUE, CURRENT_TIMESTAMP()\nFROM UNNEST(JSON_QUERY_ARRAY(p, '$.topics')) AS topic WITH OFFSET AS zero_order\nCROSS JOIN UNNEST([zero_order + 1]) AS sort_order;\nMERGE `apex-marketing-n8n.automated_article_creation.doctors` T\nUSING (SELECT JSON_VALUE(doctor, '$.doctor_id') AS doctor_id, JSON_VALUE(doctor, '$.name') AS doctor_name, JSON_VALUE(doctor, '$.email') AS email\n  FROM UNNEST(JSON_QUERY_ARRAY(p, '$.doctors')) AS doctor) S\nON T.doctor_id = S.doctor_id\nWHEN MATCHED THEN UPDATE SET doctor_name = S.doctor_name, email = S.email, practice_id = v_practice_id, active = TRUE, updated_at = CURRENT_TIMESTAMP()\nWHEN NOT MATCHED THEN INSERT (doctor_id, doctor_name, email, practice_id, preferred_communication_channel, fallback_communication_channel, active, created_at, updated_at)\n  VALUES (S.doctor_id, S.doctor_name, S.email, v_practice_id, 'email', 'email', TRUE, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP());\nINSERT INTO `apex-marketing-n8n.automated_article_creation.campaign_doctors`\n(campaign_id, doctor_id, status, invited_at, created_at, updated_at)\nSELECT v_campaign_id, JSON_VALUE(doctor, '$.doctor_id'), 'READY', NULL, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP()\nFROM UNNEST(JSON_QUERY_ARRAY(p, '$.doctors')) AS doctor;\nINSERT INTO `apex-marketing-n8n.automated_article_creation.workflow_events`\n(event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id, payload)\nVALUES (GENERATE_UUID(), 'campaign', v_campaign_id, 'campaign.started', CURRENT_TIMESTAMP(), 'n8n:campaign-form', NULL,\n  TO_JSON(STRUCT(ARRAY_LENGTH(JSON_QUERY_ARRAY(p, '$.topics')) AS topic_count, ARRAY_LENGTH(JSON_QUERY_ARRAY(p, '$.doctors')) AS doctor_count)));\nCOMMIT TRANSACTION;\nSELECT v_campaign_id AS campaign_id, 'LAUNCHED' AS status, ARRAY_LENGTH(JSON_QUERY_ARRAY(p, '$.doctors')) AS doctor_count;",
         "options": {
           "location": "US",
           "queryParameters": {

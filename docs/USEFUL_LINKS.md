@@ -23,8 +23,9 @@ in this file.
 | [Locations](https://docs.google.com/spreadsheets/d/1M0arM4jnZzalySGUKq60Hp1yhTDz2RQTXqMeOWfaOUA/edit?gid=1793196368#gid=1793196368) | Location code, name, type, public static website | Update when practices change. The public URL is not the WordPress editing URL. |
 | [Wordpress Sites](https://docs.google.com/spreadsheets/d/1M0arM4jnZzalySGUKq60Hp1yhTDz2RQTXqMeOWfaOUA/edit?gid=1739296062#gid=1739296062) | Location code, name, WordPress editing-site URL | Match by location code; update for new sites. Do not store passwords or credentials here. |
 | [Test User](https://docs.google.com/spreadsheets/d/1M0arM4jnZzalySGUKq60Hp1yhTDz2RQTXqMeOWfaOUA/edit?gid=1246014176#gid=1246014176) | Test email, name, location, WordPress URL | Add test recipients here. These are a separate audience and must never be mixed into a dentist campaign. |
+| [Doctor Profiles](https://docs.google.com/spreadsheets/d/1M0arM4jnZzalySGUKq60Hp1yhTDz2RQTXqMeOWfaOUA/edit?gid=2079115326#gid=2079115326) | Verified byline credentials, profile link, headshot source, and short bio | Replace the inactive sample row with verified public information. Mark `Active` only when the row is complete and approved. The [manual TEST-1 sync workflow](https://n8n.apexdentalautomation.com/workflow/vWmjE7uOXhLNo8tg) validates and copies the active pilot row into BigQuery; it sends no messages and publishes nothing. |
 
-All four tabs are in the [Authoritative Blog Article Distribution workbook](https://docs.google.com/spreadsheets/d/1M0arM4jnZzalySGUKq60Hp1yhTDz2RQTXqMeOWfaOUA/edit).
+All five operational tabs are in the [Authoritative Blog Article Distribution workbook](https://docs.google.com/spreadsheets/d/1M0arM4jnZzalySGUKq60Hp1yhTDz2RQTXqMeOWfaOUA/edit).
 The doctor primary-location code joins to `Locations.Code` and then
 `Wordpress Sites.Codes`. Do not match by public domain or email. The test-user
 tab is independent: its location and WordPress URL are provided directly.
@@ -60,10 +61,14 @@ only to Jake, without copies.
 | [Apex brand reference](BRANDING.md) | Visual tokens, assets, and where interview/review styling is maintained. |
 | [Marketing approval workflow](https://n8n.apexdentalautomation.com/workflow/X5X9i3hq0nokxd2U) | Records the review decision; approved TEST-1 articles start WordPress publishing. |
 | [Marketing revision workflow](https://n8n.apexdentalautomation.com/workflow/dM3OqBRiTT1xg5ub) | Handles TEST-1 marketing change requests and sends the new version for fresh marketing review. |
-| [WordPress publishing workflow](https://n8n.apexdentalautomation.com/workflow/kGd2YSJ2MVJwRld0) | Called after marketing approval for an exact TEST-1 article; static-site release remains separate. |
+| [WordPress publishing workflow](https://n8n.apexdentalautomation.com/workflow/IAZwCVXtPGN97BnC) | Revised v2 inactive subworkflow called after marketing approval for an exact TEST-1 article; includes central-image copying, retry-safe media reuse, verified doctor-profile refresh, and a tightly scoped QA replay for the existing pilot post. Static-site release remains separate. |
+| [Pilot topic-image setup workflow](https://n8n.apexdentalautomation.com/workflow/dNCO3knZUlMlp3J7) | Inactive one-time TEST-1 workflow that records the centrally stored pilot image and provenance on the exact existing topic in BigQuery. It cannot email or publish. |
+| [Exact pilot WordPress QA harness](https://n8n.apexdentalautomation.com/workflow/Tx59zEP3yH6nA6t4) | Inactive manual harness restricted to the existing Jake-only pilot article and WordPress post 9988. Running it updates that public test post, so it requires an immediate confirmation before each run. |
 | [Prestonwood WordPress draft pilot](https://n8n.apexdentalautomation.com/workflow/x8P9o3fLDyDMxJ4s) | Inactive, manual-only credential/subsite check; [internal draft 9987](https://apexparent.hostmanpowered.com/dfw-03/wp-admin/post.php?post=9987&action=edit) was verified. It does not send email or enable real-site article publishing. |
 | [Prestonwood approved-article pilot](PRESTONWOOD_APPROVED_ARTICLE_PILOT.md) | Exact-campaign, Jake-only test of interview through marketing approval and WordPress publishing; not a general dentist launch or a static-site release. |
 | [Shortcoder field guide](SHORTCODER.md) | Verified practice shortcode names and publishing limits. |
+| [WordPress article presentation](WORDPRESS_ARTICLE_PRESENTATION.md) | Bylines, verified doctor-profile mapping, featured-image provenance, FAQ rules, and rendered-QA status. |
+| [Elementor MCP assessment](ELEMENTOR_MCP_ASSESSMENT.md) | Where Elementor MCP can help, and why per-article publishing remains deterministic REST automation. |
 | [Project architecture](PROJECT_ARCHITECTURE.md) | System design and build direction. |
 | [Known issues](KNOWN_ISSUES.md) | Documented low-priority interface and workflow issues. |
 

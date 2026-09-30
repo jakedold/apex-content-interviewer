@@ -7,6 +7,10 @@ The deployed n8n instance remains the runtime source for credentials and environ
 Version-controlled workflow exports:
 
 - `01-launch-campaign.json` — private administrator form for one campaign, three topics, and a list of doctors
+- `01-test-only-campaign-launcher.json` — export of the guarded TEST-1 launcher; each topic carries one central image URL plus alt text and provenance
+- `21-sync-doctor-profiles-from-sheet.json` — manual TEST-1 pilot sync from the shared workbook's `Doctor Profiles` tab into the BigQuery `doctor_profiles` table
+- `22-configure-pilot-topic-image.json` — one-time, inactive TEST-1 setup that records the centrally stored pilot image and provenance on the exact existing topic; it cannot email or publish
+- `23-run-exact-pilot-wordpress-qa.json` — inactive, exact-scope harness for rendered QA of the existing public pilot post; it cannot email or trigger a static-site release
 - `01-roster-selection-preview.json` — active, selection-only form that reads five privacy-limited ranges across four tabs of the shared workbook, separates test users from dentists, and returns a preview without creating a campaign or sending messages
 - `01-test-entries-preview.json` — separate inactive form for temporary test practices and email recipients; it validates and previews entries without saving them or sending anything
 - `02-dispatch-campaign-invitations.json` — scheduled invitation delivery through the private message router
@@ -29,6 +33,7 @@ Version-controlled workflow exports:
 - `18-send-marketing-review-invitation.json`
 - `19-prestonwood-wordpress-draft-pilot.json` — isolated manual credential/subsite check; creates only a fixed internal draft at Prestonwood and is not part of the article pipeline
 - `20-revise-article-from-marketing-feedback.json` — marketing-requested revision; new immutable version and fresh marketing review without doctor reapproval
+- `24-admin-command-router.json` — inactive authenticated command boundary for audited off-platform doctor approval and campaign launch; requires Header Auth and BigQuery credentials before activation
 
 On September 23, 2026, the [inactive Prestonwood draft pilot](https://n8n.apexdentalautomation.com/workflow/x8P9o3fLDyDMxJ4s)
 ran manually using the existing `Wordpress account` credential. Its
@@ -48,8 +53,9 @@ The BigQuery write guards the test practice, WordPress editing URL, recipient
 count, and existing doctor identities. The September pilot for
 `jdold@apexdp.com` succeeded and its invitation reached `INVITED`.
 The older free-entry launcher remains inactive. The live test-only launcher
-still needs a credential-free JSON export checked in here; n8n is currently
-its runtime source.
+export is checked in as `01-test-only-campaign-launcher.json`. Repository
+changes still require an intentional deployment to n8n; editing this export
+alone does not alter the active workflow.
 
 Campaign launch is a separate step from publishing. The administrator enters a
 campaign name, month, exact location/practice name, matching HTTPS website URL,
@@ -67,7 +73,7 @@ is a legacy test workflow and should remain inactive.
 The older free-entry launch form remains inactive. Its first version accepted
 only a practice profile ID. The revised export includes explicit location and
 website fields plus mapping validation; it is not yet installed in live n8n.
-The next launch-form revision must read the four tabs of the
+The next launch-form revision must read the operational workbook tabs of the
 [Authoritative Blog Article Distribution workbook](https://docs.google.com/spreadsheets/d/1M0arM4jnZzalySGUKq60Hp1yhTDz2RQTXqMeOWfaOUA/edit)
 instead of `apex-empower.empower.role`, which currently has no usable rows:
 
@@ -86,6 +92,8 @@ instead of `apex-empower.empower.role`, which currently has no usable rows:
   and normalize a scheme-less URL to HTTPS. Never substitute the public URL.
 - `Test User`: email/name/location/WordPress URL are columns A–D (header row 1).
   This is a separate test-only audience; it must not be mixed with dentists.
+- `Doctor Profiles`: verified profile metadata is maintained separately and
+  synced to BigQuery; inactive/sample rows must never be used for publishing.
 
 The exact columns and privacy-safe validation rules are documented here and in
 `../scripts/campaign-roster.mjs`. Do not commit a roster
@@ -146,6 +154,24 @@ triggers remain for diagnosis. The generation and revision prompts remain
 versioned in `../prompts/` and use the Shortcoder guidance in
 `../docs/SHORTCODER.md`.
 
+Generation, doctor revision, and marketing revision now enforce one byline,
+one doctor-profile section, and a final FAQ with three to six questions. Each
+campaign topic carries one preapproved central image URL, alt text, source type,
+and rights reference. The selected interview topic deterministically supplies
+the publisher's image; n8n mirrors that exact file into the target WordPress
+subsite during publication and uses the returned media ID. No image is chosen
+at publication time. Profile, asset, and SEO rollout rules are documented in
+`../docs/WORDPRESS_ARTICLE_PRESENTATION.md`.
+
+The shared workbook's `Doctor Profiles` tab is the maintainable editing
+surface for verified byline credentials, public profile URL, direct headshot
+URL, and approved short bio. `21-sync-doctor-profiles-from-sheet.json` is an
+inactive manual sync that currently accepts exactly one active TEST-1 row for
+the named test recipient, validates it, and upserts it into BigQuery. It sends
+no email and performs no WordPress action. The live TEST-1 sync completed on
+September 24, 2026; production expansion requires the canonical
+location-code-to-practice mapping rather than weakening the pilot guard.
+
 The doctor-review deadline workflow runs hourly, finds pending reviews whose
 configured deadline has expired, marks the approval as automatic, expires the
 active review link, advances the article to `DOCTOR_AUTO_APPROVED`, and records
@@ -191,6 +217,12 @@ enabled. For example, the TEST001 editing base is
 `https://apexparent.hostmanpowered.com/test001/`; its static site release is a
 different operation. No production location should be auto-published from a
 public URL inferred from the master sheet.
+
+Each approved topic image comes from the Apex Parent Media Library and is
+copied automatically into the selected target subsite. Before upload, the
+publisher searches for the deterministic media slug `aac-<topic_id>` and
+reuses that attachment on retries, preventing duplicate target-library copies
+after a successful first upload.
 
 The shared workbook's `Wordpress Sites` tab is the collection point for
 production editing-site URLs, keyed by `Locations.Code`. Do not place

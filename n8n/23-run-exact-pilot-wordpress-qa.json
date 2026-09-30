@@ -1,0 +1,78 @@
+{
+  "name": "AAC - 23 - Run Exact Pilot WordPress QA",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "954e3adb-1750-4485-987a-a3e127bf039e",
+      "name": "Run Exact Pilot QA",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-420, 40]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [{ json: { article_id: 'article_6296aabf938f492eafd5a2b010b3f8c9', qa_republish: true } }];"
+      },
+      "id": "a0a897e9-93d3-4a56-a90f-70d6c6786df0",
+      "name": "Scope to Exact Pilot Article",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-160, 40]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "IAZwCVXtPGN97BnC",
+          "mode": "list",
+          "cachedResultName": "AAC - 15 - Publish Approved Article to WordPress (Revised v2)"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "article_id": "={{ $json.article_id }}",
+            "qa_republish": "={{ $json.qa_republish }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            { "id": "article_id", "displayName": "article_id", "type": "string" },
+            { "id": "qa_republish", "displayName": "qa_republish", "type": "boolean" }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": { "waitForSubWorkflow": true }
+      },
+      "id": "69140339-12c7-4b79-83a3-e74032a3abe6",
+      "name": "Run Revised Publisher for Exact Pilot",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [100, 40]
+    },
+    {
+      "parameters": {
+        "content": "## Exact public pilot QA\n\nManual and inactive. This harness can update only article `article_6296aabf938f492eafd5a2b010b3f8c9`, campaign `campaign_test_202609_aac_prestonwood_pilot_2026_09_23`, WordPress post `9988`, and the verified Jake Dold test identity. It does not email anyone or trigger a Headless Hostman release. Running it changes the existing public pilot post, so confirm immediately before every run.",
+        "height": 260,
+        "width": 650
+      },
+      "id": "2fdd79ef-916f-4f72-ad4e-b5a0f38369a3",
+      "name": "Safety note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-440, -300]
+    }
+  ],
+  "connections": {
+    "Run Exact Pilot QA": {
+      "main": [[{ "node": "Scope to Exact Pilot Article", "type": "main", "index": 0 }]]
+    },
+    "Scope to Exact Pilot Article": {
+      "main": [[{ "node": "Run Revised Publisher for Exact Pilot", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "meta": { "templateCredsSetupCompleted": true },
+  "pinData": null,
+  "versionId": "04905239-5a0b-40f6-a1b3-183c30031b12"
+}

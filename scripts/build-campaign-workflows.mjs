@@ -35,8 +35,20 @@ const launch = {
           formField('practice_name', 'Location / practice name', 'text', { placeholder: 'Exact name of the configured location' }),
           formField('website_url', 'Website URL for this location', 'text', { placeholder: 'https://example.com' }),
           formField('topic_1', 'Topic 1', 'text'),
+          formField('topic_1_featured_image_source_url', 'Topic 1 featured image central source URL', 'text'),
+          formField('topic_1_featured_image_alt_text', 'Topic 1 featured image alt text', 'text'),
+          formField('topic_1_featured_image_source_type', 'Topic 1 featured image source type', 'text'),
+          formField('topic_1_featured_image_rights_reference', 'Topic 1 featured image rights or source reference', 'text'),
           formField('topic_2', 'Topic 2', 'text'),
+          formField('topic_2_featured_image_source_url', 'Topic 2 featured image central source URL', 'text'),
+          formField('topic_2_featured_image_alt_text', 'Topic 2 featured image alt text', 'text'),
+          formField('topic_2_featured_image_source_type', 'Topic 2 featured image source type', 'text'),
+          formField('topic_2_featured_image_rights_reference', 'Topic 2 featured image rights or source reference', 'text'),
           formField('topic_3', 'Topic 3', 'text'),
+          formField('topic_3_featured_image_source_url', 'Topic 3 featured image central source URL', 'text'),
+          formField('topic_3_featured_image_alt_text', 'Topic 3 featured image alt text', 'text'),
+          formField('topic_3_featured_image_source_type', 'Topic 3 featured image source type', 'text'),
+          formField('topic_3_featured_image_rights_reference', 'Topic 3 featured image rights or source reference', 'text'),
           formField('doctors', 'Doctors (one Name,email per line)', 'textarea', { placeholder: 'Dr. Example One,example1@apexdp.com\nDr. Example Two,example2@apexdp.com' }),
         ] },
         responseMode: 'lastNode',
@@ -60,10 +72,16 @@ try {
 } catch {
   throw new Error('Enter the configured HTTPS website URL for this location, without query parameters or fragments.');
 }
-const topics = [1, 2, 3].map((number) => value('topic_' + number, 'Topic ' + number));
+const topics = [1, 2, 3].map((number) => ({
+  title: value('topic_' + number, 'Topic ' + number),
+  featured_image_source_url: value('topic_' + number + '_featured_image_source_url', 'Topic ' + number + ' featured image central source URL'),
+  featured_image_alt_text: value('topic_' + number + '_featured_image_alt_text', 'Topic ' + number + ' featured image alt text'),
+  featured_image_source_type: value('topic_' + number + '_featured_image_source_type', 'Topic ' + number + ' featured image source type'),
+  featured_image_rights_reference: value('topic_' + number + '_featured_image_rights_reference', 'Topic ' + number + ' featured image rights or source reference')
+}));
 const lines = value('doctors', 'Doctors (one Name,email per line)').split(/\\r?\\n/).map((line) => line.trim()).filter(Boolean);
-if (!campaignName || !/^\\d{4}-\\d{2}$/.test(month) || !practiceName || topics.some((topic) => !topic) || !lines.length) throw new Error('Complete the campaign, month, location, website, three topics, and at least one doctor.');
-if (new Set(topics.map((topic) => topic.toLowerCase())).size !== 3) throw new Error('The three topics must be distinct.');
+if (!campaignName || !/^\\d{4}-\\d{2}$/.test(month) || !practiceName || topics.some((topic) => !topic.title || !/^https:\\/\\//i.test(topic.featured_image_source_url) || topic.featured_image_alt_text.length < 8 || !topic.featured_image_source_type || !topic.featured_image_rights_reference) || !lines.length) throw new Error('Complete the campaign, month, location, website, three topics with central image records, and at least one doctor.');
+if (new Set(topics.map((topic) => topic.title.toLowerCase())).size !== 3) throw new Error('The three topics must be distinct.');
 const doctors = lines.map((line) => {
   const comma = line.lastIndexOf(',');
   if (comma < 1) throw new Error('Each doctor line must be Name,email.');
@@ -109,13 +127,20 @@ ASSERT NOT EXISTS (
 ) AS 'A doctor email already uses a different profile ID. Reconcile duplicate doctor profiles before launch.';
 ASSERT NOT EXISTS (SELECT 1 FROM \`apex-marketing-n8n.automated_article_creation.campaigns\` WHERE campaign_id = v_campaign_id) AS 'This campaign name and month have already been launched.';
 ASSERT ARRAY_LENGTH(JSON_QUERY_ARRAY(p, '$.topics')) = 3 AS 'Exactly three topics are required.';
+ALTER TABLE \`apex-marketing-n8n.automated_article_creation.campaign_topics\` ADD COLUMN IF NOT EXISTS featured_image_source_url STRING;
+ALTER TABLE \`apex-marketing-n8n.automated_article_creation.campaign_topics\` ADD COLUMN IF NOT EXISTS featured_image_alt_text STRING;
+ALTER TABLE \`apex-marketing-n8n.automated_article_creation.campaign_topics\` ADD COLUMN IF NOT EXISTS featured_image_source_type STRING;
+ALTER TABLE \`apex-marketing-n8n.automated_article_creation.campaign_topics\` ADD COLUMN IF NOT EXISTS featured_image_rights_reference STRING;
 BEGIN TRANSACTION;
 INSERT INTO \`apex-marketing-n8n.automated_article_creation.campaigns\`
 (campaign_id, campaign_name, campaign_month, status, doctor_review_days, require_marketing_approval, created_at, launched_at)
 VALUES (v_campaign_id, JSON_VALUE(p, '$.campaign_name'), DATE(JSON_VALUE(p, '$.campaign_month')), 'LAUNCHED', 5, TRUE, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP());
 INSERT INTO \`apex-marketing-n8n.automated_article_creation.campaign_topics\`
-(topic_id, campaign_id, topic_title, topic_description, interview_guidance, topic_sort_order, active, created_at)
-SELECT CONCAT(v_campaign_id, '_topic_', CAST(sort_order AS STRING)), v_campaign_id, JSON_VALUE(topic), JSON_VALUE(topic), NULL, sort_order, TRUE, CURRENT_TIMESTAMP()
+(topic_id, campaign_id, topic_title, topic_description, interview_guidance, featured_image_source_url, featured_image_alt_text, featured_image_source_type, featured_image_rights_reference, topic_sort_order, active, created_at)
+SELECT CONCAT(v_campaign_id, '_topic_', CAST(sort_order AS STRING)), v_campaign_id,
+  JSON_VALUE(topic, '$.title'), JSON_VALUE(topic, '$.title'), NULL,
+  JSON_VALUE(topic, '$.featured_image_source_url'), JSON_VALUE(topic, '$.featured_image_alt_text'), JSON_VALUE(topic, '$.featured_image_source_type'),
+  JSON_VALUE(topic, '$.featured_image_rights_reference'), sort_order, TRUE, CURRENT_TIMESTAMP()
 FROM UNNEST(JSON_QUERY_ARRAY(p, '$.topics')) AS topic WITH OFFSET AS zero_order
 CROSS JOIN UNNEST([zero_order + 1]) AS sort_order;
 MERGE \`apex-marketing-n8n.automated_article_creation.doctors\` T
@@ -202,7 +227,7 @@ const first = rows[0];
 if (rows.some((row) => row.doctor_id !== first.doctor_id || row.campaign_id !== first.campaign_id)) throw new Error('Invitation rows span multiple doctors or campaigns.');
 const lines = ['Hello ' + first.doctor_name + ',', '', 'We have three article topics for you to choose from. Pick the one you would most like to discuss, then use its secure link to start a voice interview:', ''];
 for (const row of rows) lines.push(row.topic_sort_order + '. ' + row.topic_title, row.interview_url, '');
-lines.push('These links expire in 30 days. Please do not include patient-identifying information in the interview.', '', 'Apex Dental Partners');
+lines.push('Before you begin, choose a quiet place. Background conversations and other noise can interrupt the voice interviewer. Headphones with a microphone may help.', '', 'These links expire in 30 days. Please do not include patient-identifying information in the interview.', '', 'Apex Dental Partners');
 return [{ json: { doctor_id: first.doctor_id, article_id: '', campaign_id: first.campaign_id,
   communication_type: 'CAMPAIGN_INVITATION', subject: 'Choose your article topic: ' + first.campaign_name,
   message_text: lines.join(String.fromCharCode(10)), action_url: '' } }];` },

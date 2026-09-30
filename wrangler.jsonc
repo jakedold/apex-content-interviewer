@@ -15,7 +15,9 @@
     "ADMIN_ACCESS_AUD": "d72141bb586cf179ee8111f4b1d7f734eea3e2a85c796b3aa519c3c68edfb6ee",
     "BQ_PROJECT_ID": "apex-marketing-n8n",
     "BQ_DATASET": "automated_article_creation",
-    "BQ_LOCATION": "US"
+    "BQ_LOCATION": "US",
+    "ADMIN_ACTION_EMAILS": "jdold@apexdp.com",
+    "ADMIN_COMMAND_PATH": "/webhook/aac/admin/command"
   },
   "observability": {
     "enabled": true

@@ -535,3 +535,34 @@
 #campaign-preview-audience textarea {
   min-height: 180px;
 }
+
+.admin-send-options {
+  padding: 18px;
+  border: 1px solid #cad8e1;
+  border-radius: 14px;
+  background: #f7fafc;
+}
+
+.admin-send-options legend {
+  padding: 0 8px;
+  color: #064f77;
+  font-weight: 800;
+}
+
+#campaign-schedule-fields {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+#campaign-schedule-fields[hidden],
+#demo-recipient-section[hidden],
+#existing-recipient-section[hidden] {
+  display: none !important;
+}
+
+#campaign-demo-recipients {
+  width: 100%;
+  min-height: 180px;
+  resize: vertical;
+}

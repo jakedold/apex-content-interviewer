@@ -76,31 +76,31 @@
             "namedParameters": [
               {
                 "name": "doctor_id",
-                "value": "={{ $json.doctor_id }}"
+                "value": "={{ $('Receive Doctor Message Internally').first().json.doctor_id }}"
               },
               {
                 "name": "article_id",
-                "value": "={{ $json.article_id || '' }}"
+                "value": "={{ $('Receive Doctor Message Internally').first().json.article_id || '' }}"
               },
               {
                 "name": "campaign_id",
-                "value": "={{ $json.campaign_id || '' }}"
+                "value": "={{ $('Receive Doctor Message Internally').first().json.campaign_id || '' }}"
               },
               {
                 "name": "communication_type",
-                "value": "={{ $json.communication_type }}"
+                "value": "={{ $('Receive Doctor Message Internally').first().json.communication_type }}"
               },
               {
                 "name": "subject",
-                "value": "={{ $json.subject }}"
+                "value": "={{ $('Receive Doctor Message Internally').first().json.subject }}"
               },
               {
                 "name": "message_text",
-                "value": "={{ $json.message_text }}"
+                "value": "={{ $('Receive Doctor Message Internally').first().json.message_text }}"
               },
               {
                 "name": "action_url",
-                "value": "={{ $json.action_url || '' }}"
+                "value": "={{ $('Receive Doctor Message Internally').first().json.action_url || '' }}"
               }
             ]
           }

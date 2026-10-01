@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import copy
 import datetime as dt
+import getpass
 import json
 import os
 import sys
@@ -28,12 +29,23 @@ BASE_URL = os.environ.get("N8N_BASE_URL", "https://n8n.apexdentalautomation.com"
 API_KEY = os.environ.get("N8N_API_KEY", "").strip()
 
 ROOT = Path(__file__).resolve().parents[1]
-TARGETS = [
+CORE_TARGETS = [
     ("AAC - 02 - Dispatch Campaign Invitations", ROOT / "n8n/02-dispatch-campaign-invitations.json"),
     ("AAC - 05 - Interview Completed", ROOT / "n8n/05-interview-completed.json"),
     ("AAC - 16 - Send Doctor Message", ROOT / "n8n/16-send-doctor-message.json"),
     ("AAC - 24 - Admin Command Router", ROOT / "n8n/24-admin-command-router.json"),
 ]
+
+VERIFIED_PRACTICE_TARGETS = [
+    ("AAC - 06 - Generate Article", ROOT / "n8n/06-generate-article.json"),
+    ("AAC - 07 - Create Doctor Review Link", ROOT / "n8n/07-create-doctor-review-link.json"),
+    ("AAC - 10 - Revise Article from Doctor Feedback", ROOT / "n8n/10-revise-article-from-doctor-feedback.json"),
+    ("AAC - 12 - Route to Marketing Review", ROOT / "n8n/12-route-to-marketing-review.json"),
+    ("AAC - 18 - Send Marketing Review Invitation", ROOT / "n8n/18-send-marketing-review-invitation.json"),
+    ("AAC - 20 - Revise Article from Marketing Feedback", ROOT / "n8n/20-revise-article-from-marketing-feedback.json"),
+]
+
+TARGETS = VERIFIED_PRACTICE_TARGETS if "--verified-practices-only" in sys.argv[1:] else CORE_TARGETS
 
 ALLOWED_SETTINGS = {
     "saveExecutionProgress",
@@ -190,8 +202,11 @@ def set_active(workflow_id: str, active: bool) -> None:
 
 
 def main() -> int:
+    global API_KEY
     if not API_KEY:
-        print("ERROR: N8N_API_KEY is not set.", file=sys.stderr)
+        API_KEY = getpass.getpass("Paste n8n API key (input hidden): ").strip()
+    if not API_KEY:
+        print("ERROR: An n8n API key is required.", file=sys.stderr)
         return 2
 
     print(f"n8n instance: {BASE_URL}")

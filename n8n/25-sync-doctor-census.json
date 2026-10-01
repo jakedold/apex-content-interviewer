@@ -1,0 +1,445 @@
+{
+  "name": "AAC - 25 - Sync Doctor Census",
+  "nodes": [
+    {
+      "id": "read-location-codes-and-names",
+      "name": "Read location codes and names",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1M0arM4jnZzalySGUKq60Hp1yhTDz2RQTXqMeOWfaOUA",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Locations",
+          "mode": "name"
+        },
+        "options": {
+          "dataLocationOnSheet": {
+            "values": {
+              "rangeDefinition": "specifyRangeA1",
+              "range": "A1:N250"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "keep-location-rows-together",
+      "name": "Keep location rows together",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [{ json: { rows: $input.all().map((item) => item.json) } }];"
+      }
+    },
+    {
+      "id": "read-public-website-urls",
+      "name": "Read public website URLs",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        780,
+        0
+      ],
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1M0arM4jnZzalySGUKq60Hp1yhTDz2RQTXqMeOWfaOUA",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Wordpress Sites",
+          "mode": "name"
+        },
+        "options": {
+          "dataLocationOnSheet": {
+            "values": {
+              "rangeDefinition": "specifyRangeA1",
+              "range": "A1:C250"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "keep-website-rows-together",
+      "name": "Keep website rows together",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [{ json: { rows: $input.all().map((item) => item.json) } }];"
+      }
+    },
+    {
+      "id": "read-general-dentist-census",
+      "name": "Read general dentist census",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1300,
+        0
+      ],
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1M0arM4jnZzalySGUKq60Hp1yhTDz2RQTXqMeOWfaOUA",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Doctor Census",
+          "mode": "name"
+        },
+        "options": {
+          "dataLocationOnSheet": {
+            "values": {
+              "rangeDefinition": "specifyRangeA1",
+              "range": "A2:D250"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "keep-dentist-rows-together",
+      "name": "Keep dentist rows together",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [{ json: { rows: $input.all().map((item) => item.json) } }];"
+      }
+    },
+    {
+      "id": "read-dentist-work-emails",
+      "name": "Read dentist work emails",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1820,
+        0
+      ],
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1M0arM4jnZzalySGUKq60Hp1yhTDz2RQTXqMeOWfaOUA",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Doctor Census",
+          "mode": "name"
+        },
+        "options": {
+          "dataLocationOnSheet": {
+            "values": {
+              "rangeDefinition": "specifyRangeA1",
+              "range": "I2:I250"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "keep-email-rows-together",
+      "name": "Keep email rows together",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2600,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [{ json: { rows: $input.all().map((item) => item.json) } }];"
+      }
+    },
+    {
+      "id": "read-test-users",
+      "name": "Read test users",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2860,
+        0
+      ],
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1M0arM4jnZzalySGUKq60Hp1yhTDz2RQTXqMeOWfaOUA",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Test User",
+          "mode": "name"
+        },
+        "options": {
+          "dataLocationOnSheet": {
+            "values": {
+              "rangeDefinition": "specifyRangeA1",
+              "range": "A1:D100"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "prepare-roster-sync",
+      "name": "Prepare Current Census Roster",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        100
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Pure roster validation. Do not persist a snapshot of people or credentials.\nconst text = (value) => String(value ?? '').trim();\nconst codeFromPrimaryLocation = (value) => text(value).match(/\\(([^)]+)\\)\\s*$/)?.[1] ?? '';\nconst validEmail = (value) => /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value);\n\nfunction siteUrl(value) {\n  const raw = text(value);\n  if (!raw) return '';\n  // n8n Code nodes don't consistently expose the URL constructor.\n  const match = raw.match(/^(?:https:\\/\\/)?([a-z0-9.-]+)(\\/[^?#\\\\\\s]*)?$/i);\n  if (!match) return '';\n  const host = match[1].toLowerCase();\n  const labels = host.split('.');\n  if (labels.length < 2 || labels.some((label) => !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(label))) return '';\n  const path = match[2] || '/';\n  return `https://${host}${path.replace(/\\/*$/, '/')}`;\n}\n\nfunction buildCampaignRoster(locationRows, wordpressRows, dentistRows, testRows = []) {\n  const heldLocations = new Set(['DFW-24', 'DFW-25']);\n  const wordpressByCode = new Map();\n  for (const [rawCode, rawName, rawUrl] of wordpressRows) {\n    const code = text(rawCode);\n    if (!code) continue;\n    if (wordpressByCode.has(code)) throw new Error(`Duplicate WordPress location code: ${code}`);\n    wordpressByCode.set(code, { name: text(rawName), url: siteUrl(rawUrl) });\n  }\n\n  const locations = [];\n  const excludedLocations = [];\n  const locationByCode = new Map();\n  for (const [rawCode, rawName, rawType, rawPublicUrl] of locationRows) {\n    const code = text(rawCode);\n    if (!code) continue;\n    if (locationByCode.has(code)) throw new Error(`Duplicate location code: ${code}`);\n    const name = text(rawName);\n    const wordpress = wordpressByCode.get(code);\n    const publicUrl = siteUrl(rawPublicUrl);\n    const reason = heldLocations.has(code) ? 'not_launched'\n      : /-(E|O|P)$/i.test(code) || text(rawType) !== 'GD' ? 'specialty_or_nonpractice'\n        : /test/i.test(`${code} ${name}`) ? 'test_location'\n          : !publicUrl ? 'missing_or_invalid_public_website'\n            : !wordpress?.url ? 'missing_or_invalid_wordpress_site'\n              : wordpress.name !== name ? 'wordpress_name_mismatch' : null;\n    if (reason) {\n      excludedLocations.push({ code, name, reason });\n      continue;\n    }\n    const location = { code, name, public_website_url: publicUrl, wordpress_site_url: wordpress.url };\n    locationByCode.set(code, location);\n    locations.push(location);\n  }\n\n  const doctors = [];\n  const excludedDoctors = [];\n  const seenEmails = new Set();\n  for (const [rawName, rawPrimary, rawDepartment, rawEmployment, rawEmail] of dentistRows) {\n    const name = text(rawName);\n    if (!name) continue;\n    const primary = text(rawPrimary);\n    const code = codeFromPrimaryLocation(primary);\n    const email = text(rawEmail).toLowerCase();\n    const reason = text(rawDepartment) !== 'General Dentist' ? 'not_general_dentist'\n      : !['Full-Time', 'Part-Time'].includes(text(rawEmployment)) ? 'not_employee'\n        : /test/i.test(primary) || code === 'DFW-T' ? 'test_location'\n          : !locationByCode.has(code) ? 'location_unavailable'\n            : !validEmail(email) ? 'missing_or_invalid_work_email' : null;\n    if (reason) {\n      excludedDoctors.push({ name, code, reason });\n      continue;\n    }\n    if (seenEmails.has(email)) throw new Error(`Duplicate work email in census: ${email}`);\n    seenEmails.add(email);\n    doctors.push({ name, email, location_code: code });\n  }\n\n  const testUsers = [];\n  const seenTestEmails = new Set();\n  for (const [rawEmail, rawName, rawLocation, rawWordpressUrl] of testRows) {\n    const email = text(rawEmail).toLowerCase();\n    if (!email) continue;\n    const name = text(rawName);\n    const location = text(rawLocation);\n    const wordpressUrl = siteUrl(rawWordpressUrl);\n    if (!validEmail(email) || !name || !location || !wordpressUrl) throw new Error(`Incomplete test user row: ${email}`);\n    if (seenTestEmails.has(email)) throw new Error(`Duplicate test email: ${email}`);\n    seenTestEmails.add(email);\n    testUsers.push({ name, email, location_name: location, wordpress_site_url: wordpressUrl });\n  }\n  return { locations, doctors, testUsers, excludedLocations, excludedDoctors };\n}\n\n\nconst rows = (nodeName, columns) => {\n  const observed = $(nodeName).first().json.rows;\n  if (!Array.isArray(observed)) throw new Error('Sheet read unavailable: ' + nodeName);\n  return observed.map((row) => columns.map((column) => row[column] ?? ''));\n};\nconst censusRows = $('Keep dentist rows together').first().json.rows;\nconst emailByRow = new Map($('Keep email rows together').first().json.rows.map((row) => [Number(row.row_number), row['Work Email'] ?? '']));\nconst dentists = censusRows.map((row) => {\n  const rowNumber = Number(row.row_number);\n  if (!Number.isInteger(rowNumber)) throw new Error('Doctor census row number missing.');\n  return [row.Employee ?? '', row['Primary Location'] ?? '', row.Department ?? '', row['Employment Type'] ?? '', emailByRow.get(rowNumber) ?? ''];\n});\nconst roster = buildCampaignRoster(\n  rows('Keep location rows together', ['Code', 'Name', 'Type', 'URL']),\n  rows('Keep website rows together', ['Codes', 'Locations', 'Wordpress Site']),\n  dentists,\n  []\n);\nif (!roster.locations.length || !roster.doctors.length) throw new Error('The current census produced no eligible practices or doctors.');\nconst normalized = {\n  locations: roster.locations.map((location) => ({\n    ...location,\n    practice_id: 'practice_' + location.code.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''),\n  })),\n  doctors: roster.doctors.map((doctor) => ({\n    ...doctor,\n    doctor_id: 'doctor_census_' + doctor.email.replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''),\n    practice_id: 'practice_' + doctor.location_code.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''),\n  })),\n};\nreturn [{ json: {\n  roster_json: JSON.stringify(normalized),\n  practice_count: normalized.locations.length,\n  doctor_count: normalized.doctors.length,\n  excluded_location_count: roster.excludedLocations.length,\n  excluded_doctor_count: roster.excludedDoctors.length,\n} }];"
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "projectId": {
+          "__rl": true,
+          "value": "apex-marketing-n8n",
+          "mode": "id"
+        },
+        "sqlQuery": "DECLARE roster JSON DEFAULT PARSE_JSON(@roster_json);\n\nCREATE TEMP TABLE source_practices AS\nSELECT\n  JSON_VALUE(location, '$.practice_id') AS practice_id,\n  JSON_VALUE(location, '$.code') AS location_code,\n  JSON_VALUE(location, '$.name') AS practice_name,\n  JSON_VALUE(location, '$.public_website_url') AS website_domain,\n  JSON_VALUE(location, '$.wordpress_site_url') AS wordpress_base_url\nFROM UNNEST(JSON_QUERY_ARRAY(roster, '$.locations')) location;\n\nCREATE TEMP TABLE source_doctors AS\nSELECT\n  JSON_VALUE(doctor, '$.doctor_id') AS doctor_id,\n  JSON_VALUE(doctor, '$.name') AS doctor_name,\n  LOWER(JSON_VALUE(doctor, '$.email')) AS email,\n  JSON_VALUE(doctor, '$.practice_id') AS practice_id\nFROM UNNEST(JSON_QUERY_ARRAY(roster, '$.doctors')) doctor;\n\nASSERT (SELECT COUNT(*) FROM source_practices) > 0 AS 'The census sync contains no eligible practices.';\nASSERT (SELECT COUNT(*) FROM source_doctors) > 0 AS 'The census sync contains no eligible doctors.';\nASSERT (SELECT COUNT(*) FROM source_practices) = (SELECT COUNT(DISTINCT practice_id) FROM source_practices) AS 'Duplicate practice IDs in the census sync.';\nASSERT (SELECT COUNT(*) FROM source_doctors) = (SELECT COUNT(DISTINCT doctor_id) FROM source_doctors) AS 'Duplicate doctor IDs in the census sync.';\nASSERT NOT EXISTS (SELECT 1 FROM source_doctors WHERE practice_id NOT IN (SELECT practice_id FROM source_practices)) AS 'A census doctor is missing an eligible practice mapping.';\n\nMERGE `apex-marketing-n8n.automated_article_creation.practices` T\nUSING source_practices S\nON T.practice_id = S.practice_id\nWHEN MATCHED THEN UPDATE SET\n  practice_name = S.practice_name,\n  website_domain = S.website_domain,\n  publisher_config_reference = TO_JSON_STRING(JSON_SET(\n    COALESCE(SAFE.PARSE_JSON(T.publisher_config_reference), JSON '{}'),\n    '$.location_code', S.location_code,\n    '$.wordpress_base_url', S.wordpress_base_url,\n    '$.mapping_status', COALESCE(JSON_VALUE(SAFE.PARSE_JSON(T.publisher_config_reference), '$.mapping_status'), 'UNVERIFIED')\n  )),\n  updated_at = CURRENT_TIMESTAMP()\nWHEN NOT MATCHED THEN INSERT\n  (practice_id, practice_name, website_domain, publisher_type, publisher_config_reference, active, created_at, updated_at)\nVALUES\n  (S.practice_id, S.practice_name, S.website_domain, NULL,\n   TO_JSON_STRING(STRUCT(S.location_code AS location_code, S.wordpress_base_url AS wordpress_base_url, 'UNVERIFIED' AS mapping_status)),\n   FALSE, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP());\n\nMERGE `apex-marketing-n8n.automated_article_creation.doctors` T\nUSING source_doctors S\nON T.doctor_id = S.doctor_id\nWHEN MATCHED THEN UPDATE SET\n  doctor_name = S.doctor_name,\n  email = S.email,\n  practice_id = S.practice_id,\n  active = TRUE,\n  updated_at = CURRENT_TIMESTAMP()\nWHEN NOT MATCHED THEN INSERT\n  (doctor_id, doctor_name, credentials, email, practice_id, preferred_communication_channel, fallback_communication_channel, active, created_at, updated_at)\nVALUES\n  (S.doctor_id, S.doctor_name, NULL, S.email, S.practice_id, 'email', 'email', TRUE, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP());\n\nUPDATE `apex-marketing-n8n.automated_article_creation.doctors` T\nSET active = FALSE, updated_at = CURRENT_TIMESTAMP()\nWHERE STARTS_WITH(T.doctor_id, 'doctor_census_')\n  AND NOT EXISTS (SELECT 1 FROM source_doctors S WHERE S.doctor_id = T.doctor_id);\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.workflow_events`\n(event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id, payload)\nVALUES (GENERATE_UUID(), 'roster', 'doctor_census', 'roster.synced', CURRENT_TIMESTAMP(), 'n8n:google-sheets', NULL,\n  TO_JSON(STRUCT((SELECT COUNT(*) FROM source_practices) AS practice_count, (SELECT COUNT(*) FROM source_doctors) AS doctor_count)));\n\nSELECT\n  (SELECT COUNT(*) FROM source_practices) AS practice_count,\n  (SELECT COUNT(*) FROM source_doctors) AS doctor_count,\n  CURRENT_TIMESTAMP() AS synced_at;",
+        "options": {
+          "location": "US",
+          "queryParameters": {
+            "namedParameters": [
+              {
+                "name": "roster_json",
+                "value": "={{ $json.roster_json }}"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [
+        1360,
+        100
+      ],
+      "id": "sync-census-to-bigquery",
+      "name": "Sync Census to BigQuery"
+    },
+    {
+      "id": "hourly-census-sync",
+      "name": "Every Hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1120,
+        40
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "manual-census-sync",
+      "name": "Run Census Sync Manually",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1120,
+        160
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "census-sync-notes",
+      "name": "Census Sync Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1120,
+        -300
+      ],
+      "parameters": {
+        "content": "## Doctor census sync\n\nReads only the authoritative roster columns needed for campaign selection: doctor name, primary location, department, employment type, work email, public practice URL, and WordPress site mapping. Runs hourly and can be run manually.\n\nRoster changes update BigQuery doctor names, work emails, and primary-practice links. Removed or ineligible census doctors are made inactive but are not deleted, preserving historical campaigns. New practice mappings remain inactive and UNVERIFIED; the sync never enables publishing or changes credentials.",
+        "height": 330,
+        "width": 520
+      }
+    }
+  ],
+  "connections": {
+    "Read location codes and names": {
+      "main": [
+        [
+          {
+            "node": "Keep location rows together",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keep location rows together": {
+      "main": [
+        [
+          {
+            "node": "Read public website URLs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read public website URLs": {
+      "main": [
+        [
+          {
+            "node": "Keep website rows together",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keep website rows together": {
+      "main": [
+        [
+          {
+            "node": "Read general dentist census",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read general dentist census": {
+      "main": [
+        [
+          {
+            "node": "Keep dentist rows together",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keep dentist rows together": {
+      "main": [
+        [
+          {
+            "node": "Read dentist work emails",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read dentist work emails": {
+      "main": [
+        [
+          {
+            "node": "Keep email rows together",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keep email rows together": {
+      "main": [
+        [
+          {
+            "node": "Read test users",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read test users": {
+      "main": [
+        [
+          {
+            "node": "Prepare Current Census Roster",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Current Census Roster": {
+      "main": [
+        [
+          {
+            "node": "Sync Census to BigQuery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every Hour": {
+      "main": [
+        [
+          {
+            "node": "Read location codes and names",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Census Sync Manually": {
+      "main": [
+        [
+          {
+            "node": "Read location codes and names",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Chicago"
+  },
+  "versionId": "census-sync-2026-10-01",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}

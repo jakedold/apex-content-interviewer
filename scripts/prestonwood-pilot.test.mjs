@@ -35,8 +35,8 @@ test('only the exact campaign and test identity route to Prestonwood', () => {
   const ordinary = execute(prepare, row({ campaign_id: 'campaign_test_other' }))[0].json;
   assert.equal(ordinary.wordpress_api_url, 'https://apexparent.hostmanpowered.com/test001/wp-json/wp/v2');
   assert.throws(() => execute(prepare, row({ doctor_email: 'other@apexdp.com' })), /named test identity/);
-  assert.throws(() => execute(prepare, row({ practice_id: 'practice_dfw_03' })), /TEST-1 practice/);
-  assert.throws(() => execute(prepare, row({ publisher_config_reference: JSON.stringify({ credential_name: 'Wordpress account', wordpress_base_url: 'https://apexparent.hostmanpowered.com/dfw-03' }) })), /TEST-1 practice/);
+  assert.throws(() => execute(prepare, row({ practice_id: 'practice_dfw_03' })), /VERIFIED practice-to-WordPress mapping/);
+  assert.throws(() => execute(prepare, row({ publisher_config_reference: JSON.stringify({ credential_name: 'Wordpress account', wordpress_base_url: 'https://apexparent.hostmanpowered.com/dfw-03' }) })), /verified test publishing base/);
 });
 
 test('marketing invitation stays with Jake for the pilot', () => {

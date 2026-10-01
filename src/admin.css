@@ -459,6 +459,31 @@
   border-radius: 14px;
 }
 
+.admin-doctor-search {
+  margin-top: 14px;
+}
+
+.admin-doctor-selection-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 12px 2px 4px;
+  color: #687b87;
+  font-size: 0.88rem;
+}
+
+.admin-doctor-selection-summary strong {
+  color: #064f77;
+}
+
+.admin-doctor-scroll-list {
+  max-height: 360px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 6px;
+  scrollbar-gutter: stable;
+}
+
 .admin-recipient-option {
   display: flex !important;
   flex-direction: row !important;
@@ -484,6 +509,13 @@
 .admin-recipient-option small {
   color: #687b87;
   font-weight: 500;
+}
+
+.admin-recipient-option em {
+  color: #8a6514;
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 700;
 }
 
 .admin-recipient-option[hidden] {

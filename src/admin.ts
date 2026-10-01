@@ -100,6 +100,7 @@ type CampaignLaunchDoctor = {
   practice_id: string;
   practice_name: string;
   website_domain: string | null;
+  publishing_ready: boolean;
 };
 
 type Overview = {
@@ -550,13 +551,6 @@ async function duplicateCampaign(campaignId: string): Promise<void> {
       audience.dispatchEvent(new Event('change'));
     }
 
-    const practice = form.elements.namedItem('practice_id') as HTMLSelectElement | null;
-    if (practice) {
-      const available = Array.from(practice.options).some((option) => option.value === template.practice_id);
-      practice.value = available && template.practice_id ? template.practice_id : (practice.options[1]?.value ?? '');
-      practice.dispatchEvent(new Event('change'));
-    }
-
     const sendMode = form.elements.namedItem('send_mode') as HTMLSelectElement | null;
     sendMode?.dispatchEvent(new Event('change'));
 
@@ -573,8 +567,9 @@ async function duplicateCampaign(campaignId: string): Promise<void> {
 
     const recipientIds = new Set(template.recipients.map((recipient) => recipient.doctor_id));
     form.querySelectorAll<HTMLInputElement>('input[name="doctor_ids"]').forEach((checkbox) => {
-      checkbox.checked = recipientIds.has(checkbox.value) && !checkbox.closest<HTMLElement>('[data-practice-id]')?.hidden;
+      checkbox.checked = recipientIds.has(checkbox.value);
     });
+    form.querySelector<HTMLInputElement>('#campaign-doctor-search')?.dispatchEvent(new Event('input'));
 
     const missingAssetFields = topics.some((topic) =>
       !topic?.featured_image_source_url ||
@@ -648,7 +643,7 @@ function renderDashboard(data: AdminResponse): void {
               <option value="Linked doctors">Linked doctors — full article workflow</option>
               <option value="Presentation preview">Presentation preview — transcript only</option>
             </select>
-            <small>Every recipient comes from the existing doctor directory and retains the practice/site mapping already stored in BigQuery.</small>
+            <small>The doctor directory is reconciled hourly from the authoritative Doctor Census sheet. Existing campaign history is preserved when roster details change.</small>
           </label>
 
           <label>Campaign name<input name="campaign_name" required placeholder="October 2026 presentation demo" /></label>
@@ -722,25 +717,18 @@ function renderDashboard(data: AdminResponse): void {
             <label>Topic 3 featured image rights or source reference<input name="topic_3_featured_image_rights_reference" required placeholder="Asset record, license, commission, or generation reference" /></label>
           </fieldset>
 
-          <label>Practice and publishing site
-            <select name="practice_id" id="campaign-practice" required>
-              <option value="">Select a linked practice</option>
-              ${data.overview.campaign_launch_options.practices.map((practice) =>
-                `<option value="${escapeHtml(practice.practice_id)}">${escapeHtml(practice.practice_name)}${practice.website_domain ? ` — ${escapeHtml(practice.website_domain)}` : ''}</option>`
-              ).join('')}
-            </select>
-          </label>
-
           <fieldset class="admin-recipient-options" id="existing-recipient-section"><legend>Doctors to invite</legend>
-            <p class="admin-muted">Choose one or more linked doctors associated with the selected practice. Their existing practice and website mappings will be preserved.</p>
-            <div id="campaign-doctor-options">
+            <p class="admin-muted">Search the current Doctor Census roster, then select doctors individually. Each selection retains its own primary-practice and website mapping.</p>
+            <label class="admin-doctor-search"><span>Search doctors</span><input id="campaign-doctor-search" type="search" placeholder="Search by doctor or practice…" autocomplete="off" /></label>
+            <div class="admin-doctor-selection-summary"><strong id="campaign-doctor-selected-count">0 selected</strong><span id="campaign-doctor-visible-count">${data.overview.campaign_launch_options.doctors.length} shown</span></div>
+            <div id="campaign-doctor-options" class="admin-doctor-scroll-list">
               ${data.overview.campaign_launch_options.doctors.length
                 ? data.overview.campaign_launch_options.doctors.map((doctor) => `
-                    <label class="admin-recipient-option" data-practice-id="${escapeHtml(doctor.practice_id)}">
+                    <label class="admin-recipient-option" data-doctor-search="${escapeHtml(`${doctor.doctor_name} ${doctor.practice_name} ${doctor.email || ''}`.toLowerCase())}" data-publishing-ready="${doctor.publishing_ready ? 'true' : 'false'}">
                       <input type="checkbox" name="doctor_ids" value="${escapeHtml(doctor.doctor_id)}" />
-                      <span><strong>${escapeHtml([doctor.doctor_name, doctor.credentials].filter(Boolean).join(', '))}</strong><small>${escapeHtml(doctor.practice_name)} · ${escapeHtml(doctor.email || doctor.doctor_id)}</small></span>
+                      <span><strong>${escapeHtml([doctor.doctor_name, doctor.credentials].filter(Boolean).join(', '))}</strong><small>${escapeHtml(doctor.practice_name)} · ${escapeHtml(doctor.email || doctor.doctor_id)}</small>${doctor.publishing_ready ? '' : '<em>Presentation preview only until this site is verified</em>'}</span>
                     </label>`).join('')
-                : '<div class="admin-empty">No active doctors with verified publishing-site mappings are configured in BigQuery.</div>'}
+                : '<div class="admin-empty">No doctors are available yet. Run the Doctor Census sync and refresh the dashboard.</div>'}
             </div>
           </fieldset>
 
@@ -766,20 +754,32 @@ function renderDashboard(data: AdminResponse): void {
   document.querySelector<HTMLButtonElement>('#campaign-dialog-close')?.addEventListener('click', () => campaignDialog?.close());
   document.querySelector<HTMLButtonElement>('#cancel-campaign')?.addEventListener('click', () => campaignDialog?.close());
 
-  const campaignPractice = document.querySelector('#campaign-practice') as HTMLSelectElement | null;
+  const campaignAudience = document.querySelector('#campaign-audience') as HTMLSelectElement | null;
+  const campaignDoctorSearch = document.querySelector<HTMLInputElement>('#campaign-doctor-search');
+  const selectedDoctorCount = document.querySelector<HTMLElement>('#campaign-doctor-selected-count');
+  const visibleDoctorCount = document.querySelector<HTMLElement>('#campaign-doctor-visible-count');
   const campaignSendMode = document.querySelector('#campaign-send-mode') as HTMLSelectElement | null;
   const scheduleFields = document.querySelector<HTMLElement>('#campaign-schedule-fields');
   const scheduledLocal = document.querySelector<HTMLInputElement>('#campaign-scheduled-local');
   const campaignTimezone = document.querySelector('#campaign-timezone') as HTMLSelectElement | null;
 
   const syncCampaignRecipients = (): void => {
-    const selected = campaignPractice?.value ?? '';
-    document.querySelectorAll<HTMLElement>('[data-practice-id]').forEach((option) => {
-      const visible = !selected || option.dataset.practiceId === selected;
-      option.hidden = !visible;
+    const needle = campaignDoctorSearch?.value.trim().toLowerCase() ?? '';
+    const fullWorkflow = campaignAudience?.value === 'Linked doctors';
+    let visibleCount = 0;
+    let selectedCount = 0;
+    document.querySelectorAll<HTMLElement>('[data-doctor-search]').forEach((option) => {
       const checkbox = option.querySelector<HTMLInputElement>('input[type="checkbox"]');
-      if (!visible && checkbox) checkbox.checked = false;
+      const eligible = !fullWorkflow || option.dataset.publishingReady === 'true';
+      const matches = !needle || (option.dataset.doctorSearch ?? '').includes(needle);
+      const visible = eligible && matches;
+      option.hidden = !visible;
+      if (!eligible && checkbox) checkbox.checked = false;
+      if (visible) visibleCount += 1;
+      if (checkbox?.checked) selectedCount += 1;
     });
+    if (visibleDoctorCount) visibleDoctorCount.textContent = `${visibleCount} shown`;
+    if (selectedDoctorCount) selectedDoctorCount.textContent = `${selectedCount} selected`;
   };
 
   const syncSendMode = (): void => {
@@ -796,7 +796,9 @@ function renderDashboard(data: AdminResponse): void {
     campaignTimezone.value = browserZone;
   }
 
-  campaignPractice?.addEventListener('change', syncCampaignRecipients);
+  campaignAudience?.addEventListener('change', syncCampaignRecipients);
+  campaignDoctorSearch?.addEventListener('input', syncCampaignRecipients);
+  document.querySelector('#campaign-doctor-options')?.addEventListener('change', syncCampaignRecipients);
   campaignSendMode?.addEventListener('change', syncSendMode);
   syncCampaignRecipients();
   syncSendMode();
@@ -1060,7 +1062,6 @@ async function submitCampaign(event: SubmitEvent): Promise<void> {
       audience,
       campaign_name: String(data.get('campaign_name') ?? ''),
       campaign_month: String(data.get('campaign_month') ?? ''),
-      practice_id: String(data.get('practice_id') ?? ''),
       send_mode: sendMode,
       scheduled_send_local: scheduledSendLocal,
       scheduled_send_timezone: scheduledSendTimezone,

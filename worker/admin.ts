@@ -81,7 +81,7 @@ async function queryJson(env: AdminEnv, query: string, namedParameters: Array<Re
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query, useLegacySql: false, location: env.BQ_LOCATION || 'US', timeoutMs: 15000, maxResults: 1, maximumBytesBilled,
+    body: JSON.stringify({ query, useLegacySql: false, useQueryCache: false, location: env.BQ_LOCATION || 'US', timeoutMs: 15000, maxResults: 1, maximumBytesBilled,
       parameterMode: namedParameters.length ? 'NAMED' : undefined, queryParameters: namedParameters }),
   });
   const result = await response.json<BigQueryQueryResponse>();
@@ -132,7 +132,14 @@ queue_rows AS (
     COALESCE(t.topic_title, 'Topic not selected') AS topic_title,
     COALESCE(a.status, i.status, cd.status) AS status,
     COALESCE(a.published_url, '') AS published_url,
-    COALESCE(a.doctor_review_deadline, i.completed_at, i.started_at, cd.updated_at, cd.invited_at, c.launched_at) AS updated_at,
+    GREATEST(
+      COALESCE(a.published_at, TIMESTAMP '1970-01-01'),
+      COALESCE(a.marketing_approved_at, TIMESTAMP '1970-01-01'),
+      COALESCE(a.doctor_approved_at, TIMESTAMP '1970-01-01'),
+      COALESCE(a.created_at, TIMESTAMP '1970-01-01'),
+      COALESCE(i.updated_at, i.completed_at, i.started_at, TIMESTAMP '1970-01-01'),
+      COALESCE(cd.updated_at, cd.invited_at, c.launched_at, c.created_at, TIMESTAMP '1970-01-01')
+    ) AS updated_at,
     CASE WHEN COALESCE(a.status, i.status, cd.status) IN ('GENERATION_FAILED','ARTICLE_GENERATION_FAILED','COMMUNICATION_FAILED','PUBLISH_FAILED') THEN 'error'
       WHEN COALESCE(a.status, i.status, cd.status) IN ('DOCTOR_REVIEW_PENDING','DOCTOR_REVIEW','REVISION_REQUESTED','DOCTOR_CHANGES_REQUESTED','MARKETING_REVIEW','MARKETING_CHANGES_REQUESTED','ON_HOLD') THEN 'attention'
       WHEN COALESCE(a.status, i.status, cd.status) = 'PUBLISHED' THEN 'complete' ELSE 'active' END AS urgency
@@ -168,9 +175,19 @@ campaign_launch_practices AS (
 ),
 campaign_launch_doctors AS (
   SELECT d.doctor_id, d.doctor_name, d.credentials, d.email, d.practice_id,
-    p.practice_name, p.website_domain
+    p.practice_name, p.website_domain,
+    (
+      p.active = TRUE
+      AND UPPER(COALESCE(p.publisher_type, '')) = 'WORDPRESS'
+      AND NULLIF(TRIM(JSON_VALUE(SAFE.PARSE_JSON(p.publisher_config_reference), '$.wordpress_base_url')), '') IS NOT NULL
+      AND NULLIF(TRIM(JSON_VALUE(SAFE.PARSE_JSON(p.publisher_config_reference), '$.credential_name')), '') IS NOT NULL
+      AND (
+        p.practice_id = 'practice_test_001'
+        OR UPPER(COALESCE(JSON_VALUE(SAFE.PARSE_JSON(p.publisher_config_reference), '$.mapping_status'), '')) = 'VERIFIED'
+      )
+    ) AS publishing_ready
   FROM ${table('doctors')} d
-  JOIN campaign_launch_practices p USING (practice_id)
+  JOIN ${table('practices')} p USING (practice_id)
   WHERE d.active = TRUE AND NULLIF(TRIM(d.email), '') IS NOT NULL
 )
 SELECT TO_JSON_STRING(STRUCT(

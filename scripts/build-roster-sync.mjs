@@ -71,6 +71,10 @@ const sync = {
   name: 'Sync Census to BigQuery',
   position: [1360, 100],
 };
+// The live n8n instance uses the shared BigQuery OAuth2 credential. Keep the
+// exported workflow credential-free, but make its expected credential type
+// match the connection that operators can safely attach after import.
+sync.parameters.authentication = 'oAuth2';
 sync.parameters.sqlQuery = `DECLARE roster JSON DEFAULT PARSE_JSON(@roster_json);
 
 CREATE TEMP TABLE source_practices AS

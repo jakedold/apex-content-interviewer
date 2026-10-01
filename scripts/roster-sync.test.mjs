@@ -19,6 +19,7 @@ test('census sync is hourly, privacy-limited, and credential-free in source cont
 test('census sync preserves history and never enables publishing', () => {
   const sync = workflow.nodes.find((node) => node.name === 'Sync Census to BigQuery');
   assert.ok(sync);
+  assert.equal(sync.parameters.authentication, 'oAuth2');
   assert.match(sync.parameters.sqlQuery, /STARTS_WITH\(T\.doctor_id, 'doctor_census_'\)/);
   assert.match(sync.parameters.sqlQuery, /SET active = FALSE/);
   assert.match(sync.parameters.sqlQuery, /'UNVERIFIED' AS mapping_status/);

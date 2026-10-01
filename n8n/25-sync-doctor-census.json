@@ -223,7 +223,7 @@
     },
     {
       "parameters": {
-        "authentication": "serviceAccount",
+        "authentication": "oAuth2",
         "projectId": {
           "__rl": true,
           "value": "apex-marketing-n8n",

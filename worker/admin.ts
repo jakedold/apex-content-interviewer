@@ -113,7 +113,8 @@ latest_articles AS (
 ),
 campaign_rows AS (
   SELECT c.campaign_id, c.campaign_name, CAST(c.campaign_month AS STRING) AS campaign_month,
-    c.status, c.require_marketing_approval, c.created_at, c.launched_at,
+    c.status, c.require_marketing_approval, COALESCE(c.preview_only, FALSE) AS preview_only,
+    c.created_at, c.launched_at,
     c.invitation_send_at, MIN(cd.invited_at) AS first_invitation_sent_at,
     COUNT(DISTINCT cd.doctor_id) AS doctor_count,
     COUNT(DISTINCT IF(i.interview_id IS NOT NULL, cd.doctor_id, NULL)) AS interview_count,
@@ -124,7 +125,7 @@ campaign_rows AS (
   LEFT JOIN ${table('campaign_doctors')} cd USING (campaign_id)
   LEFT JOIN latest_interviews i ON i.campaign_id = cd.campaign_id AND i.doctor_id = cd.doctor_id
   LEFT JOIN latest_articles a ON a.campaign_id = cd.campaign_id AND a.doctor_id = cd.doctor_id
-  GROUP BY c.campaign_id, c.campaign_name, c.campaign_month, c.status, c.require_marketing_approval,
+  GROUP BY c.campaign_id, c.campaign_name, c.campaign_month, c.status, c.require_marketing_approval, c.preview_only,
     c.created_at, c.launched_at, c.invitation_send_at
 ),
 queue_rows AS (

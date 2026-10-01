@@ -6,6 +6,7 @@ type Campaign = {
   campaign_month: string;
   status: string;
   require_marketing_approval: boolean;
+  preview_only: boolean;
   created_at: string;
   launched_at: string | null;
   invitation_send_at: string | null;
@@ -407,7 +408,7 @@ function campaignCard(campaign: Campaign): string {
         <span><strong>${published}</strong> published</span>
       </div>
       <footer>
-        <span>${campaign.require_marketing_approval ? 'Marketing approval required' : 'Direct publishing path'}</span>
+        <span>${campaign.preview_only ? 'Presentation preview · transcript only' : campaign.require_marketing_approval ? 'Marketing approval required' : 'Direct publishing path'}</span>
         ${numberValue(campaign.issue_count) ? `<strong class="admin-issue-count">${numberValue(campaign.issue_count)} issue${numberValue(campaign.issue_count) === 1 ? '' : 's'}</strong>` : '<strong class="admin-clear">No current issues</strong>'}
       </footer>
     </article>`;

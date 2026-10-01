@@ -720,7 +720,7 @@ function renderDashboard(data: AdminResponse): void {
           </fieldset>
 
           <fieldset class="admin-recipient-options" id="existing-recipient-section"><legend>Doctors to invite</legend>
-            <p class="admin-muted">Search the current Doctor Census roster, then select doctors individually. Each selection retains its own primary-practice and website mapping.</p>
+            <p class="admin-muted" id="campaign-doctor-guidance">Search the current Doctor Census roster, then select doctors individually. Each selection retains its own primary-practice and website mapping.</p>
             <label class="admin-doctor-search"><span>Search doctors</span><input id="campaign-doctor-search" type="search" placeholder="Search by doctor or practice…" autocomplete="off" /></label>
             <div class="admin-doctor-selection-summary"><strong id="campaign-doctor-selected-count">0 selected</strong><span id="campaign-doctor-visible-count">${data.overview.campaign_launch_options.doctors.length} shown</span></div>
             <div id="campaign-doctor-options" class="admin-doctor-scroll-list">
@@ -760,6 +760,7 @@ function renderDashboard(data: AdminResponse): void {
   const campaignDoctorSearch = document.querySelector<HTMLInputElement>('#campaign-doctor-search');
   const selectedDoctorCount = document.querySelector<HTMLElement>('#campaign-doctor-selected-count');
   const visibleDoctorCount = document.querySelector<HTMLElement>('#campaign-doctor-visible-count');
+  const campaignDoctorGuidance = document.querySelector<HTMLElement>('#campaign-doctor-guidance');
   const campaignSendMode = document.querySelector('#campaign-send-mode') as HTMLSelectElement | null;
   const scheduleFields = document.querySelector<HTMLElement>('#campaign-schedule-fields');
   const scheduledLocal = document.querySelector<HTMLInputElement>('#campaign-scheduled-local');
@@ -770,18 +771,34 @@ function renderDashboard(data: AdminResponse): void {
     const fullWorkflow = campaignAudience?.value === 'Linked doctors';
     let visibleCount = 0;
     let selectedCount = 0;
+    let unavailableCount = 0;
     document.querySelectorAll<HTMLElement>('[data-doctor-search]').forEach((option) => {
       const checkbox = option.querySelector<HTMLInputElement>('input[type="checkbox"]');
       const eligible = !fullWorkflow || option.dataset.publishingReady === 'true';
       const matches = !needle || (option.dataset.doctorSearch ?? '').includes(needle);
-      const visible = eligible && matches;
-      option.hidden = !visible;
-      if (!eligible && checkbox) checkbox.checked = false;
-      if (visible) visibleCount += 1;
+      option.hidden = !matches;
+      option.classList.toggle('is-unavailable', !eligible);
+      if (checkbox) {
+        checkbox.disabled = !eligible;
+        if (!eligible) checkbox.checked = false;
+      }
+      if (matches) {
+        visibleCount += 1;
+        if (!eligible) unavailableCount += 1;
+      }
       if (checkbox?.checked) selectedCount += 1;
     });
-    if (visibleDoctorCount) visibleDoctorCount.textContent = `${visibleCount} shown`;
+    if (visibleDoctorCount) {
+      visibleDoctorCount.textContent = fullWorkflow && unavailableCount
+        ? `${visibleCount} shown · ${unavailableCount} require setup`
+        : `${visibleCount} shown`;
+    }
     if (selectedDoctorCount) selectedDoctorCount.textContent = `${selectedCount} selected`;
+    if (campaignDoctorGuidance) {
+      campaignDoctorGuidance.textContent = fullWorkflow
+        ? 'All current Doctor Census records are shown. Doctors whose practice publishing setup has not been verified remain visible but cannot be selected for the full article workflow yet.'
+        : 'Search the current Doctor Census roster, then select doctors individually. Presentation previews capture the interview transcript but do not create or publish an article.';
+    }
   };
 
   const syncSendMode = (): void => {

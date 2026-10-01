@@ -518,6 +518,20 @@
   font-weight: 700;
 }
 
+.admin-recipient-option.is-unavailable {
+  background: #f7f9fa;
+  border-color: #e1e7eb;
+}
+
+.admin-recipient-option.is-unavailable strong,
+.admin-recipient-option.is-unavailable small {
+  color: #788993;
+}
+
+.admin-recipient-option input:disabled {
+  cursor: not-allowed;
+}
+
 .admin-recipient-option[hidden] {
   display: none !important;
 }

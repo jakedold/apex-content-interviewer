@@ -35,7 +35,7 @@ type CampaignTemplate = {
   campaign_id: string;
   campaign_name: string;
   campaign_month: string;
-  audience: 'Test users only' | 'Presentation demo recipients';
+  audience: 'Linked doctors' | 'Presentation preview';
   practice_id: string | null;
   topics: CampaignTemplateTopic[];
   recipients: CampaignTemplateRecipient[];
@@ -95,8 +95,11 @@ type CampaignLaunchPractice = {
 type CampaignLaunchDoctor = {
   doctor_id: string;
   doctor_name: string;
+  credentials: string | null;
   email: string | null;
   practice_id: string;
+  practice_name: string;
+  website_domain: string | null;
 };
 
 type Overview = {
@@ -568,21 +571,10 @@ async function duplicateCampaign(campaignId: string): Promise<void> {
       setCampaignField(form, `topic_${number}_featured_image_rights_reference`, topic?.featured_image_rights_reference ?? '');
     }
 
-    if (template.audience === 'Presentation demo recipients') {
-      setCampaignField(
-        form,
-        'demo_recipients',
-        template.recipients
-          .filter((recipient) => recipient.email)
-          .map((recipient) => `${recipient.doctor_name},${recipient.email}`)
-          .join('\n'),
-      );
-    } else {
-      const recipientIds = new Set(template.recipients.map((recipient) => recipient.doctor_id));
-      form.querySelectorAll<HTMLInputElement>('input[name="doctor_ids"]').forEach((checkbox) => {
-        checkbox.checked = recipientIds.has(checkbox.value) && !checkbox.closest<HTMLElement>('[data-practice-id]')?.hidden;
-      });
-    }
+    const recipientIds = new Set(template.recipients.map((recipient) => recipient.doctor_id));
+    form.querySelectorAll<HTMLInputElement>('input[name="doctor_ids"]').forEach((checkbox) => {
+      checkbox.checked = recipientIds.has(checkbox.value) && !checkbox.closest<HTMLElement>('[data-practice-id]')?.hidden;
+    });
 
     const missingAssetFields = topics.some((topic) =>
       !topic?.featured_image_source_url ||
@@ -637,7 +629,7 @@ function renderDashboard(data: AdminResponse): void {
       <dialog class="admin-campaign-dialog" id="admin-campaign-dialog">
         <button class="admin-dialog-close" id="campaign-dialog-close" type="button" aria-label="Close campaign builder">×</button>
         <span class="admin-kicker">New campaign</span><h2>Start an article campaign</h2>
-        <p>Use the test route for normal QA, or the presentation route for a one-time internal demo cohort. Both stay isolated on TEST001.</p>
+        <p>Select doctors from the linked directory so each article keeps the correct practice and publishing-site relationship. Presentation previews save the transcript but do not create or publish an article.</p>
 
         <div class="admin-campaign-instructions">
           <strong>Before you start</strong>
@@ -653,10 +645,10 @@ function renderDashboard(data: AdminResponse): void {
         <form id="admin-campaign-form" class="admin-campaign-form">
           <label>Audience
             <select name="audience" id="campaign-audience" required>
-              <option value="Test users only">Test users only</option>
-              <option value="Presentation demo recipients">Presentation demo recipients</option>
+              <option value="Linked doctors">Linked doctors — full article workflow</option>
+              <option value="Presentation preview">Presentation preview — transcript only</option>
             </select>
-            <small>Presentation recipients are created as isolated demo identities on TEST001 and do not overwrite production doctor records.</small>
+            <small>Every recipient comes from the existing doctor directory and retains the practice/site mapping already stored in BigQuery.</small>
           </label>
 
           <label>Campaign name<input name="campaign_name" required placeholder="October 2026 presentation demo" /></label>
@@ -730,35 +722,30 @@ function renderDashboard(data: AdminResponse): void {
             <label>Topic 3 featured image rights or source reference<input name="topic_3_featured_image_rights_reference" required placeholder="Asset record, license, commission, or generation reference" /></label>
           </fieldset>
 
-          <label>Test practice to use
+          <label>Practice and publishing site
             <select name="practice_id" id="campaign-practice" required>
-              <option value="">Select a test practice</option>
+              <option value="">Select a linked practice</option>
               ${data.overview.campaign_launch_options.practices.map((practice) =>
-                `<option value="${escapeHtml(practice.practice_id)}">${escapeHtml(practice.practice_name)}</option>`
+                `<option value="${escapeHtml(practice.practice_id)}">${escapeHtml(practice.practice_name)}${practice.website_domain ? ` — ${escapeHtml(practice.website_domain)}` : ''}</option>`
               ).join('')}
             </select>
           </label>
 
-          <fieldset class="admin-recipient-options" id="existing-recipient-section"><legend>Test recipients to invite</legend>
-            <p class="admin-muted">Choose one or more recipients associated with the selected test practice.</p>
+          <fieldset class="admin-recipient-options" id="existing-recipient-section"><legend>Doctors to invite</legend>
+            <p class="admin-muted">Choose one or more linked doctors associated with the selected practice. Their existing practice and website mappings will be preserved.</p>
             <div id="campaign-doctor-options">
               ${data.overview.campaign_launch_options.doctors.length
                 ? data.overview.campaign_launch_options.doctors.map((doctor) => `
                     <label class="admin-recipient-option" data-practice-id="${escapeHtml(doctor.practice_id)}">
                       <input type="checkbox" name="doctor_ids" value="${escapeHtml(doctor.doctor_id)}" />
-                      <span><strong>${escapeHtml(doctor.doctor_name)}</strong><small>${escapeHtml(doctor.email || doctor.doctor_id)}</small></span>
+                      <span><strong>${escapeHtml([doctor.doctor_name, doctor.credentials].filter(Boolean).join(', '))}</strong><small>${escapeHtml(doctor.practice_name)} · ${escapeHtml(doctor.email || doctor.doctor_id)}</small></span>
                     </label>`).join('')
-                : '<div class="admin-empty">No active test recipients are configured in BigQuery.</div>'}
+                : '<div class="admin-empty">No active doctors with verified publishing-site mappings are configured in BigQuery.</div>'}
             </div>
           </fieldset>
 
-          <fieldset class="admin-recipient-options" id="demo-recipient-section" hidden><legend>Presentation recipients</legend>
-            <p class="admin-muted">Paste one recipient per line as <strong>Name,email</strong>. Up to 50 recipients. These become isolated demo identities for this internal presentation route.</p>
-            <textarea name="demo_recipients" id="campaign-demo-recipients" rows="10" placeholder="Dr. Example One,doctor1@apexdp.com&#10;Dr. Example Two,doctor2@apexdp.com"></textarea>
-          </fieldset>
-
-          <label>Type <strong>SEND TEST INVITATIONS</strong> to confirm
-            <input name="launch_confirmation" required autocomplete="off" placeholder="SEND TEST INVITATIONS" />
+          <label>Type <strong>SEND INVITATIONS</strong> to confirm
+            <input name="launch_confirmation" required autocomplete="off" placeholder="SEND INVITATIONS" />
           </label>
 
           <div class="admin-form-actions"><button type="button" id="cancel-campaign">Cancel</button><button class="admin-primary-button" type="submit">Launch campaign</button></div>
@@ -780,14 +767,10 @@ function renderDashboard(data: AdminResponse): void {
   document.querySelector<HTMLButtonElement>('#cancel-campaign')?.addEventListener('click', () => campaignDialog?.close());
 
   const campaignPractice = document.querySelector('#campaign-practice') as HTMLSelectElement | null;
-  const campaignAudience = document.querySelector('#campaign-audience') as HTMLSelectElement | null;
   const campaignSendMode = document.querySelector('#campaign-send-mode') as HTMLSelectElement | null;
   const scheduleFields = document.querySelector<HTMLElement>('#campaign-schedule-fields');
   const scheduledLocal = document.querySelector<HTMLInputElement>('#campaign-scheduled-local');
   const campaignTimezone = document.querySelector('#campaign-timezone') as HTMLSelectElement | null;
-  const existingRecipients = document.querySelector<HTMLElement>('#existing-recipient-section');
-  const demoRecipients = document.querySelector<HTMLElement>('#demo-recipient-section');
-  const demoRecipientTextarea = document.querySelector<HTMLTextAreaElement>('#campaign-demo-recipients');
 
   const syncCampaignRecipients = (): void => {
     const selected = campaignPractice?.value ?? '';
@@ -797,18 +780,6 @@ function renderDashboard(data: AdminResponse): void {
       const checkbox = option.querySelector<HTMLInputElement>('input[type="checkbox"]');
       if (!visible && checkbox) checkbox.checked = false;
     });
-  };
-
-  const syncCampaignAudience = (): void => {
-    const isDemo = campaignAudience?.value === 'Presentation demo recipients';
-    if (existingRecipients) existingRecipients.hidden = isDemo;
-    if (demoRecipients) demoRecipients.hidden = !isDemo;
-    if (demoRecipientTextarea) demoRecipientTextarea.required = isDemo;
-    if (isDemo) {
-      document.querySelectorAll<HTMLInputElement>('input[name="doctor_ids"]').forEach((checkbox) => { checkbox.checked = false; });
-    } else if (demoRecipientTextarea) {
-      demoRecipientTextarea.value = '';
-    }
   };
 
   const syncSendMode = (): void => {
@@ -826,10 +797,8 @@ function renderDashboard(data: AdminResponse): void {
   }
 
   campaignPractice?.addEventListener('change', syncCampaignRecipients);
-  campaignAudience?.addEventListener('change', syncCampaignAudience);
   campaignSendMode?.addEventListener('change', syncSendMode);
   syncCampaignRecipients();
-  syncCampaignAudience();
   syncSendMode();
 
   document.querySelector<HTMLFormElement>('#admin-campaign-form')?.addEventListener('submit', (event) => void submitCampaign(event));
@@ -1051,12 +1020,12 @@ async function submitCampaign(event: SubmitEvent): Promise<void> {
 
   try {
     const audience = String(data.get('audience') ?? '').trim();
-    if (!['Test users only', 'Presentation demo recipients'].includes(audience)) {
+    if (!['Linked doctors', 'Presentation preview'].includes(audience)) {
       throw new Error('Choose a supported campaign audience.');
     }
 
     const confirmation = String(data.get('launch_confirmation') ?? '').trim();
-    if (confirmation !== 'SEND TEST INVITATIONS') throw new Error('Type SEND TEST INVITATIONS exactly to launch.');
+    if (confirmation !== 'SEND INVITATIONS') throw new Error('Type SEND INVITATIONS exactly to launch.');
 
     const sendMode = String(data.get('send_mode') ?? '').trim();
     if (!['now', 'in_10', 'scheduled'].includes(sendMode)) throw new Error('Choose when the invitations should send.');
@@ -1066,29 +1035,9 @@ async function submitCampaign(event: SubmitEvent): Promise<void> {
       throw new Error('Choose the scheduled date, time, and timezone.');
     }
 
-    const doctorIds = audience === 'Test users only'
-      ? data.getAll('doctor_ids').map((value) => String(value).trim()).filter(Boolean)
-      : [];
-    if (audience === 'Test users only' && !doctorIds.length) throw new Error('Select at least one test recipient.');
-
-    const demoRecipients = audience === 'Presentation demo recipients'
-      ? String(data.get('demo_recipients') ?? '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line) => {
-          const comma = line.lastIndexOf(',');
-          if (comma < 1) throw new Error(`Each presentation recipient must be Name,email. Check: ${line}`);
-          const name = line.slice(0, comma).trim();
-          const email = line.slice(comma + 1).trim().toLowerCase();
-          if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error(`Invalid presentation recipient: ${line}`);
-          return { name, email };
-        })
-      : [];
-
-    if (audience === 'Presentation demo recipients') {
-      if (!demoRecipients.length) throw new Error('Add at least one presentation recipient.');
-      if (demoRecipients.length > 50) throw new Error('Presentation campaigns are limited to 50 recipients.');
-      if (new Set(demoRecipients.map((recipient) => recipient.email)).size !== demoRecipients.length) {
-        throw new Error('Each presentation recipient email can appear only once.');
-      }
-    }
+    const doctorIds = data.getAll('doctor_ids').map((value) => String(value).trim()).filter(Boolean);
+    if (!doctorIds.length) throw new Error('Select at least one linked doctor.');
+    if (doctorIds.length > 50) throw new Error('Campaigns are limited to 50 doctors.');
 
     const topics = [1, 2, 3].map((number) => {
       const sourceUrl = String(data.get(`topic_${number}_featured_image_source_url`) ?? '').trim();
@@ -1117,7 +1066,6 @@ async function submitCampaign(event: SubmitEvent): Promise<void> {
       scheduled_send_timezone: scheduledSendTimezone,
       topics,
       doctor_ids: doctorIds,
-      demo_recipients: demoRecipients,
     });
 
     const resultStatus = String(result.status ?? '').toUpperCase();

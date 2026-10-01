@@ -158,13 +158,20 @@ communication_failures AS (
 campaign_launch_practices AS (
   SELECT practice_id, practice_name, website_domain, publisher_type
   FROM ${table('practices')}
-  WHERE active = TRUE AND practice_id = 'practice_test_001'
+  WHERE active = TRUE
+    AND UPPER(COALESCE(publisher_type, '')) = 'WORDPRESS'
+    AND NULLIF(TRIM(publisher_config_reference), '') IS NOT NULL
+    AND (
+      practice_id = 'practice_test_001'
+      OR UPPER(COALESCE(JSON_VALUE(SAFE.PARSE_JSON(publisher_config_reference), '$.mapping_status'), '')) = 'VERIFIED'
+    )
 ),
 campaign_launch_doctors AS (
-  SELECT d.doctor_id, d.doctor_name, d.email, d.practice_id
+  SELECT d.doctor_id, d.doctor_name, d.credentials, d.email, d.practice_id,
+    p.practice_name, p.website_domain
   FROM ${table('doctors')} d
   JOIN campaign_launch_practices p USING (practice_id)
-  WHERE d.active = TRUE
+  WHERE d.active = TRUE AND NULLIF(TRIM(d.email), '') IS NOT NULL
 )
 SELECT TO_JSON_STRING(STRUCT(
   CURRENT_TIMESTAMP() AS generated_at,
@@ -190,7 +197,8 @@ function campaignTemplateQuery(project: string, dataset: string): string {
   const table = tableFactory(project, dataset);
   return `
 WITH campaign AS (
-  SELECT campaign_id, campaign_name, CAST(campaign_month AS STRING) AS campaign_month
+  SELECT campaign_id, campaign_name, CAST(campaign_month AS STRING) AS campaign_month,
+    COALESCE(preview_only, FALSE) AS preview_only
   FROM ${table('campaigns')}
   WHERE campaign_id = @campaign_id
 ),
@@ -217,12 +225,7 @@ SELECT TO_JSON_STRING(STRUCT(
   (SELECT campaign_id FROM campaign LIMIT 1) AS campaign_id,
   (SELECT campaign_name FROM campaign LIMIT 1) AS campaign_name,
   (SELECT campaign_month FROM campaign LIMIT 1) AS campaign_month,
-  CASE
-    WHEN (SELECT COUNT(*) FROM recipients) > 0
-      AND (SELECT COUNTIF(STARTS_WITH(doctor_id, 'doctor_demo_')) FROM recipients) = (SELECT COUNT(*) FROM recipients)
-      THEN 'Presentation demo recipients'
-    ELSE 'Test users only'
-  END AS audience,
+  IF((SELECT preview_only FROM campaign LIMIT 1), 'Presentation preview', 'Linked doctors') AS audience,
   CASE
     WHEN (SELECT COUNT(DISTINCT practice_id) FROM recipients) = 1
       THEN (SELECT ANY_VALUE(practice_id) FROM recipients)

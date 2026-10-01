@@ -52,10 +52,11 @@ still needs a credential-free JSON export checked in here; n8n is currently
 its runtime source.
 
 Campaign launch is a separate step from publishing. The administrator enters a
-campaign name, month, exact location/practice name, matching HTTPS website URL,
-three distinct topics, and doctors as `Name,email` lines. The form validates
-these inputs against one active practice profile, rejects a duplicate campaign
-name/month, and blocks silent reassignment or duplication of existing doctors.
+campaign name and month, selects one active practice with a verified publishing
+mapping, defines three distinct topics, and selects doctors already linked to
+that practice in BigQuery. Free-form `Name,email` campaign recipients are not
+created by the admin dashboard. The command validates the existing mappings,
+rejects a duplicate campaign name/month, and never silently reassigns a doctor.
 Each campaign currently targets one location and one website. The form records
 the campaign and its doctors in BigQuery. The
 invitation dispatcher checks for READY doctors every five minutes and sends

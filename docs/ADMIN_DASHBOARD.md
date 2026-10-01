@@ -126,19 +126,19 @@ Before launch:
    `https://apexparent.hostmanpowered.com/wp-admin/upload.php?mlo-category=all-files`
 4. For each topic, record the direct `https://apexparent.hostmanpowered.com/wp-content/uploads/...` file URL, useful alt text, source type, and rights/source reference.
 5. Choose an audience and invitation timing.
-6. Type `SEND TEST INVITATIONS` exactly before launch.
+6. Type `SEND INVITATIONS` exactly before launch.
 
 The dashboard and n8n command workflow validate the image and recipient requirements before campaign state is written. BigQuery remains the source of truth.
 
-### Test users only
+### Linked doctors
 
-This is the existing TEST001 QA route. Select the configured TEST001 practice and one or more configured test recipients. The normal test pipeline may continue beyond the interview according to the existing workflow configuration.
+Select a practice with an active, verified WordPress mapping, then choose one or more doctors already linked to that practice in BigQuery. The launcher never creates a doctor from a name/email row and never changes an existing doctor's practice. This preserves the doctor-to-practice-to-publishing-site relationship through article generation and publishing.
 
-### Presentation demo recipients
+TEST001 remains available for QA. A non-test practice is listed only when it is active, has a complete WordPress configuration, and its publisher configuration contains `mapping_status: VERIFIED`.
 
-This route is for a controlled internal demonstration cohort of up to 50 people. Paste one recipient per line as `Name,email`.
+### Presentation preview
 
-The command workflow creates isolated `doctor_demo_...` identities on TEST001 rather than overwriting production doctor profiles. The campaign is marked `preview_only = TRUE`. Recipients receive real secure topic links and can complete the voice interview; the transcript is saved, but article generation, doctor-review email, marketing review, and publishing are intentionally blocked.
+This route uses the same linked-doctor multi-select, but marks the campaign `preview_only = TRUE`. Recipients receive real secure topic links and can complete the voice interview; the transcript is saved, but article generation, doctor-review email, marketing review, and publishing are intentionally blocked.
 
 ### Invitation timing
 

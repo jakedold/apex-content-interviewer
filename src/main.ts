@@ -320,17 +320,41 @@ function contentText(content: unknown): string {
   return '';
 }
 
-function historyToTranscript(history: RealtimeItem[]): string {
-  const lines: string[] = [];
+type TranscriptEntry = { role: 'user' | 'assistant'; text: string };
+
+function historyToTranscriptEntries(history: RealtimeItem[]): TranscriptEntry[] {
+  const entries: TranscriptEntry[] = [];
   for (const item of history) {
     if (!item || item.type !== 'message') continue;
     if (item.role !== 'user' && item.role !== 'assistant') continue;
     const parts = Array.isArray(item.content) ? item.content.map(contentText).filter(Boolean) : [];
     const text = parts.join(' ').trim();
-    if (!text) continue;
-    lines.push(`${item.role === 'user' ? 'Doctor' : 'Interviewer'}: ${text}`);
+    if (text) entries.push({ role: item.role, text });
   }
-  return lines.join('\n\n');
+  return entries;
+}
+
+function historyToTranscript(history: RealtimeItem[]): string {
+  return historyToTranscriptEntries(history)
+    .map((entry) => `${entry.role === 'user' ? 'Doctor' : 'Interviewer'}: ${entry.text}`)
+    .join('\n\n');
+}
+
+function renderLiveTranscript(
+  history: RealtimeItem[],
+  panel: HTMLElement,
+  transcript: HTMLElement,
+): void {
+  const entries = historyToTranscriptEntries(history);
+  panel.hidden = false;
+  transcript.innerHTML = entries.length
+    ? entries.map((entry) => `
+        <div class="transcript-entry transcript-entry-${entry.role}">
+          <strong>${entry.role === 'user' ? 'You' : 'Interviewer'}</strong>
+          <p>${escapeHtml(entry.text)}</p>
+        </div>`).join('')
+    : '<p class="transcript-empty">Your conversation will appear here as each person finishes speaking.</p>';
+  transcript.scrollTop = transcript.scrollHeight;
 }
 
 async function waitForTranscriptSettle(session: RealtimeSession, maxWaitMs = 2500): Promise<RealtimeItem[]> {
@@ -378,12 +402,23 @@ function renderInterview(context: InterviewContext, token: string): void {
         <button id="pause-button" class="secondary-button" type="button" hidden>Pause Interview</button>
       </div>
       <div id="status" class="status" aria-live="polite">Your microphone will be requested when you begin.</div>
+      <section id="live-transcript-panel" class="live-transcript" hidden>
+        <div class="live-transcript-heading">
+          <strong>Live transcript</strong>
+          <span>Updates after each person speaks</span>
+        </div>
+        <div id="live-transcript" class="live-transcript-log" role="log" aria-live="polite" aria-relevant="additions text"></div>
+      </section>
     </section></main>`;
 
   const button = document.querySelector<HTMLButtonElement>('#interview-button');
   const pauseButton = document.querySelector<HTMLButtonElement>('#pause-button');
   const status = document.querySelector<HTMLDivElement>('#status');
-  if (!button || !pauseButton || !status) throw new Error('Interview controls not found.');
+  const transcriptPanel = document.querySelector<HTMLElement>('#live-transcript-panel');
+  const transcript = document.querySelector<HTMLElement>('#live-transcript');
+  if (!button || !pauseButton || !status || !transcriptPanel || !transcript) {
+    throw new Error('Interview controls not found.');
+  }
 
   pauseButton.addEventListener('click', () => {
     if (!connected || !liveSession) return;
@@ -461,7 +496,18 @@ function renderInterview(context: InterviewContext, token: string): void {
         }),
       });
 
-      liveSession = new RealtimeSession(agent, { model: 'gpt-realtime-2.1' });
+      liveSession = new RealtimeSession(agent, {
+        model: 'gpt-realtime-2.1',
+        config: {
+          audio: {
+            input: { transcription: { model: 'gpt-4o-mini-transcribe', language: 'en' } },
+          },
+        },
+      });
+
+      liveSession.on('history_updated', (history) => {
+        renderLiveTranscript(history, transcriptPanel, transcript);
+      });
 
       liveSession.on('agent_start', () => {
         if (!paused) {
@@ -492,6 +538,7 @@ function renderInterview(context: InterviewContext, token: string): void {
       pauseButton.disabled = false;
       pauseButton.textContent = 'Pause Interview';
       status.innerHTML = `<span class="live-dot"></span> Connected. Your interviewer is listening.`;
+      renderLiveTranscript(liveSession.history, transcriptPanel, transcript);
 
       liveSession.transport.sendEvent({
         type: 'response.create',

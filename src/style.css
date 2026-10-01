@@ -180,6 +180,61 @@ h1 {
   color: #6d6e6e;
 }
 
+.live-transcript {
+  margin-top: 24px;
+  border: 1px solid #cfd9e1;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  overflow: hidden;
+}
+
+.live-transcript-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #dce4eb;
+  background: #e6eef4;
+  color: #064c78;
+}
+
+.live-transcript-heading span {
+  color: #6d6e6e;
+  font-size: 12px;
+}
+
+.live-transcript-log {
+  max-height: 300px;
+  padding: 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+}
+
+.transcript-entry + .transcript-entry { margin-top: 16px; }
+.transcript-entry strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #064c78;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.transcript-entry p,
+.transcript-empty {
+  margin: 0;
+  color: #30302f;
+  font-size: 15px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+.transcript-entry-user {
+  padding-left: 14px;
+  border-left: 3px solid #8ac441;
+}
+.transcript-empty { color: #6d6e6e; }
+
 .activity {
   display: flex;
   align-items: center;
@@ -365,4 +420,6 @@ h1 {
   .review-page { width: 100%; margin: 0; }
   .review-header, .article-preview, .review-actions { padding: 32px 24px; border-radius: 0; }
   .review-buttons, .form-buttons { grid-template-columns: 1fr; }
+  .live-transcript-heading { align-items: flex-start; flex-direction: column; gap: 3px; }
+  .live-transcript-log { max-height: 42vh; -webkit-overflow-scrolling: touch; }
 }

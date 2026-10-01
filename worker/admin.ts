@@ -114,6 +114,7 @@ latest_articles AS (
 campaign_rows AS (
   SELECT c.campaign_id, c.campaign_name, CAST(c.campaign_month AS STRING) AS campaign_month,
     c.status, c.require_marketing_approval, c.created_at, c.launched_at,
+    c.invitation_send_at, MIN(cd.invited_at) AS first_invitation_sent_at,
     COUNT(DISTINCT cd.doctor_id) AS doctor_count,
     COUNT(DISTINCT IF(i.interview_id IS NOT NULL, cd.doctor_id, NULL)) AS interview_count,
     COUNT(DISTINCT a.article_id) AS article_count,
@@ -123,7 +124,8 @@ campaign_rows AS (
   LEFT JOIN ${table('campaign_doctors')} cd USING (campaign_id)
   LEFT JOIN latest_interviews i ON i.campaign_id = cd.campaign_id AND i.doctor_id = cd.doctor_id
   LEFT JOIN latest_articles a ON a.campaign_id = cd.campaign_id AND a.doctor_id = cd.doctor_id
-  GROUP BY c.campaign_id, c.campaign_name, c.campaign_month, c.status, c.require_marketing_approval, c.created_at, c.launched_at
+  GROUP BY c.campaign_id, c.campaign_name, c.campaign_month, c.status, c.require_marketing_approval,
+    c.created_at, c.launched_at, c.invitation_send_at
 ),
 queue_rows AS (
   SELECT CONCAT(cd.campaign_id, ':', cd.doctor_id) AS work_item_id,
@@ -203,7 +205,8 @@ SELECT TO_JSON_STRING(STRUCT(
       + (SELECT COUNT(*) FROM communication_failures WHERE sent_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)) AS errors_24h,
     (SELECT COUNT(*) FROM ${table('articles')} WHERE status = 'PUBLISHED' AND published_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)) AS published_30d
   ) AS summary,
-  ARRAY(SELECT AS STRUCT * FROM campaign_rows ORDER BY COALESCE(launched_at, created_at) DESC LIMIT 50) AS campaigns,
+  ARRAY(SELECT AS STRUCT * FROM campaign_rows
+    ORDER BY COALESCE(first_invitation_sent_at, invitation_send_at, launched_at, created_at) DESC LIMIT 50) AS campaigns,
   ARRAY(SELECT AS STRUCT * FROM queue_rows ORDER BY CASE urgency WHEN 'error' THEN 0 WHEN 'attention' THEN 1 ELSE 2 END, updated_at ASC LIMIT 250) AS work_queue,
   ARRAY(SELECT AS STRUCT * FROM event_rows ORDER BY event_timestamp DESC LIMIT 150) AS recent_events,
   ARRAY(SELECT AS STRUCT * FROM communication_failures ORDER BY sent_at DESC LIMIT 50) AS communication_failures

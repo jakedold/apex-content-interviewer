@@ -8,6 +8,8 @@ type Campaign = {
   require_marketing_approval: boolean;
   created_at: string;
   launched_at: string | null;
+  invitation_send_at: string | null;
+  first_invitation_sent_at: string | null;
   doctor_count: number | string;
   interview_count: number | string;
   article_count: number | string;
@@ -218,15 +220,14 @@ function formatDate(value: string | null | undefined, includeTime = false): stri
   }).format(date);
 }
 
-function formatCampaignMonth(value: string | null | undefined): string {
-  if (!value) return 'Month not recorded';
-  const match = /^(\d{4})-(\d{2})/.exec(value);
-  if (!match) return value;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  if (!Number.isInteger(year) || month < 1 || month > 12) return value;
-  return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })
-    .format(new Date(Date.UTC(year, month - 1, 1)));
+function campaignSendLabel(campaign: Campaign): string {
+  if (campaign.first_invitation_sent_at) {
+    return `Sent ${formatDate(campaign.first_invitation_sent_at, true)}`;
+  }
+  if (campaign.invitation_send_at) {
+    return `Scheduled ${formatDate(campaign.invitation_send_at, true)}`;
+  }
+  return 'Invitations not sent';
 }
 
 function titleCase(value: string): string {
@@ -391,7 +392,7 @@ function campaignCard(campaign: Campaign): string {
   return `
     <article class="admin-campaign-card">
       <div class="admin-campaign-topline">
-        <span>${escapeHtml(formatCampaignMonth(campaign.campaign_month))}</span>
+        <span>${escapeHtml(campaignSendLabel(campaign))}</span>
         ${statusPill(campaign.status)}
       </div>
       <div class="admin-campaign-title-row">

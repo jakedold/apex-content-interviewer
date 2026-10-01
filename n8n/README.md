@@ -29,6 +29,8 @@ Version-controlled workflow exports:
 - `18-send-marketing-review-invitation.json`
 - `19-prestonwood-wordpress-draft-pilot.json` — isolated manual credential/subsite check; creates only a fixed internal draft at Prestonwood and is not part of the article pipeline
 - `20-revise-article-from-marketing-feedback.json` — marketing-requested revision; new immutable version and fresh marketing review without doctor reapproval
+- `24-admin-command-router.json` — authenticated admin boundary for audited approvals and dashboard campaign creation from selected linked doctors
+- `25-sync-doctor-census.json` — hourly, privacy-limited reconciliation of eligible Doctor Census rows and location mappings into BigQuery; preserves history and never enables publishing
 
 On September 23, 2026, the [inactive Prestonwood draft pilot](https://n8n.apexdentalautomation.com/workflow/x8P9o3fLDyDMxJ4s)
 ran manually using the existing `Wordpress account` credential. Its
@@ -52,13 +54,15 @@ still needs a credential-free JSON export checked in here; n8n is currently
 its runtime source.
 
 Campaign launch is a separate step from publishing. The administrator enters a
-campaign name and month, selects one active practice with a verified publishing
-mapping, defines three distinct topics, and selects doctors already linked to
-that practice in BigQuery. Free-form `Name,email` campaign recipients are not
-created by the admin dashboard. The command validates the existing mappings,
-rejects a duplicate campaign name/month, and never silently reassigns a doctor.
-Each campaign currently targets one location and one website. The form records
-the campaign and its doctors in BigQuery. The
+campaign name and month, defines three distinct topics, and searches the linked
+doctor directory to select doctors individually, including across practices.
+Free-form `Name,email` campaign recipients are not created by the admin
+dashboard. Presentation previews may use any active synced doctor and save only
+the transcript. Full article campaigns remain limited to doctors whose linked
+practice is active and has a separately verified publishing mapping and
+credential. The command validates every selected doctor and mapping, rejects a
+duplicate campaign name/month, and never silently reassigns a doctor. The form
+records the campaign and its doctors in BigQuery. The
 invitation dispatcher checks for READY doctors every five minutes and sends
 one email containing three secure interview links to each doctor. Each link
 expires after 30 days. Failed deliveries can be retried, while successful
@@ -202,9 +206,13 @@ On 2026-09-23, 58 eligible general-dentist locations were staged in BigQuery
 `mapping_status = UNVERIFIED`. They cannot launch campaigns or publish. The
 publisher adapter remains restricted to TEST001. See
 [`docs/PRACTICE_SITE_MAPPING.md`](../docs/PRACTICE_SITE_MAPPING.md) for the
-initial sync, shared subsites, and verification gates. Spreadsheet changes
-after this snapshot are **not automatically synced** to BigQuery yet; they
-continue to appear in the read-only roster preview.
+initial sync, shared subsites, and verification gates. The active
+`AAC - 25 - Sync Doctor Census` workflow now reconciles these bounded workbook
+ranges hourly. It updates eligible doctor names, work emails, and
+primary-practice links, creates deterministic staged practice profiles when
+needed, and soft-deactivates removed or newly ineligible census doctors without
+deleting campaign history. It never activates a practice, marks a mapping
+verified, or adds publishing credentials.
 
 The Phase 1K communication workflows centralize doctor-message routing and
 deadline reminders. Email is the V1 delivery adapter, with preference-aware

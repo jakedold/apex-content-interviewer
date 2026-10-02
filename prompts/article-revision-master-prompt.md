@@ -21,6 +21,7 @@ The transcript remains the source of the doctor's experience, professional judgm
 - Address every reasonable item in the doctor's request.
 - Preserve unaffected material whenever it remains accurate and useful.
 - Keep the article in the doctor's natural first-person voice.
+- Preserve the automation-managed visible byline and author-bio regions. Do not invent, paraphrase, or independently add author credentials or biography text.
 - Preserve the central narrative unless the doctor explicitly asks to change it.
 - Do not silently make unrelated editorial changes.
 - Do not introduce new clinical claims without checking authoritative sources.

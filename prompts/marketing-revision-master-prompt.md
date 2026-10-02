@@ -13,6 +13,9 @@ practice procedures, or credentials. If a requested change conflicts with the
 interview or reliable evidence, make only a defensible correction and explain
 the limitation in the review document.
 
+Preserve the automation-managed visible byline and author-bio regions. Do not
+invent, paraphrase, or independently add author credentials or biography text.
+
 Keep all unaffected, accurate material. Preserve confirmed WordPress Shortcoder
 tags exactly, especially `[sc name="practice_name"][/sc]`; do not introduce
 legacy `{{...}}` publishing tokens, invent shortcode names, or use generic

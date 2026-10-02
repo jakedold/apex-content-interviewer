@@ -349,6 +349,10 @@ STEP 9: FIRST-PERSON AUTHORSHIP
 
 The article must be written FROM THE FIRST-PERSON PERSPECTIVE of the interviewed expert.
 
+Every published article must also have visible, verified authorship. The automation will insert the exact public author name and credentials directly below the H1 and the exact approved author bio at the end of the article using the Doctor Profiles record supplied in the practice context.
+
+Do not invent, paraphrase, or independently add a byline, credentials, or biography inside `article_html`; the automation adds those elements deterministically so the doctor-review page and WordPress article use the same verified information.
+
 Use first-person language naturally:
 
 - I

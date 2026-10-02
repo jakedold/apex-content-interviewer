@@ -17,6 +17,20 @@ const readerNames = [
   'Read test users',
 ];
 const nodes = readerNames.map(sourceNode);
+const readProfiles = sourceNode('Read test users');
+readProfiles.id = 'read-doctor-profiles';
+readProfiles.name = 'Read doctor profiles';
+readProfiles.position = [3120, 0];
+readProfiles.parameters.sheetName.value = 'Doctor Profiles';
+readProfiles.parameters.options.dataLocationOnSheet.values.range = 'A1:K500';
+nodes.push(readProfiles);
+
+const keepProfiles = sourceNode('Keep location rows together');
+keepProfiles.id = 'keep-doctor-profiles-together';
+keepProfiles.name = 'Keep doctor profiles together';
+keepProfiles.position = [3380, 0];
+nodes.push(keepProfiles);
+
 const rosterSource = fs.readFileSync(new URL('scripts/campaign-roster.mjs', root), 'utf8')
   .replace('export function buildCampaignRoster', 'function buildCampaignRoster');
 const validate = sourceNode('Validate current roster');
@@ -37,6 +51,27 @@ const dentists = censusRows.map((row) => {
   if (!Number.isInteger(rowNumber)) throw new Error('Doctor census row number missing.');
   return [row.Employee ?? '', row['Primary Location'] ?? '', row.Department ?? '', row['Employment Type'] ?? '', emailByRow.get(rowNumber) ?? ''];
 });
+const profilesByKey = new Map();
+for (const row of $('Keep doctor profiles together').first().json.rows) {
+  const active = row.Active === true || String(row.Active ?? '').trim().toLowerCase() === 'true';
+  if (!active) continue;
+  const email = String(row['Work Email'] ?? '').trim().toLowerCase();
+  const locationCode = String(row['Location Code'] ?? '').trim().toUpperCase();
+  const profile = {
+    author_name: String(row['Doctor Name'] ?? '').trim(),
+    credentials: String(row.Credentials ?? '').trim(),
+    profile_url: String(row['Profile URL'] ?? '').trim(),
+    photo_source_url: String(row['Photo Source URL'] ?? '').trim(),
+    author_bio: String(row['Short Bio'] ?? '').trim(),
+    profile_verified_at: String(row['Verified At'] ?? '').trim(),
+  };
+  if (!email || !profile.author_name || !profile.credentials || !profile.author_bio) {
+    throw new Error('Every active Doctor Profiles row needs Work Email, Doctor Name, Credentials, and Short Bio.');
+  }
+  const key = email + '::' + locationCode;
+  if (profilesByKey.has(key)) throw new Error('Duplicate active Doctor Profiles row: ' + key);
+  profilesByKey.set(key, profile);
+}
 const roster = buildCampaignRoster(
   rows('Keep location rows together', ['Code', 'Name', 'Type', 'URL']),
   rows('Keep website rows together', ['Codes', 'Locations', 'Wordpress Site']),
@@ -51,6 +86,9 @@ const normalized = {
   })),
   doctors: roster.doctors.map((doctor) => ({
     ...doctor,
+    ...(profilesByKey.get(doctor.email + '::' + doctor.location_code.toUpperCase())
+      ?? profilesByKey.get(doctor.email + '::')
+      ?? {}),
     doctor_id: 'doctor_census_' + doctor.email.replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''),
     practice_id: 'practice_' + doctor.location_code.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''),
   })),
@@ -91,8 +129,25 @@ SELECT
   JSON_VALUE(doctor, '$.doctor_id') AS doctor_id,
   JSON_VALUE(doctor, '$.name') AS doctor_name,
   LOWER(JSON_VALUE(doctor, '$.email')) AS email,
-  JSON_VALUE(doctor, '$.practice_id') AS practice_id
+  JSON_VALUE(doctor, '$.practice_id') AS practice_id,
+  NULLIF(TRIM(JSON_VALUE(doctor, '$.credentials')), '') AS credentials,
+  NULLIF(TRIM(JSON_VALUE(doctor, '$.author_name')), '') AS author_name,
+  NULLIF(TRIM(JSON_VALUE(doctor, '$.author_bio')), '') AS author_bio,
+  NULLIF(TRIM(JSON_VALUE(doctor, '$.profile_url')), '') AS profile_url,
+  NULLIF(TRIM(JSON_VALUE(doctor, '$.photo_source_url')), '') AS photo_source_url,
+  SAFE_CAST(NULLIF(TRIM(JSON_VALUE(doctor, '$.profile_verified_at')), '') AS DATE) AS profile_verified_at
 FROM UNNEST(JSON_QUERY_ARRAY(roster, '$.doctors')) doctor;
+
+ALTER TABLE \`apex-marketing-n8n.automated_article_creation.doctors\`
+  ADD COLUMN IF NOT EXISTS author_name STRING;
+ALTER TABLE \`apex-marketing-n8n.automated_article_creation.doctors\`
+  ADD COLUMN IF NOT EXISTS author_bio STRING;
+ALTER TABLE \`apex-marketing-n8n.automated_article_creation.doctors\`
+  ADD COLUMN IF NOT EXISTS profile_url STRING;
+ALTER TABLE \`apex-marketing-n8n.automated_article_creation.doctors\`
+  ADD COLUMN IF NOT EXISTS photo_source_url STRING;
+ALTER TABLE \`apex-marketing-n8n.automated_article_creation.doctors\`
+  ADD COLUMN IF NOT EXISTS profile_verified_at DATE;
 
 ASSERT (SELECT COUNT(*) FROM source_practices) > 0 AS 'The census sync contains no eligible practices.';
 ASSERT (SELECT COUNT(*) FROM source_doctors) > 0 AS 'The census sync contains no eligible doctors.';
@@ -125,14 +180,22 @@ USING source_doctors S
 ON T.doctor_id = S.doctor_id
 WHEN MATCHED THEN UPDATE SET
   doctor_name = S.doctor_name,
+  credentials = COALESCE(S.credentials, T.credentials),
+  author_name = S.author_name,
   email = S.email,
   practice_id = S.practice_id,
+  author_bio = S.author_bio,
+  profile_url = S.profile_url,
+  photo_source_url = S.photo_source_url,
+  profile_verified_at = S.profile_verified_at,
   active = TRUE,
   updated_at = CURRENT_TIMESTAMP()
 WHEN NOT MATCHED THEN INSERT
-  (doctor_id, doctor_name, credentials, email, practice_id, preferred_communication_channel, fallback_communication_channel, active, created_at, updated_at)
+  (doctor_id, doctor_name, credentials, email, practice_id, author_name, author_bio, profile_url, photo_source_url, profile_verified_at,
+   preferred_communication_channel, fallback_communication_channel, active, created_at, updated_at)
 VALUES
-  (S.doctor_id, S.doctor_name, NULL, S.email, S.practice_id, 'email', 'email', TRUE, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP());
+  (S.doctor_id, S.doctor_name, S.credentials, S.email, S.practice_id, S.author_name, S.author_bio, S.profile_url, S.photo_source_url,
+   S.profile_verified_at, 'email', 'email', TRUE, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP());
 
 UPDATE \`apex-marketing-n8n.automated_article_creation.doctors\` T
 SET active = FALSE, updated_at = CURRENT_TIMESTAMP()
@@ -179,7 +242,7 @@ nodes.push({
   typeVersion: 1,
   position: [-1120, -300],
   parameters: {
-    content: '## Doctor census sync\n\nReads only the authoritative roster columns needed for campaign selection: doctor name, primary location, department, employment type, work email, public practice URL, and WordPress site mapping. Runs hourly and can be run manually.\n\nRoster changes update BigQuery doctor names, work emails, and primary-practice links. Removed or ineligible census doctors are made inactive but are not deleted, preserving historical campaigns. New practice mappings remain inactive and UNVERIFIED; the sync never enables publishing or changes credentials.',
+    content: '## Doctor census sync\n\nReads the authoritative roster plus active Doctor Profiles rows. Profile data supplies the verified public credentials, byline bio, optional profile URL, and optional approved photo URL used for authored articles. Runs hourly and can be run manually.\n\nRoster changes update BigQuery doctor names, work emails, and primary-practice links. Removed or ineligible census doctors are made inactive but are not deleted, preserving historical campaigns. New practice mappings remain inactive and UNVERIFIED; the sync never enables publishing or changes credentials.',
     height: 330,
     width: 520,
   },
@@ -195,6 +258,8 @@ const chain = [
   'Read dentist work emails',
   'Keep email rows together',
   'Read test users',
+  'Read doctor profiles',
+  'Keep doctor profiles together',
   'Prepare Current Census Roster',
   'Sync Census to BigQuery',
 ];

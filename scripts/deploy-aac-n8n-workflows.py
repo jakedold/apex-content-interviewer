@@ -45,7 +45,20 @@ VERIFIED_PRACTICE_TARGETS = [
     ("AAC - 20 - Revise Article from Marketing Feedback", ROOT / "n8n/20-revise-article-from-marketing-feedback.json"),
 ]
 
-TARGETS = VERIFIED_PRACTICE_TARGETS if "--verified-practices-only" in sys.argv[1:] else CORE_TARGETS
+AUTHORSHIP_TARGETS = [
+    ("AAC - 06 - Generate Article", ROOT / "n8n/06-generate-article.json"),
+    ("AAC - 10 - Revise Article from Doctor Feedback", ROOT / "n8n/10-revise-article-from-doctor-feedback.json"),
+    ("AAC - 15 - Publish Approved Article to WordPress", ROOT / "n8n/15-publish-approved-article-to-wordpress.json"),
+    ("AAC - 20 - Revise Article from Marketing Feedback", ROOT / "n8n/20-revise-article-from-marketing-feedback.json"),
+    ("AAC - 25 - Sync Doctor Census", ROOT / "n8n/25-sync-doctor-census.json"),
+]
+
+if "--authorship-only" in sys.argv[1:]:
+    TARGETS = AUTHORSHIP_TARGETS
+elif "--verified-practices-only" in sys.argv[1:]:
+    TARGETS = VERIFIED_PRACTICE_TARGETS
+else:
+    TARGETS = CORE_TARGETS
 
 ALLOWED_SETTINGS = {
     "saveExecutionProgress",

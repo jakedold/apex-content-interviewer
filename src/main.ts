@@ -67,6 +67,7 @@ function renderBrand(): string {
 let liveSession: RealtimeSession | null = null;
 let connected = false;
 let paused = false;
+let openingGuardActive = false;
 let interviewStartedAt: string | null = null;
 
 function getPathToken(route: 'interview' | 'review' | 'marketing-review'): string {
@@ -452,6 +453,7 @@ function renderInterview(context: InterviewContext, token: string): void {
         liveSession.close();
         connected = false;
         paused = false;
+        openingGuardActive = false;
 
         const completion = await postJson<CompletionResponse>('/api/complete', {
           token,
@@ -522,6 +524,11 @@ function renderInterview(context: InterviewContext, token: string): void {
       });
 
       liveSession.on('audio_stopped', () => {
+        if (openingGuardActive && liveSession) {
+          liveSession.mute(false);
+          openingGuardActive = false;
+          pauseButton.disabled = false;
+        }
         if (!paused) {
           status.innerHTML = `<span class="live-dot"></span> Connected. Your interviewer is listening.`;
         }
@@ -532,12 +539,14 @@ function renderInterview(context: InterviewContext, token: string): void {
       interviewStartedAt = new Date().toISOString();
       connected = true;
       paused = false;
+      openingGuardActive = true;
+      liveSession.mute(true);
       button.disabled = false;
       button.textContent = 'End Interview';
       pauseButton.hidden = false;
-      pauseButton.disabled = false;
+      pauseButton.disabled = true;
       pauseButton.textContent = 'Pause Interview';
-      status.innerHTML = `<span class="live-dot"></span> Connected. Your interviewer is listening.`;
+      status.innerHTML = `<span class="speaking-bars" aria-hidden="true"><i></i><i></i><i></i></span> Your interviewer is introducing the topic. Your microphone will turn on automatically when the question is finished.`;
       renderLiveTranscript(liveSession.history, transcriptPanel, transcript);
 
       liveSession.transport.sendEvent({
@@ -552,6 +561,7 @@ function renderInterview(context: InterviewContext, token: string): void {
       liveSession = null;
       connected = false;
       paused = false;
+      openingGuardActive = false;
       interviewStartedAt = null;
     }
   });

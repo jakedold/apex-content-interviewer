@@ -53,7 +53,9 @@ AUTHORSHIP_TARGETS = [
     ("AAC - 25 - Sync Doctor Census", ROOT / "n8n/25-sync-doctor-census.json"),
 ]
 
-if "--authorship-only" in sys.argv[1:]:
+if "--dispatcher-only" in sys.argv[1:]:
+    TARGETS = CORE_TARGETS[:1]
+elif "--authorship-only" in sys.argv[1:]:
     TARGETS = AUTHORSHIP_TARGETS
 elif "--verified-practices-only" in sys.argv[1:]:
     TARGETS = VERIFIED_PRACTICE_TARGETS

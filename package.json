@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && tsc -p tsconfig.worker.json --noEmit && vite build",
     "test:authorship": "node --test scripts/article-authorship.test.mjs",
+    "test:dispatcher": "node --test scripts/campaign-dispatcher.test.mjs",
     "test:verified-practices": "node --test scripts/verified-practice-workflows.test.mjs",
     "preview": "npm run build && vite preview",
     "deploy": "npm run build && wrangler deploy",

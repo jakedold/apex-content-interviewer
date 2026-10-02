@@ -8,6 +8,7 @@ or full execution payloads. It prints only execution metadata and n8n error mess
 from __future__ import annotations
 
 import getpass
+import argparse
 import json
 import os
 import sys
@@ -17,7 +18,7 @@ import urllib.request
 from typing import Any
 
 BASE_URL = os.environ.get("N8N_BASE_URL", "https://n8n.apexdentalautomation.com").rstrip("/")
-WORKFLOW_NAME = "AAC - 24 - Admin Command Router"
+DEFAULT_WORKFLOW_NAME = "AAC - 24 - Admin Command Router"
 
 
 def api(api_key: str, path: str) -> Any:
@@ -78,6 +79,11 @@ def safe_error_summary(execution: dict[str, Any]) -> list[str]:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Safely summarize recent n8n workflow executions.")
+    parser.add_argument("--workflow", default=DEFAULT_WORKFLOW_NAME, help="Exact n8n workflow name")
+    args = parser.parse_args()
+    workflow_name = args.workflow
+
     api_key = os.environ.get("N8N_API_KEY", "").strip()
     if not api_key:
         api_key = getpass.getpass("Paste n8n API key (input hidden): ").strip()
@@ -86,9 +92,9 @@ def main() -> int:
         return 2
 
     workflows = list_workflows(api_key)
-    matches = [workflow for workflow in workflows if workflow.get("name") == WORKFLOW_NAME]
+    matches = [workflow for workflow in workflows if workflow.get("name") == workflow_name]
     if len(matches) != 1:
-        print(f"Expected exactly one workflow named {WORKFLOW_NAME!r}; found {len(matches)}.", file=sys.stderr)
+        print(f"Expected exactly one workflow named {workflow_name!r}; found {len(matches)}.", file=sys.stderr)
         return 1
 
     workflow_id = str(matches[0]["id"])
@@ -96,8 +102,9 @@ def main() -> int:
     result = api(api_key, f"/executions?{params}")
     executions = list(result.get("data", []))
 
-    print(f"Workflow: {WORKFLOW_NAME}")
+    print(f"Workflow: {workflow_name}")
     print(f"Workflow ID: {workflow_id}")
+    print(f"Workflow active: {bool(matches[0].get('active'))}")
     print("Recent executions:")
     if not executions:
         print("  No executions returned by the API.")

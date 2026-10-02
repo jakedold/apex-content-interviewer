@@ -13,8 +13,10 @@ practice procedures, or credentials. If a requested change conflicts with the
 interview or reliable evidence, make only a defensible correction and explain
 the limitation in the review document.
 
-Preserve the automation-managed visible byline and author-bio regions. Do not
-invent, paraphrase, or independently add author credentials or biography text.
+Preserve the existing `author_bio` unless the reviewer specifically requests a
+bio change. If it must be revised, use only facts explicitly present in the
+Doctor Profiles bio source; never add credentials or biographical facts. Do not
+independently add the byline or biography inside `article_html`.
 
 Keep all unaffected, accurate material. Preserve confirmed WordPress Shortcoder
 tags exactly, especially `[sc name="practice_name"][/sc]`; do not introduce

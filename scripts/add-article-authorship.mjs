@@ -14,13 +14,13 @@ const escapeAuthorHtml = (value) => String(value ?? '')
   .replaceAll('>', '&gt;')
   .replaceAll('"', '&quot;')
   .replaceAll("'", '&#039;');
-const ensureArticleAuthorship = (sourceHtml) => {
+const ensureArticleAuthorship = (sourceHtml, processedAuthorBio) => {
   const authorName = String(context.author_name || context.doctor_name || '').trim();
   const credentials = String(context.credentials || '').trim();
-  const authorBio = String(context.author_bio || '').trim();
+  const authorBio = String(processedAuthorBio || '').trim();
   const profileUrl = String(context.profile_url || '').trim();
-  if (!authorName || !credentials || !authorBio) {
-    throw new Error('Verified author name, credentials, and bio are required before an article can be generated or revised.');
+  if (!authorName || !credentials || authorBio.length < 40) {
+    throw new Error('Verified author name, credentials, and a complete processed bio are required before an article can move forward.');
   }
   let result = String(sourceHtml || '')
     .replace(/\\s*<!-- AAC_AUTHOR_BYLINE_START -->[\\s\\S]*?<!-- AAC_AUTHOR_BYLINE_END -->\\s*/gi, '\\n')
@@ -77,6 +77,18 @@ for (const [file, loadName, prepareName, validateName] of workflows) {
     );
   }
 
+  if (!prepare.parameters.jsCode.includes("required: ['article_html', 'author_bio'")) {
+    prepare.parameters.jsCode = prepare.parameters.jsCode
+      .replace(
+        "required: ['article_html', 'review_document_markdown', 'metadata']",
+        "required: ['article_html', 'author_bio', 'review_document_markdown', 'metadata']"
+      )
+      .replace(
+        "properties: {\n    article_html: { type: 'string' },",
+        "properties: {\n    article_html: { type: 'string' },\n    author_bio: { type: 'string' },"
+      );
+  }
+
   if (!validate.parameters.jsCode.includes('ensureArticleAuthorship')) {
     validate.parameters.jsCode = validate.parameters.jsCode.replace(
       "const context = $('" + prepareName + "').first().json;",
@@ -84,7 +96,32 @@ for (const [file, loadName, prepareName, validateName] of workflows) {
     );
     validate.parameters.jsCode = validate.parameters.jsCode.replace(
       'const html = publicationPackage.article_html || \'\';',
-      "const html = ensureArticleAuthorship(publicationPackage.article_html || '');"
+      "const html = ensureArticleAuthorship(publicationPackage.article_html || '', publicationPackage.author_bio);"
+    );
+  }
+
+  validate.parameters.jsCode = validate.parameters.jsCode
+    .replace(
+      'const ensureArticleAuthorship = (sourceHtml) => {',
+      'const ensureArticleAuthorship = (sourceHtml, processedAuthorBio) => {'
+    )
+    .replace(
+      "const authorBio = String(context.author_bio || '').trim();",
+      "const authorBio = String(processedAuthorBio || '').trim();"
+    )
+    .replace(
+      "if (!authorName || !credentials || !authorBio) {\n    throw new Error('Verified author name, credentials, and bio are required before an article can be generated or revised.');",
+      "if (!authorName || !credentials || authorBio.length < 40) {\n    throw new Error('Verified author name, credentials, and a complete processed bio are required before an article can move forward.');"
+    );
+
+  validate.parameters.jsCode = validate.parameters.jsCode.replace(
+    "const html = ensureArticleAuthorship(publicationPackage.article_html || '');",
+    "const html = ensureArticleAuthorship(publicationPackage.article_html || '', publicationPackage.author_bio);"
+  );
+  if (!validate.parameters.jsCode.includes('author_bio: publicationPackage.author_bio')) {
+    validate.parameters.jsCode = validate.parameters.jsCode.replace(
+      '  article_html: html,\n  review_document_markdown:',
+      '  article_html: html,\n  author_bio: publicationPackage.author_bio,\n  review_document_markdown:'
     );
   }
 

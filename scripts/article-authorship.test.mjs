@@ -28,10 +28,12 @@ test('generation and revision workflows enforce visible verified authorship', ()
     const validate = workflow.nodes.find((node) => node.name === validateName).parameters.jsCode;
     assert.match(query, /d\.author_bio/);
     assert.match(prepare, /Doctor Profiles row must be completed and marked Active/);
+    assert.match(prepare, /required: \['article_html', 'author_bio'/);
     assert.match(validate, /<strong>By /);
     assert.match(validate, /<h2>About /);
     assert.match(validate, /AAC_AUTHOR_BYLINE_START/);
     assert.match(validate, /AAC_AUTHOR_BIO_START/);
+    assert.match(validate, /publicationPackage\.author_bio/);
   }
 });
 

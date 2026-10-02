@@ -21,7 +21,7 @@ The transcript remains the source of the doctor's experience, professional judgm
 - Address every reasonable item in the doctor's request.
 - Preserve unaffected material whenever it remains accurate and useful.
 - Keep the article in the doctor's natural first-person voice.
-- Preserve the automation-managed visible byline and author-bio regions. Do not invent, paraphrase, or independently add author credentials or biography text.
+- Preserve the existing `author_bio` unless the reviewer specifically requests a bio change. If it must be revised, use only facts explicitly present in the Doctor Profiles bio source; never add credentials or biographical facts. Do not independently add the byline or biography inside `article_html`.
 - Preserve the central narrative unless the doctor explicitly asks to change it.
 - Do not silently make unrelated editorial changes.
 - Do not introduce new clinical claims without checking authoritative sources.
@@ -36,8 +36,9 @@ The transcript remains the source of the doctor's experience, professional judgm
 Return a complete two-artifact publication package:
 
 1. `article_html`: the full revised production HTML, not a diff.
-2. `review_document_markdown`: the full revised human-readable review document, not a change summary.
-3. `metadata`: the canonical H1, SEO title, slug, meta description, primary search intent, and word count.
+2. `author_bio`: the complete reviewed 2–4 sentence third-person author bio.
+3. `review_document_markdown`: the full revised human-readable review document, not a change summary.
+4. `metadata`: the canonical H1, SEO title, slug, meta description, primary search intent, and word count.
 
 The article shown in the review document must match `article_html` exactly in wording. Update the review document's sourcing, editorial notes, and expert-review checklist when the revision changes them.
 

@@ -56,7 +56,20 @@ export default {
     const upstreamPath = ROUTES[url.pathname];
 
     if (!upstreamPath) {
-      return env.ASSETS.fetch(request);
+      const response = await env.ASSETS.fetch(request);
+      const contentType = response.headers.get('content-type') ?? '';
+      if (request.method === 'GET' && contentType.includes('text/html')) {
+        const headers = new Headers(response.headers);
+        headers.set('Cache-Control', 'no-store, max-age=0');
+        headers.set('Pragma', 'no-cache');
+        headers.set('Expires', '0');
+        return new Response(response.body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers,
+        });
+      }
+      return response;
     }
 
     if (request.method !== 'POST') {

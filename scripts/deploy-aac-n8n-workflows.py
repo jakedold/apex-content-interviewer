@@ -340,7 +340,7 @@ def main() -> int:
         return 1
 
     print("\nSUCCESS")
-    print("All four AAC workflows were updated in place and their original active states were restored.")
+    print(f"All {len(TARGETS)} selected AAC workflows were updated in place and their original active states were restored.")
     print(f"Backups are at: {backup_dir}")
     return 0
 

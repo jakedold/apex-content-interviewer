@@ -3,6 +3,8 @@ import { createRemoteJWKSet, importPKCS8, jwtVerify, SignJWT } from 'jose';
 type AdminEnv = Env & {
   GOOGLE_SERVICE_ACCOUNT_JSON?: string;
   ADMIN_ACTION_EMAILS?: string;
+  ADMIN_ACCESS_MANAGEMENT_URL?: string;
+  ADMIN_ROLE_MANAGEMENT_URL?: string;
   ADMIN_COMMAND_SECRET?: string;
   ADMIN_COMMAND_PATH?: string;
 };
@@ -316,6 +318,28 @@ function actionEmails(env: AdminEnv): string[] {
   return (env.ADMIN_ACTION_EMAILS ?? '').split(',').map((email) => email.trim().toLowerCase()).filter(Boolean);
 }
 
+function managementUrl(value: string | undefined, fallback: string): string {
+  if (!value) return fallback;
+  try {
+    const url = new URL(value);
+    if (url.protocol === 'https:' && (url.hostname === 'dash.cloudflare.com' || url.hostname === 'one.dash.cloudflare.com')) return url.toString();
+  } catch {
+    // Use the safe Cloudflare fallback below.
+  }
+  return fallback;
+}
+
+function accessManagement(viewer: AccessClaims, env: AdminEnv): Record<string, unknown> {
+  const administratorEmails = actionEmails(env);
+  const isAdministrator = Boolean(viewer.email && administratorEmails.includes(viewer.email));
+  return {
+    signInProvider: 'Cloudflare Access',
+    signInManagementUrl: isAdministrator ? managementUrl(env.ADMIN_ACCESS_MANAGEMENT_URL, 'https://one.dash.cloudflare.com/') : null,
+    roleManagementUrl: isAdministrator ? managementUrl(env.ADMIN_ROLE_MANAGEMENT_URL, 'https://dash.cloudflare.com/') : null,
+    actionAdministrators: isAdministrator ? administratorEmails : [],
+  };
+}
+
 function capabilities(viewer: AccessClaims, env: AdminEnv): Record<string, unknown> {
   const canAct = Boolean(viewer.email && actionEmails(env).includes(viewer.email) && env.ADMIN_COMMAND_SECRET && env.ADMIN_COMMAND_PATH);
   return { readOnly: !canAct, actionsEnabled: canAct, actionApiVersion: 'v1', role: canAct ? 'administrator' : 'viewer',
@@ -335,7 +359,7 @@ export async function handleAdminOverview(request: Request, env: Env): Promise<R
   catch { return Response.json({ error: 'UNAUTHORIZED', message: 'Cloudflare Access authentication is required.' }, { status: 401 }); }
   try {
     const overview = await queryJson(adminEnv, adminOverviewQuery(adminEnv.BQ_PROJECT_ID, adminEnv.BQ_DATASET));
-    return Response.json({ viewer: { email: viewer.email ?? null }, capabilities: capabilities(viewer, adminEnv), overview }, { headers: { 'Cache-Control': 'private, no-store' } });
+    return Response.json({ viewer: { email: viewer.email ?? null }, capabilities: capabilities(viewer, adminEnv), access: accessManagement(viewer, adminEnv), overview }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {
     console.error(JSON.stringify({ event: 'admin_overview_failed', viewer: viewer.email ?? viewer.sub ?? 'unknown', error: error instanceof Error ? error.message : String(error) }));
     return unavailable(error);

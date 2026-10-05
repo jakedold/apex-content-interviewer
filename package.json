@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && tsc -p tsconfig.worker.json --noEmit && vite build",
+    "test:admin-access": "node --test scripts/admin-access.test.mjs",
     "test:authorship": "node --test scripts/article-authorship.test.mjs",
     "test:dispatcher": "node --test scripts/campaign-dispatcher.test.mjs",
     "test:verified-practices": "node --test scripts/verified-practice-workflows.test.mjs",

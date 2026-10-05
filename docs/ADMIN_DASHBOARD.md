@@ -45,6 +45,8 @@ Cloudflare configuration values:
 | --- | --- |
 | `ADMIN_ACCESS_TEAM_DOMAIN` | Access team domain, such as `example.cloudflareaccess.com` |
 | `ADMIN_ACCESS_AUD` | Audience tag for the Access application protecting the admin routes |
+| `ADMIN_ACCESS_MANAGEMENT_URL` | Cloudflare Zero Trust application/policy page opened by the dashboard |
+| `ADMIN_ROLE_MANAGEMENT_URL` | Cloudflare Worker settings page where the administrator allowlist is maintained |
 | `BQ_PROJECT_ID` | Google Cloud project used to run the query |
 | `BQ_DATASET` | Automated Article Creation dataset |
 | `BQ_LOCATION` | BigQuery dataset/query location |
@@ -77,12 +79,19 @@ The dashboard requests the `bigquery.readonly` OAuth scope and applies a 250 MB 
 ```text
 viewer
 capabilities
+access
 overview.summary
 overview.campaigns
 overview.work_queue
 overview.recent_events
 overview.communication_failures
 ```
+
+The `/admin/access` path separates the two access layers. Cloudflare Access
+policies govern who can sign in, while `ADMIN_ACTION_EMAILS` governs who can
+launch campaigns and record audited approvals. Only an existing administrator
+can see the administrator list or open the two management consoles from the
+dashboard.
 
 The initial client intentionally treats administrative actions as disabled. Future retry, resend, hold, or re-push actions should use separate command endpoints that:
 

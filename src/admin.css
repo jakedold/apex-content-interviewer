@@ -169,6 +169,34 @@
 .admin-permission-list li { display: grid; gap: 3px; }
 .admin-permission-list strong { color: #064c78; font-size: 12px; }
 .admin-permission-list span, .admin-control-note { color: #6d6e6e; font-size: 11px; }
+.admin-secondary-link {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 16px;
+  color: #007eae;
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: none;
+}
+.admin-secondary-link:hover { color: #064c78; text-decoration: underline; }
+.admin-access-panel { scroll-margin-top: 24px; }
+.admin-access-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  padding: 0 26px 22px;
+}
+.admin-access-card { position: relative; padding: 22px; border: 1px solid #d9e2e8; border-radius: 10px; background: #f8fbfd; }
+.admin-access-card h3 { margin: 0 0 9px; color: #064c78; font-size: 18px; }
+.admin-access-card p { margin: 0 0 16px; color: #65747c; font-size: 13px; line-height: 1.6; }
+.admin-access-card small { color: #7b878e; font-size: 11px; }
+.admin-access-step { position: absolute; top: 18px; right: 18px; display: grid; width: 26px; height: 26px; place-items: center; border-radius: 50%; background: #e0edf4; color: #064c78; font-size: 12px; font-weight: 900; }
+.admin-link-button { display: inline-flex; align-items: center; text-decoration: none; }
+.admin-access-user-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.admin-access-user-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid #d9e2e8; border-radius: 8px; background: #fff; color: #314a59; font-size: 12px; font-weight: 700; }
+.admin-access-guidance { display: grid; grid-template-columns: auto 1fr; gap: 12px; margin: 0 26px 26px; padding: 16px 18px; border-left: 4px solid #8ac441; background: #f4f8ee; color: #526066; font-size: 12px; line-height: 1.55; }
+.admin-access-guidance strong { color: #385414; }
+.admin-access-guidance code { padding: 1px 4px; border-radius: 3px; background: #e6eddc; color: #2f4812; }
 .admin-panel-heading {
   display: flex;
   align-items: center;
@@ -369,6 +397,7 @@
   .admin-header { display: grid; }
   .admin-user-area { justify-items: start; }
   .admin-campaign-grid { grid-template-columns: 1fr; }
+  .admin-access-grid { grid-template-columns: 1fr; }
   .admin-toolbar { align-items: stretch; flex-direction: column; }
   .admin-search input { width: 100%; }
 }
@@ -386,6 +415,8 @@
   .admin-detail-list { grid-template-columns: 1fr; }
   .admin-campaign-form { grid-template-columns: 1fr; }
   .admin-campaign-form > * { grid-column: 1; }
+  .admin-access-grid { padding-left: 18px; padding-right: 18px; }
+  .admin-access-guidance { grid-template-columns: 1fr; margin-left: 18px; margin-right: 18px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

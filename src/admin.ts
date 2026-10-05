@@ -133,6 +133,12 @@ type AdminResponse = {
     role: 'administrator' | 'viewer';
     enabledActions: string[];
   };
+  access: {
+    signInProvider: string;
+    signInManagementUrl: string | null;
+    roleManagementUrl: string | null;
+    actionAdministrators: string[];
+  };
   overview: Overview;
 };
 
@@ -492,14 +498,52 @@ function renderAdminControls(data: AdminResponse): string {
       </article>
       <article class="admin-control-card" id="admins">
         <span class="admin-kicker">Access</span>
-        <h2>Admins and permissions</h2>
+        <h2>Users and permissions</h2>
         <div class="admin-current-user"><span>${escapeHtml(data.viewer.email || 'Workspace user')}</span>${statusPill(data.capabilities.role)}</div>
         <ul class="admin-permission-list">
           <li><strong>Viewer</strong><span>Campaigns, content, timelines, and diagnostics</span></li>
           <li><strong>Administrator</strong><span>Viewer access plus audited approvals and campaign launch</span></li>
         </ul>
-        <p class="admin-control-note">Sign-in membership is governed by Cloudflare Access. Action roles are separately allowlisted so broad Workspace access cannot change workflow state.</p>
+        <p class="admin-control-note">Cloudflare controls who may sign in. Administrator privileges are maintained separately so dashboard viewers cannot change workflow state.</p>
+        <a class="admin-secondary-link" href="/admin/access">View and manage users</a>
       </article>
+    </section>`;
+}
+
+function renderAccess(data: AdminResponse): string {
+  const canManage = data.capabilities.role === 'administrator';
+  const administratorList = data.access.actionAdministrators.length
+    ? `<ul class="admin-access-user-list">${data.access.actionAdministrators.map((email) => `<li><span>${escapeHtml(email)}</span>${statusPill('administrator')}</li>`).join('')}</ul>`
+    : '<div class="admin-empty">Administrator email details are visible only to an administrator.</div>';
+  return `
+    <section class="admin-panel admin-access-panel" id="access">
+      <div class="admin-panel-heading">
+        <div><span class="admin-kicker">Security</span><h2>Access and users</h2></div>
+        <span class="admin-count">${escapeHtml(data.access.signInProvider)}</span>
+      </div>
+      <div class="admin-access-grid">
+        <article class="admin-access-card">
+          <span class="admin-access-step">1</span>
+          <h3>Dashboard sign-in</h3>
+          <p>Cloudflare Access policies decide who can open the dashboard. Use the policy tester to check a person before saving a change.</p>
+          ${canManage && data.access.signInManagementUrl
+            ? `<a class="admin-primary-button admin-link-button" href="${escapeHtml(data.access.signInManagementUrl)}" target="_blank" rel="noreferrer">Manage sign-in access</a>`
+            : '<small>Only an administrator can open the access-management console.</small>'}
+        </article>
+        <article class="admin-access-card">
+          <span class="admin-access-step">2</span>
+          <h3>Administrator privileges</h3>
+          <p>These users can launch campaigns and record audited approvals. Everyone else who passes Cloudflare Access remains a viewer.</p>
+          ${administratorList}
+          ${canManage && data.access.roleManagementUrl
+            ? `<a class="admin-secondary-link" href="${escapeHtml(data.access.roleManagementUrl)}" target="_blank" rel="noreferrer">Edit administrator list</a>`
+            : ''}
+        </article>
+      </div>
+      <div class="admin-access-guidance">
+        <strong>To add someone</strong>
+        <span>First include their Apex account in the Cloudflare Access policy. Then add their email to <code>ADMIN_ACTION_EMAILS</code> only if they should be an administrator. Separate multiple administrator emails with commas and deploy the Worker setting.</span>
+      </div>
     </section>`;
 }
 
@@ -600,7 +644,7 @@ function renderDashboard(data: AdminResponse): void {
           <a href="#controls">Actions</a>
           <a href="#work-queue">Work queue</a>
           <a href="#campaigns">Campaigns</a>
-          <a href="#admins">Admins</a>
+          <a href="/admin/access">Access</a>
           <a href="#errors">Diagnostics</a>
           <a href="#timeline">Timeline</a>
         </nav>
@@ -617,6 +661,7 @@ function renderDashboard(data: AdminResponse): void {
         </header>
         ${renderSummary(data)}
         ${renderAdminControls(data)}
+        ${renderAccess(data)}
         ${renderQueue(data)}
         ${renderCampaigns(data)}
         ${renderDiagnostics(data)}
@@ -835,6 +880,9 @@ function renderDashboard(data: AdminResponse): void {
     renderQueueRows();
   });
   renderQueueRows();
+  if (window.location.pathname === '/admin/access') {
+    document.querySelector('#access')?.scrollIntoView({ block: 'start' });
+  }
 }
 
 function parseArticlePackage(value: string | null): { articleHtml: string | null; reviewDocument: string | null } {

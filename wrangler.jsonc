@@ -13,6 +13,8 @@
     "N8N_BASE_URL": "https://n8n.apexdentalautomation.com",
     "ADMIN_ACCESS_TEAM_DOMAIN": "curly-meadow-fb13.cloudflareaccess.com",
     "ADMIN_ACCESS_AUD": "d72141bb586cf179ee8111f4b1d7f734eea3e2a85c796b3aa519c3c68edfb6ee",
+    "ADMIN_ACCESS_MANAGEMENT_URL": "https://one.dash.cloudflare.com/8fe8252777ac01ec95e22fc8fa26445c/access/apps",
+    "ADMIN_ROLE_MANAGEMENT_URL": "https://dash.cloudflare.com/8fe8252777ac01ec95e22fc8fa26445c/workers/services/view/apex-content-interviewer/production/settings",
     "BQ_PROJECT_ID": "apex-marketing-n8n",
     "BQ_DATASET": "automated_article_creation",
     "BQ_LOCATION": "US",

@@ -118,6 +118,8 @@ campaign_rows AS (
     c.status, c.require_marketing_approval, COALESCE(c.preview_only, FALSE) AS preview_only,
     c.created_at, c.launched_at,
     c.invitation_send_at, MIN(cd.invited_at) AS first_invitation_sent_at,
+    MAX(SAFE_CAST(JSON_VALUE(TO_JSON_STRING(c), '$.archived_at') AS TIMESTAMP)) AS archived_at,
+    MAX(SAFE_CAST(JSON_VALUE(TO_JSON_STRING(c), '$.interview_deadline') AS DATE)) AS interview_deadline,
     COUNT(DISTINCT cd.doctor_id) AS doctor_count,
     COUNT(DISTINCT IF(i.interview_id IS NOT NULL, cd.doctor_id, NULL)) AS interview_count,
     COUNT(DISTINCT a.article_id) AS article_count,
@@ -209,7 +211,7 @@ SELECT TO_JSON_STRING(STRUCT(
     (SELECT COUNT(*) FROM ${table('articles')} WHERE status = 'PUBLISHED' AND published_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)) AS published_30d
   ) AS summary,
   ARRAY(SELECT AS STRUCT * FROM campaign_rows
-    ORDER BY COALESCE(first_invitation_sent_at, invitation_send_at, launched_at, created_at) DESC LIMIT 50) AS campaigns,
+    ORDER BY COALESCE(first_invitation_sent_at, invitation_send_at, launched_at, created_at) DESC LIMIT 250) AS campaigns,
   ARRAY(SELECT AS STRUCT * FROM queue_rows ORDER BY CASE urgency WHEN 'error' THEN 0 WHEN 'attention' THEN 1 ELSE 2 END, updated_at ASC LIMIT 250) AS work_queue,
   ARRAY(SELECT AS STRUCT * FROM event_rows ORDER BY event_timestamp DESC LIMIT 150) AS recent_events,
   ARRAY(SELECT AS STRUCT * FROM communication_failures ORDER BY sent_at DESC LIMIT 50) AS communication_failures
@@ -221,8 +223,10 @@ function campaignTemplateQuery(project: string, dataset: string): string {
   return `
 WITH campaign AS (
   SELECT campaign_id, campaign_name, CAST(campaign_month AS STRING) AS campaign_month,
-    COALESCE(preview_only, FALSE) AS preview_only
-  FROM ${table('campaigns')}
+    COALESCE(preview_only, FALSE) AS preview_only,
+    JSON_VALUE(TO_JSON_STRING(c), '$.training_resource_url') AS training_resource_url,
+    COALESCE(SAFE_CAST(JSON_VALUE(TO_JSON_STRING(c), '$.send_doctor_review_reminders') AS BOOL), TRUE) AS send_doctor_review_reminders
+  FROM ${table('campaigns')} AS c
   WHERE campaign_id = @campaign_id
 ),
 topics AS (
@@ -248,6 +252,8 @@ SELECT TO_JSON_STRING(STRUCT(
   (SELECT campaign_id FROM campaign LIMIT 1) AS campaign_id,
   (SELECT campaign_name FROM campaign LIMIT 1) AS campaign_name,
   (SELECT campaign_month FROM campaign LIMIT 1) AS campaign_month,
+  (SELECT training_resource_url FROM campaign LIMIT 1) AS training_resource_url,
+  (SELECT send_doctor_review_reminders FROM campaign LIMIT 1) AS send_doctor_review_reminders,
   IF((SELECT preview_only FROM campaign LIMIT 1), 'Presentation preview', 'Linked doctors') AS audience,
   CASE
     WHEN (SELECT COUNT(DISTINCT practice_id) FROM recipients) = 1
@@ -259,6 +265,65 @@ SELECT TO_JSON_STRING(STRUCT(
 )) AS payload
 FROM campaign
 LIMIT 1;`;
+}
+
+function campaignStatusQuery(project: string, dataset: string): string {
+  const table = tableFactory(project, dataset);
+  return `
+WITH latest_interviews AS (
+  SELECT * EXCEPT(row_number) FROM (
+    SELECT i.*, ROW_NUMBER() OVER (PARTITION BY campaign_id, doctor_id ORDER BY COALESCE(completed_at, started_at) DESC, updated_at DESC) AS row_number
+    FROM ${table('interviews')} i
+  ) WHERE row_number = 1
+), latest_articles AS (
+  SELECT * EXCEPT(row_number) FROM (
+    SELECT a.*, ROW_NUMBER() OVER (PARTITION BY campaign_id, doctor_id ORDER BY created_at DESC, article_id DESC) AS row_number
+    FROM ${table('articles')} a
+  ) WHERE row_number = 1
+), campaign AS (
+  SELECT campaign_name, CAST(campaign_month AS STRING) AS campaign_month,
+    JSON_VALUE(TO_JSON_STRING(c), '$.interview_deadline') AS interview_deadline
+  FROM ${table('campaigns')} AS c
+  WHERE campaign_id = @campaign_id
+), roster AS (
+  SELECT
+    c.campaign_name,
+    c.campaign_month,
+    c.interview_deadline,
+    d.doctor_name,
+    d.email,
+    p.practice_name,
+    COALESCE(t.topic_title, '') AS topic_title,
+    CASE
+      WHEN a.status IS NOT NULL THEN a.status
+      WHEN i.completed_at IS NOT NULL THEN 'INTERVIEW_COMPLETED'
+      WHEN i.started_at IS NOT NULL THEN 'INTERVIEW_IN_PROGRESS'
+      WHEN i.interview_id IS NULL AND cd.invited_at IS NOT NULL THEN 'INVITED_NO_RESPONSE'
+      ELSE cd.status
+    END AS current_status,
+    cd.invited_at AS invitation_sent_at,
+    i.started_at AS interview_started_at,
+    i.completed_at AS interview_completed_at,
+    a.article_id,
+    a.current_version AS article_version,
+    a.doctor_review_deadline,
+    a.published_at,
+    COALESCE(a.published_url, '') AS published_url
+  FROM ${table('campaign_doctors')} cd
+  CROSS JOIN campaign c
+  JOIN ${table('doctors')} d USING (doctor_id)
+  LEFT JOIN ${table('practices')} p ON p.practice_id = d.practice_id
+  LEFT JOIN latest_interviews i ON i.campaign_id = cd.campaign_id AND i.doctor_id = cd.doctor_id
+  LEFT JOIN ${table('campaign_topics')} t ON t.topic_id = i.topic_id
+  LEFT JOIN latest_articles a ON a.campaign_id = cd.campaign_id AND a.doctor_id = cd.doctor_id
+  WHERE cd.campaign_id = @campaign_id
+)
+SELECT TO_JSON_STRING(STRUCT(
+  (SELECT campaign_name FROM campaign LIMIT 1) AS campaign_name,
+  (SELECT campaign_month FROM campaign LIMIT 1) AS campaign_month,
+  (SELECT interview_deadline FROM campaign LIMIT 1) AS interview_deadline,
+  ARRAY(SELECT AS STRUCT * FROM roster ORDER BY practice_name, doctor_name) AS rows
+)) AS payload;`;
 }
 
 function workItemDetailQuery(project: string, dataset: string): string {
@@ -343,7 +408,7 @@ function accessManagement(viewer: AccessClaims, env: AdminEnv): Record<string, u
 function capabilities(viewer: AccessClaims, env: AdminEnv): Record<string, unknown> {
   const canAct = Boolean(viewer.email && actionEmails(env).includes(viewer.email) && env.ADMIN_COMMAND_SECRET && env.ADMIN_COMMAND_PATH);
   return { readOnly: !canAct, actionsEnabled: canAct, actionApiVersion: 'v1', role: canAct ? 'administrator' : 'viewer',
-    enabledActions: canAct ? ['approve_for_doctor', 'launch_campaign'] : [] };
+    enabledActions: canAct ? ['approve_for_doctor', 'launch_campaign', 'archive_campaign', 'restore_campaign'] : [] };
 }
 
 function unavailable(error: unknown): Response {
@@ -387,6 +452,53 @@ export async function handleAdminCampaignTemplate(request: Request, env: Env, ca
   }
 }
 
+function csvCell(value: unknown): string {
+  let text = value === null || value === undefined ? '' : String(value);
+  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+  return `"${text.replaceAll('"', '""')}"`;
+}
+
+export async function handleAdminCampaignStatusCsv(request: Request, env: Env, campaignId: string): Promise<Response> {
+  const adminEnv: AdminEnv = env;
+  const missing = configurationMissing(adminEnv);
+  if (missing.length) return Response.json({ error: 'ADMIN_CONFIGURATION_REQUIRED', message: 'The protected dashboard data connection is not configured.', missing }, { status: 503 });
+  let viewer: AccessClaims;
+  try { viewer = await authenticateAdmin(request, adminEnv); }
+  catch { return Response.json({ error: 'UNAUTHORIZED', message: 'Cloudflare Access authentication is required.' }, { status: 401 }); }
+  if (!campaignId || campaignId.length > 200) return Response.json({ error: 'INVALID_CAMPAIGN', message: 'The campaign identifier is invalid.' }, { status: 400 });
+  try {
+    const result = await queryJson(
+      adminEnv,
+      campaignStatusQuery(adminEnv.BQ_PROJECT_ID, adminEnv.BQ_DATASET),
+      [stringParameter('campaign_id', campaignId)],
+    ) as { campaign_name?: string; rows?: Array<Record<string, unknown>> };
+    if (!result.campaign_name) return Response.json({ error: 'CAMPAIGN_NOT_FOUND', message: 'That campaign was not found.' }, { status: 404 });
+    const columns: Array<[string, string]> = [
+      ['Campaign', 'campaign_name'], ['Campaign Month', 'campaign_month'], ['Doctor', 'doctor_name'],
+      ['Email', 'email'], ['Practice', 'practice_name'], ['Topic', 'topic_title'], ['Current Status', 'current_status'],
+      ['Invitation Sent At', 'invitation_sent_at'], ['Interview Started At', 'interview_started_at'],
+      ['Interview Completed At', 'interview_completed_at'], ['Article ID', 'article_id'], ['Article Version', 'article_version'],
+      ['Interview Completion Deadline', 'interview_deadline'], ['Doctor Review Deadline', 'doctor_review_deadline'],
+      ['Published At', 'published_at'], ['Published URL', 'published_url'],
+    ];
+    const lines = [
+      columns.map(([label]) => csvCell(label)).join(','),
+      ...(result.rows ?? []).map((row) => columns.map(([, key]) => csvCell(row[key])).join(',')),
+    ];
+    const filenameId = campaignId.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 64) || 'campaign';
+    return new Response(`\uFEFF${lines.join('\r\n')}`, {
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="aac-campaign-status-${filenameId}.csv"`,
+        'Cache-Control': 'private, no-store',
+      },
+    });
+  } catch (error) {
+    console.error(JSON.stringify({ event: 'admin_campaign_status_export_failed', viewer: viewer.email ?? viewer.sub ?? 'unknown', campaignId, error: error instanceof Error ? error.message : String(error) }));
+    return unavailable(error);
+  }
+}
+
 export async function handleAdminWorkItem(request: Request, env: Env, campaignId: string, doctorId: string): Promise<Response> {
   const adminEnv: AdminEnv = env;
   const missing = configurationMissing(adminEnv);
@@ -415,7 +527,7 @@ export async function handleAdminCommand(request: Request, env: Env): Promise<Re
   try { body = await request.json(); } catch { return Response.json({ error: 'INVALID_REQUEST', message: 'A JSON command body is required.' }, { status: 400 }); }
   if (!body || typeof body !== 'object') return Response.json({ error: 'INVALID_REQUEST', message: 'A JSON command body is required.' }, { status: 400 });
   const command = body as Record<string, unknown>;
-  if (!['approve_for_doctor', 'launch_campaign'].includes(String(command.action))) return Response.json({ error: 'INVALID_ACTION', message: 'This administrative action is not supported.' }, { status: 400 });
+  if (!['approve_for_doctor', 'launch_campaign', 'archive_campaign', 'restore_campaign'].includes(String(command.action))) return Response.json({ error: 'INVALID_ACTION', message: 'This administrative action is not supported.' }, { status: 400 });
   const idempotencyKey = request.headers.get('Idempotency-Key');
   if (!idempotencyKey || idempotencyKey.length > 100) return Response.json({ error: 'IDEMPOTENCY_KEY_REQUIRED', message: 'A valid idempotency key is required.' }, { status: 400 });
   try {

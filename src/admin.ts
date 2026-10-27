@@ -10,7 +10,9 @@ type Campaign = {
   created_at: string;
   launched_at: string | null;
   invitation_send_at: string | null;
+  interview_deadline: string | null;
   first_invitation_sent_at: string | null;
+  archived_at: string | null;
   doctor_count: number | string;
   interview_count: number | string;
   article_count: number | string;
@@ -40,6 +42,8 @@ type CampaignTemplate = {
   campaign_month: string;
   audience: 'Linked doctors' | 'Presentation preview';
   practice_id: string | null;
+  training_resource_url: string | null;
+  send_doctor_review_reminders: boolean | null;
   topics: CampaignTemplateTopic[];
   recipients: CampaignTemplateRecipient[];
 };
@@ -200,6 +204,8 @@ const app = appElement;
 let adminData: AdminResponse | null = null;
 let queueFilter = 'all';
 let queueSearch = '';
+let campaignArchiveFilter: 'active' | 'archived' = 'active';
+let campaignSort: 'month_desc' | 'month_asc' | 'name_asc' = 'month_desc';
 
 function escapeHtml(value: unknown): string {
   return String(value ?? '')
@@ -235,6 +241,12 @@ function campaignSendLabel(campaign: Campaign): string {
     return `Scheduled ${formatDate(campaign.invitation_send_at, true)}`;
   }
   return 'Invitations not sent';
+}
+
+function campaignMonthLabel(value: string): string {
+  const date = new Date(`${value.slice(0, 10)}T12:00:00Z`);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(date);
 }
 
 function titleCase(value: string): string {
@@ -396,16 +408,24 @@ function campaignCard(campaign: Campaign): string {
   const doctors = numberValue(campaign.doctor_count);
   const published = numberValue(campaign.published_count);
   const progress = doctors ? Math.round((published / doctors) * 100) : 0;
+  const archived = Boolean(campaign.archived_at);
+  const archiveAction = archived ? 'restore_campaign' : 'archive_campaign';
+  const canArchive = adminData?.capabilities.enabledActions.includes(archiveAction) ?? false;
   return `
     <article class="admin-campaign-card">
       <div class="admin-campaign-topline">
-        <span>${escapeHtml(campaignSendLabel(campaign))}</span>
+        <span>${escapeHtml(campaignSendLabel(campaign))}${archived ? ` · Archived ${escapeHtml(formatDate(campaign.archived_at))}` : ''}</span>
         ${statusPill(campaign.status)}
       </div>
       <div class="admin-campaign-title-row">
         <h3>${escapeHtml(campaign.campaign_name)}</h3>
-        <button class="admin-text-button" type="button" data-duplicate-campaign="${escapeHtml(campaign.campaign_id)}">Duplicate</button>
+        <div class="admin-campaign-actions">
+          <button class="admin-text-button" type="button" data-export-campaign="${escapeHtml(campaign.campaign_id)}">Download status CSV</button>
+          <button class="admin-text-button" type="button" data-duplicate-campaign="${escapeHtml(campaign.campaign_id)}">Duplicate</button>
+          <button class="admin-text-button" type="button" data-campaign-action="${archiveAction}" data-campaign-id="${escapeHtml(campaign.campaign_id)}" ${canArchive ? '' : 'disabled'}>${archived ? 'Restore' : 'Archive'}</button>
+        </div>
       </div>
+      <p class="admin-campaign-month">${escapeHtml(campaignMonthLabel(campaign.campaign_month))}</p>
       <div class="admin-progress" aria-label="${progress}% published"><span style="width:${progress}%"></span></div>
       <div class="admin-campaign-stats">
         <span><strong>${doctors}</strong> doctors</span>
@@ -425,12 +445,120 @@ function renderCampaigns(data: AdminResponse): string {
     <section class="admin-panel" id="campaigns">
       <div class="admin-panel-heading">
         <div><span class="admin-kicker">Campaign history</span><h2>Monthly campaigns</h2></div>
-        <span class="admin-count">${data.overview.campaigns.length} shown</span>
+        <span class="admin-count" id="admin-campaign-count"></span>
       </div>
-      <div class="admin-campaign-grid">
+      <div class="admin-campaign-toolbar">
+        <div class="admin-filter-group" role="group" aria-label="Filter campaigns">
+          <button class="admin-filter is-active" type="button" data-campaign-filter="active">Current and unarchived</button>
+          <button class="admin-filter" type="button" data-campaign-filter="archived">Archived</button>
+        </div>
+        <label class="admin-campaign-sort">Sort campaigns
+          <select id="admin-campaign-sort">
+            <option value="month_desc">Month, newest first</option>
+            <option value="month_asc">Month, oldest first</option>
+            <option value="name_asc">Campaign name, A–Z</option>
+          </select>
+        </label>
+      </div>
+      <p class="admin-campaign-message" id="admin-campaign-message" role="status"></p>
+      <div class="admin-campaign-grid" id="admin-campaign-grid">
         ${data.overview.campaigns.length ? data.overview.campaigns.map(campaignCard).join('') : '<div class="admin-empty">No campaigns are recorded yet.</div>'}
       </div>
     </section>`;
+}
+
+function renderCampaignCards(): void {
+  const grid = document.querySelector<HTMLElement>('#admin-campaign-grid');
+  const count = document.querySelector<HTMLElement>('#admin-campaign-count');
+  if (!grid || !count || !adminData) return;
+  const campaigns = adminData.overview.campaigns
+    .filter((campaign) => Boolean(campaign.archived_at) === (campaignArchiveFilter === 'archived'))
+    .sort((a, b) => {
+      if (campaignSort === 'name_asc') return a.campaign_name.localeCompare(b.campaign_name, undefined, { sensitivity: 'base' });
+      const monthOrder = String(a.campaign_month).localeCompare(String(b.campaign_month));
+      return campaignSort === 'month_asc' ? monthOrder : -monthOrder;
+    });
+  count.textContent = `${campaigns.length} shown · ${adminData.overview.campaigns.length} loaded`;
+  grid.innerHTML = campaigns.length
+    ? campaigns.map(campaignCard).join('')
+    : `<div class="admin-empty">No ${campaignArchiveFilter === 'archived' ? 'archived' : 'unarchived'} campaigns in this view.</div>`;
+  attachCampaignCardActions();
+}
+
+function setCampaignMessage(message: string): void {
+  const element = document.querySelector<HTMLElement>('#admin-campaign-message');
+  if (element) element.textContent = message;
+}
+
+function attachCampaignCardActions(): void {
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-export-campaign]')) {
+    button.addEventListener('click', () => void downloadCampaignStatusCsv(button));
+  }
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-campaign-action]')) {
+    button.addEventListener('click', () => void updateCampaignArchive(button));
+  }
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-duplicate-campaign]')) {
+    button.addEventListener('click', () => void duplicateCampaign(button.dataset.duplicateCampaign ?? ''));
+  }
+}
+
+async function downloadCampaignStatusCsv(button: HTMLButtonElement): Promise<void> {
+  const campaignId = button.dataset.exportCampaign ?? '';
+  if (!campaignId) return;
+  const originalText = button.textContent || 'Download status CSV';
+  button.disabled = true;
+  button.textContent = 'Preparing CSV…';
+  setCampaignMessage('');
+  try {
+    const response = await fetch(`/api/admin/campaigns/${encodeURIComponent(campaignId)}/status.csv`, { headers: { Accept: 'text/csv' } });
+    if (!response.ok) {
+      const raw = await response.text();
+      let message = 'The campaign status CSV could not be downloaded.';
+      try {
+        const body = JSON.parse(raw) as ApiError;
+        message = body.message || message;
+      } catch {
+        if (raw.trim()) message = raw.slice(0, 400);
+      }
+      throw new Error(message);
+    }
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = `aac-campaign-status-${campaignId.replace(/[^A-Za-z0-9_-]/g, '_')}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    setCampaignMessage('Campaign status CSV downloaded.');
+  } catch (error) {
+    setCampaignMessage(error instanceof Error ? error.message : 'The campaign status CSV could not be downloaded.');
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+}
+
+async function updateCampaignArchive(button: HTMLButtonElement): Promise<void> {
+  const campaignId = button.dataset.campaignId ?? '';
+  const action = button.dataset.campaignAction;
+  if (!campaignId || (action !== 'archive_campaign' && action !== 'restore_campaign')) return;
+  const archiving = action === 'archive_campaign';
+  const confirmed = window.confirm(archiving
+    ? 'Archive this campaign in the dashboard history? This only changes the dashboard view; it does not stop invitations, interviews, reviews, or publishing. You can restore it later.'
+    : 'Restore this campaign to the unarchived dashboard history?');
+  if (!confirmed) return;
+  button.disabled = true;
+  setCampaignMessage(archiving ? 'Archiving campaign…' : 'Restoring campaign…');
+  try {
+    await postAdminCommand({ action, campaign_id: campaignId });
+    setCampaignMessage(archiving ? 'Campaign archived. Its workflow and article records are unchanged.' : 'Campaign restored.');
+    await initializeAdmin();
+  } catch (error) {
+    setCampaignMessage(error instanceof Error ? error.message : 'The campaign archive state could not be changed.');
+    button.disabled = false;
+  }
 }
 
 function eventRow(event: WorkflowEvent): string {
@@ -589,7 +717,11 @@ async function duplicateCampaign(campaignId: string): Promise<void> {
     setCampaignField(form, 'campaign_month', template.campaign_month.slice(0, 7));
     setCampaignField(form, 'send_mode', 'now');
     setCampaignField(form, 'scheduled_send_local', '');
+    setCampaignField(form, 'interview_deadline', '');
+    setCampaignField(form, 'training_resource_url', template.training_resource_url ?? '');
     setCampaignField(form, 'launch_confirmation', '');
+    const reminderCheckbox = form.elements.namedItem('send_doctor_review_reminders');
+    if (reminderCheckbox instanceof HTMLInputElement) reminderCheckbox.checked = template.send_doctor_review_reminders !== false;
 
     const audience = form.elements.namedItem('audience') as HTMLSelectElement | null;
     if (audience) {
@@ -696,6 +828,12 @@ function renderDashboard(data: AdminResponse): void {
           <label>Campaign name<input name="campaign_name" required placeholder="October 2026 presentation demo" /></label>
           <label>Campaign month<input name="campaign_month" required type="month" /></label>
 
+          <fieldset class="admin-send-options"><legend>Doctor communications</legend>
+            <label>Interview completion deadline (optional)<input name="interview_deadline" type="date" /><small>Topic links expire at 11:59 PM Central on this date. If blank, links expire 30 days after the invitation. This deadline applies to completing the interview.</small></label>
+            <label>Training link or video (optional)<input name="training_resource_url" type="url" placeholder="https://…" /><small>This link is included in the invitation email.</small></label>
+            <label class="admin-toggle"><input name="send_doctor_review_reminders" type="checkbox" checked /><span>Send one reminder 48 hours before the doctor review deadline.</span></label>
+          </fieldset>
+
           <fieldset class="admin-send-options"><legend>Invitation timing</legend>
             <label>Send
               <select name="send_mode" id="campaign-send-mode" required>
@@ -767,11 +905,25 @@ function renderDashboard(data: AdminResponse): void {
           <fieldset class="admin-recipient-options" id="existing-recipient-section"><legend>Doctors to invite</legend>
             <p class="admin-muted" id="campaign-doctor-guidance">Search the current Doctor Census roster, then select doctors individually. Each selection retains its own primary-practice and website mapping.</p>
             <label class="admin-doctor-search"><span>Search doctors</span><input id="campaign-doctor-search" type="search" placeholder="Search by doctor or practice…" autocomplete="off" /></label>
+            <div class="admin-doctor-tools">
+              <label class="admin-campaign-sort">Arrange doctors
+                <select id="campaign-doctor-sort">
+                  <option value="last_name">Last name, A–Z</option>
+                  <option value="practice">Practice, then last name</option>
+                  <option value="first_name">First name, A–Z</option>
+                </select>
+              </label>
+              <div class="admin-doctor-bulk-actions">
+                <button class="admin-text-button" id="select-visible-doctors" type="button">Select all shown</button>
+                <button class="admin-text-button" id="clear-doctors" type="button">Deselect all</button>
+              </div>
+            </div>
             <div class="admin-doctor-selection-summary"><strong id="campaign-doctor-selected-count">0 selected</strong><span id="campaign-doctor-visible-count">${data.overview.campaign_launch_options.doctors.length} shown</span></div>
+            <p class="admin-campaign-message" id="campaign-doctor-selection-message" role="status"></p>
             <div id="campaign-doctor-options" class="admin-doctor-scroll-list">
               ${data.overview.campaign_launch_options.doctors.length
                 ? data.overview.campaign_launch_options.doctors.map((doctor) => `
-                    <label class="admin-recipient-option" data-doctor-search="${escapeHtml(`${doctor.doctor_name} ${doctor.practice_name} ${doctor.email || ''}`.toLowerCase())}" data-publishing-ready="${doctor.publishing_ready ? 'true' : 'false'}">
+                    <label class="admin-recipient-option" data-doctor-search="${escapeHtml(`${doctor.doctor_name} ${doctor.practice_name} ${doctor.email || ''}`.toLowerCase())}" data-doctor-name="${escapeHtml(doctor.doctor_name)}" data-doctor-practice="${escapeHtml(doctor.practice_name)}" data-publishing-ready="${doctor.publishing_ready ? 'true' : 'false'}">
                       <input type="checkbox" name="doctor_ids" value="${escapeHtml(doctor.doctor_id)}" />
                       <span><strong>${escapeHtml([doctor.doctor_name, doctor.credentials].filter(Boolean).join(', '))}</strong><small>${escapeHtml(doctor.practice_name)} · ${escapeHtml(doctor.email || doctor.doctor_id)}</small>${doctor.publishing_ready ? '' : '<em>Presentation preview only until this site is verified</em>'}</span>
                     </label>`).join('')
@@ -795,9 +947,6 @@ function renderDashboard(data: AdminResponse): void {
   });
   const campaignDialog = document.querySelector<HTMLDialogElement>('#admin-campaign-dialog');
   document.querySelector<HTMLButtonElement>('#open-campaign-builder')?.addEventListener('click', () => campaignDialog?.showModal());
-  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-duplicate-campaign]')) {
-    button.addEventListener('click', () => void duplicateCampaign(button.dataset.duplicateCampaign ?? ''));
-  }
   document.querySelector<HTMLButtonElement>('#campaign-dialog-close')?.addEventListener('click', () => campaignDialog?.close());
   document.querySelector<HTMLButtonElement>('#cancel-campaign')?.addEventListener('click', () => campaignDialog?.close());
 
@@ -810,6 +959,41 @@ function renderDashboard(data: AdminResponse): void {
   const scheduleFields = document.querySelector<HTMLElement>('#campaign-schedule-fields');
   const scheduledLocal = document.querySelector<HTMLInputElement>('#campaign-scheduled-local');
   const campaignTimezone = document.querySelector('#campaign-timezone') as HTMLSelectElement | null;
+  const campaignDoctorSort = document.querySelector('#campaign-doctor-sort') as HTMLSelectElement | null;
+  const doctorOptionList = document.querySelector<HTMLElement>('#campaign-doctor-options');
+  const doctorSelectionMessage = document.querySelector<HTMLElement>('#campaign-doctor-selection-message');
+
+  const lastNameKey = (name: string): string => {
+    if (name.includes(',')) return name.split(',', 1)[0].trim().toLowerCase();
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    const last = (parts.pop() ?? '').toLowerCase();
+    if (['jr', 'jr.', 'sr', 'sr.', 'ii', 'iii', 'iv'].includes(last) && parts.length) return (parts.pop() ?? '').toLowerCase();
+    return last;
+  };
+  const firstNameKey = (name: string): string => name.includes(',')
+    ? (name.split(',').slice(1).join(',').trim().split(/\s+/)[0] ?? '').toLowerCase()
+    : (name.trim().split(/\s+/)[0] ?? '').toLowerCase();
+  const sortDoctorOptions = (): void => {
+    if (!doctorOptionList || !campaignDoctorSort) return;
+    const options = Array.from(doctorOptionList.querySelectorAll<HTMLElement>('[data-doctor-search]'));
+    options.sort((a, b) => {
+      const nameA = a.dataset.doctorName ?? '';
+      const nameB = b.dataset.doctorName ?? '';
+      const practiceA = a.dataset.doctorPractice ?? '';
+      const practiceB = b.dataset.doctorPractice ?? '';
+      if (campaignDoctorSort.value === 'practice') {
+        const practiceOrder = practiceA.localeCompare(practiceB, undefined, { sensitivity: 'base' });
+        if (practiceOrder) return practiceOrder;
+      }
+      if (campaignDoctorSort.value === 'first_name') {
+        const firstNameOrder = firstNameKey(nameA).localeCompare(firstNameKey(nameB), undefined, { sensitivity: 'base' });
+        return firstNameOrder || nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+      }
+      const lastNameOrder = lastNameKey(nameA).localeCompare(lastNameKey(nameB), undefined, { sensitivity: 'base' });
+      return lastNameOrder || nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+    });
+    options.forEach((option) => doctorOptionList.appendChild(option));
+  };
 
   const syncCampaignRecipients = (): void => {
     const needle = campaignDoctorSearch?.value.trim().toLowerCase() ?? '';
@@ -863,9 +1047,50 @@ function renderDashboard(data: AdminResponse): void {
   campaignAudience?.addEventListener('change', syncCampaignRecipients);
   campaignDoctorSearch?.addEventListener('input', syncCampaignRecipients);
   document.querySelector('#campaign-doctor-options')?.addEventListener('change', syncCampaignRecipients);
+  campaignDoctorSort?.addEventListener('change', () => {
+    sortDoctorOptions();
+    syncCampaignRecipients();
+  });
+  document.querySelector<HTMLButtonElement>('#select-visible-doctors')?.addEventListener('click', () => {
+    const visibleOptions = Array.from(document.querySelectorAll<HTMLElement>('[data-doctor-search]')).filter((option) => !option.hidden && !option.querySelector<HTMLInputElement>('input[type="checkbox"]')?.disabled);
+    const selectedCount = document.querySelectorAll<HTMLInputElement>('#campaign-doctor-options input[name="doctor_ids"]:checked').length;
+    const newSelectionCount = visibleOptions.filter((option) => !option.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked).length;
+    if (selectedCount + newSelectionCount > 200) {
+      if (doctorSelectionMessage) doctorSelectionMessage.textContent = 'Campaigns are limited to 200 doctors. Refine the search or deselect doctors first.';
+      return;
+    }
+    if (doctorSelectionMessage) doctorSelectionMessage.textContent = '';
+    visibleOptions.forEach((option) => {
+      const checkbox = option.querySelector<HTMLInputElement>('input[type="checkbox"]');
+      if (checkbox) checkbox.checked = true;
+    });
+    syncCampaignRecipients();
+  });
+  document.querySelector<HTMLButtonElement>('#clear-doctors')?.addEventListener('click', () => {
+    document.querySelectorAll<HTMLInputElement>('#campaign-doctor-options input[name="doctor_ids"]:checked').forEach((checkbox) => { checkbox.checked = false; });
+    if (doctorSelectionMessage) doctorSelectionMessage.textContent = '';
+    syncCampaignRecipients();
+  });
   campaignSendMode?.addEventListener('change', syncSendMode);
+  sortDoctorOptions();
   syncCampaignRecipients();
   syncSendMode();
+
+  document.querySelectorAll<HTMLButtonElement>('[data-campaign-filter]').forEach((button) => {
+    button.classList.toggle('is-active', button.dataset.campaignFilter === campaignArchiveFilter);
+    button.addEventListener('click', () => {
+      campaignArchiveFilter = button.dataset.campaignFilter === 'archived' ? 'archived' : 'active';
+      document.querySelectorAll('[data-campaign-filter]').forEach((candidate) => candidate.classList.toggle('is-active', (candidate as HTMLButtonElement).dataset.campaignFilter === campaignArchiveFilter));
+      renderCampaignCards();
+    });
+  });
+  const campaignSortSelect = document.querySelector('#admin-campaign-sort') as HTMLSelectElement | null;
+  if (campaignSortSelect) campaignSortSelect.value = campaignSort;
+  campaignSortSelect?.addEventListener('change', () => {
+    campaignSort = campaignSortSelect.value as typeof campaignSort;
+    renderCampaignCards();
+  });
+  renderCampaignCards();
 
   document.querySelector<HTMLFormElement>('#admin-campaign-form')?.addEventListener('submit', (event) => void submitCampaign(event));
   for (const button of document.querySelectorAll<HTMLButtonElement>('[data-queue-filter]')) {
@@ -1100,13 +1325,27 @@ async function submitCampaign(event: SubmitEvent): Promise<void> {
     if (!['now', 'in_10', 'scheduled'].includes(sendMode)) throw new Error('Choose when the invitations should send.');
     const scheduledSendLocal = String(data.get('scheduled_send_local') ?? '').trim();
     const scheduledSendTimezone = String(data.get('scheduled_send_timezone') ?? '').trim();
+    const interviewDeadline = String(data.get('interview_deadline') ?? '').trim();
+    const trainingResourceUrl = String(data.get('training_resource_url') ?? '').trim();
     if (sendMode === 'scheduled' && (!scheduledSendLocal || !scheduledSendTimezone)) {
       throw new Error('Choose the scheduled date, time, and timezone.');
+    }
+    if (interviewDeadline) {
+      const deadlineDate = new Date(`${interviewDeadline}T00:00:00Z`);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(interviewDeadline) || !Number.isFinite(deadlineDate.getTime()) || deadlineDate.toISOString().slice(0, 10) !== interviewDeadline) {
+        throw new Error('Choose a valid interview completion deadline.');
+      }
+    }
+    if (trainingResourceUrl) {
+      let parsed: URL;
+      try { parsed = new URL(trainingResourceUrl); }
+      catch { throw new Error('Enter a valid training link.'); }
+      if (parsed.protocol !== 'https:') throw new Error('Training links must use HTTPS.');
     }
 
     const doctorIds = data.getAll('doctor_ids').map((value) => String(value).trim()).filter(Boolean);
     if (!doctorIds.length) throw new Error('Select at least one linked doctor.');
-    if (doctorIds.length > 50) throw new Error('Campaigns are limited to 50 doctors.');
+    if (doctorIds.length > 200) throw new Error('Campaigns are limited to 200 doctors.');
 
     const topics = [1, 2, 3].map((number) => {
       const sourceUrl = String(data.get(`topic_${number}_featured_image_source_url`) ?? '').trim();
@@ -1132,6 +1371,9 @@ async function submitCampaign(event: SubmitEvent): Promise<void> {
       send_mode: sendMode,
       scheduled_send_local: scheduledSendLocal,
       scheduled_send_timezone: scheduledSendTimezone,
+      interview_deadline: interviewDeadline,
+      training_resource_url: trainingResourceUrl,
+      send_doctor_review_reminders: data.has('send_doctor_review_reminders'),
       topics,
       doctor_ids: doctorIds,
     });

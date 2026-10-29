@@ -2,14 +2,6 @@
   "name": "AAC - 02 - Dispatch Campaign Invitations",
   "nodes": [
     {
-      "id": "aac-invitation-schedule",
-      "name": "Check for due invitations every minute",
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.2,
-      "position": [
-        -780,
-        40
-      ],
       "parameters": {
         "rule": {
           "interval": [
@@ -19,30 +11,29 @@
             }
           ]
         }
-      }
+      },
+      "id": "aac-invitation-schedule",
+      "name": "Check for due invitations every minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -784,
+        48
+      ]
     },
     {
+      "parameters": {},
       "id": "aac-invitation-manual",
       "name": "Send next invitation manually",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
       "position": [
-        -780,
-        200
-      ],
-      "parameters": {}
+        -784,
+        208
+      ]
     },
     {
-      "id": "aac-create-invitation-links",
-      "name": "Create three topic links",
-      "type": "n8n-nodes-base.googleBigQuery",
-      "typeVersion": 2.1,
-      "position": [
-        -500,
-        120
-      ],
       "parameters": {
-        "authentication": "serviceAccount",
         "projectId": {
           "__rl": true,
           "value": "apex-marketing-n8n",
@@ -52,31 +43,30 @@
         "options": {
           "location": "US"
         }
-      }
+      },
+      "id": "aac-create-invitation-links",
+      "name": "Create three topic links",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [
+        -496,
+        128
+      ]
     },
     {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map((item) => item.json);\nif (!rows.length) return [];\nconst groups = new Map();\nfor (const row of rows) {\n  const key = String(row.campaign_id) + '::' + String(row.doctor_id);\n  if (!groups.has(key)) groups.set(key, []);\n  groups.get(key).push(row);\n}\nconst invitations = [];\nfor (const group of groups.values()) {\n  if (group.length !== 3) throw new Error('Expected exactly three topic links for each doctor.');\n  group.sort((a, b) => Number(a.topic_sort_order) - Number(b.topic_sort_order));\n  const first = group[0];\n  const previewOnly = first.preview_only === true || String(first.preview_only).toLowerCase() === 'true';\n  const lines = [\n    'Hello ' + first.doctor_name + ',',\n    '',\n    previewOnly ? 'You are invited to preview Apex Dental Partners\\' AI content interview experience.' : 'We have three article topics for you to choose from.',\n    '',\n    previewOnly ? 'Choose whichever topic you would most like to discuss, then use its secure link to try a short voice interview:' : 'Pick the topic you would most like to discuss, then use its secure link to start a voice interview:',\n    ''\n  ];\n  for (const row of group) lines.push(row.topic_sort_order + '. ' + row.topic_title, row.interview_url, '');\n  lines.push('Before you begin, choose a quiet place. Background conversations and other noise can interrupt the voice interviewer. Headphones with a microphone may help.', '');\n  if (previewOnly) lines.push('This presentation preview saves your interview transcript for evaluation, but it will not create, review, or publish an article.', '');\n  const deadline = String(first.interview_deadline || '').slice(0, 10);\n  if (deadline) {\n    const deadlineLabel = new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(new Date(deadline + 'T12:00:00Z'));\n    lines.push('Please complete your interview by ' + deadlineLabel + ' (Central Time). These links expire at 11:59 PM Central on that date.', '');\n  } else {\n    lines.push('These links expire 30 days after the invitation.', '');\n  }\n  const trainingUrl = String(first.training_resource_url || '').trim();\n  if (trainingUrl) lines.push('Optional quick training guide: ' + trainingUrl, '');\n  lines.push('Please do not include patient-identifying information in the interview.', '', 'Apex Dental Partners');\n  invitations.push({ json: {\n    doctor_id: first.doctor_id,\n    article_id: '',\n    campaign_id: first.campaign_id,\n    communication_type: 'CAMPAIGN_INVITATION',\n    subject: previewOnly ? 'Try Apex\\'s AI content interview: ' + first.campaign_name : 'Choose your article topic: ' + first.campaign_name,\n    message_text: lines.join(String.fromCharCode(10)),\n    action_url: ''\n  }});\n}\nreturn invitations;"
+      },
       "id": "aac-compose-invitation",
       "name": "Compose three-topic invitation",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -200,
-        120
-      ],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "jsCode": "const rows = $input.all().map((item) => item.json);\nif (!rows.length) return [];\nconst groups = new Map();\nfor (const row of rows) {\n  const key = String(row.campaign_id) + '::' + String(row.doctor_id);\n  if (!groups.has(key)) groups.set(key, []);\n  groups.get(key).push(row);\n}\nconst invitations = [];\nfor (const group of groups.values()) {\n  if (group.length !== 3) throw new Error('Expected exactly three topic links for each doctor.');\n  group.sort((a, b) => Number(a.topic_sort_order) - Number(b.topic_sort_order));\n  const first = group[0];\n  const previewOnly = first.preview_only === true || String(first.preview_only).toLowerCase() === 'true';\n  const lines = [\n    'Hello ' + first.doctor_name + ',',\n    '',\n    previewOnly ? 'You are invited to preview Apex Dental Partners\\' AI content interview experience.' : 'We have three article topics for you to choose from.',\n    '',\n    previewOnly ? 'Choose whichever topic you would most like to discuss, then use its secure link to try a short voice interview:' : 'Pick the topic you would most like to discuss, then use its secure link to start a voice interview:',\n    ''\n  ];\n  for (const row of group) lines.push(row.topic_sort_order + '. ' + row.topic_title, row.interview_url, '');\n  lines.push('Before you begin, choose a quiet place. Background conversations and other noise can interrupt the voice interviewer. Headphones with a microphone may help.', '');\n  if (previewOnly) lines.push('This presentation preview saves your interview transcript for evaluation, but it will not create, review, or publish an article.', '');\n  const deadline = String(first.interview_deadline || '').slice(0, 10);\n  if (deadline) {\n    const deadlineLabel = new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(new Date(deadline + 'T12:00:00Z'));\n    lines.push('Please complete your interview by ' + deadlineLabel + ' (Central Time). These links expire at 11:59 PM Central on that date.', '');\n  } else {\n    lines.push('These links expire 30 days after the invitation.', '');\n  }\n  const trainingUrl = String(first.training_resource_url || '').trim();\n  if (trainingUrl) lines.push('Optional quick training guide: ' + trainingUrl, '');\n  lines.push('Please do not include patient-identifying information in the interview.', '', 'Apex Dental Partners');\n  invitations.push({ json: {\n    doctor_id: first.doctor_id,\n    article_id: '',\n    campaign_id: first.campaign_id,\n    communication_type: 'CAMPAIGN_INVITATION',\n    subject: previewOnly ? 'Try Apex\\'s AI content interview: ' + first.campaign_name : 'Choose your article topic: ' + first.campaign_name,\n    message_text: lines.join(String.fromCharCode(10)),\n    action_url: ''\n  }});\n}\nreturn invitations;"
-      }
+        -208,
+        128
+      ]
     },
     {
-      "id": "aac-private-invitation-route",
-      "name": "Send invitation through private router",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.2,
-      "position": [
-        280,
-        120
-      ],
       "parameters": {
         "workflowId": {
           "__rl": true,
@@ -139,33 +129,32 @@
         "options": {
           "waitForSubWorkflow": true
         }
-      }
+      },
+      "id": "aac-private-invitation-route",
+      "name": "Send invitation through private router",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        288,
+        128
+      ]
     },
     {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const delivered = $json.status === 'SENT' || $json.success === true;\nreturn { json: {\n  campaign_id: String($json.campaign_id || ''),\n  doctor_id: String($json.doctor_id || ''),\n  delivered,\n  status: String($json.status || (delivered ? 'SENT' : 'FAILED')),\n  error: $json.error ? String($json.error) : ''\n} };"
+      },
       "id": "aac-confirm-invitation",
       "name": "Normalize invitation delivery",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        520,
-        120
-      ],
-      "parameters": {
-        "mode": "runOnceForEachItem",
-        "jsCode": "const delivered = $json.status === 'SENT' || $json.success === true;\nreturn { json: {\n  campaign_id: String($json.campaign_id || ''),\n  doctor_id: String($json.doctor_id || ''),\n  delivered,\n  status: String($json.status || (delivered ? 'SENT' : 'FAILED')),\n  error: $json.error ? String($json.error) : ''\n} };"
-      }
+        528,
+        128
+      ]
     },
     {
-      "id": "aac-record-invitation",
-      "name": "Mark doctor invited",
-      "type": "n8n-nodes-base.googleBigQuery",
-      "typeVersion": 2.1,
-      "position": [
-        960,
-        40
-      ],
       "parameters": {
-        "authentication": "serviceAccount",
         "projectId": {
           "__rl": true,
           "value": "apex-marketing-n8n",
@@ -187,46 +176,45 @@
             ]
           }
         }
-      }
+      },
+      "id": "aac-record-invitation",
+      "name": "Mark doctor invited",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [
+        960,
+        48
+      ]
     },
     {
+      "parameters": {
+        "content": "## Campaign invitation delivery\n\nEvery minute, release due scheduled campaigns and claim up to 50 READY recipients. Claimed rows move to SENDING before links are created, preventing overlapping schedule executions from sending duplicate emails. Newly due scheduled campaigns are prioritized ahead of stale READY work.\n\nInvitations are processed one recipient at a time through the private doctor-message router. Success moves the recipient to INVITED. A failed delivery is retried once; after two failed attempts that recipient moves to COMMUNICATION_FAILED so a bad address cannot loop forever or block the rest of the presentation cohort. Interrupted SENDING claims recover after 15 minutes when no successful communication exists.\n\nPresentation-preview invitations are clearly labeled and explain that the transcript is saved but no article is created, reviewed, or published.\n\nSchema changes are deployed separately and never run inside this every-minute dispatcher.",
+        "height": 260,
+        "width": 640
+      },
       "id": "aac-invitation-notes",
       "name": "Invitation Notes",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -780,
+        -784,
         -320
-      ],
-      "parameters": {
-        "content": "## Campaign invitation delivery\n\nEvery minute, release due scheduled campaigns and claim up to 50 READY recipients. Claimed rows move to SENDING before links are created, preventing overlapping schedule executions from sending duplicate emails. Newly due scheduled campaigns are prioritized ahead of stale READY work.\n\nInvitations are processed one recipient at a time through the private doctor-message router. Success moves the recipient to INVITED. A failed delivery is retried once; after two failed attempts that recipient moves to COMMUNICATION_FAILED so a bad address cannot loop forever or block the rest of the presentation cohort. Interrupted SENDING claims recover after 15 minutes when no successful communication exists.\n\nPresentation-preview invitations are clearly labeled and explain that the transcript is saved but no article is created, reviewed, or published.\n\nSchema changes are deployed separately and never run inside this every-minute dispatcher.",
-        "height": 260,
-        "width": 640
-      }
+      ]
     },
     {
+      "parameters": {
+        "options": {}
+      },
       "id": "aac-invitation-loop",
       "name": "Loop Over Invitations",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
       "position": [
-        40,
-        120
-      ],
-      "parameters": {
-        "batchSize": 1,
-        "options": {}
-      }
+        48,
+        128
+      ]
     },
     {
-      "id": "aac-invitation-delivered-if",
-      "name": "Was invitation delivered?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        720,
-        120
-      ],
       "parameters": {
         "conditions": {
           "options": {
@@ -249,19 +237,18 @@
           "combinator": "and"
         },
         "options": {}
-      }
+      },
+      "id": "aac-invitation-delivered-if",
+      "name": "Was invitation delivered?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        128
+      ]
     },
     {
-      "id": "aac-release-failed-invitation",
-      "name": "Handle failed invitation delivery",
-      "type": "n8n-nodes-base.googleBigQuery",
-      "typeVersion": 2.1,
-      "position": [
-        960,
-        220
-      ],
       "parameters": {
-        "authentication": "serviceAccount",
         "projectId": {
           "__rl": true,
           "value": "apex-marketing-n8n",
@@ -287,9 +274,18 @@
             ]
           }
         }
-      }
+      },
+      "id": "aac-release-failed-invitation",
+      "name": "Handle failed invitation delivery",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [
+        960,
+        224
+      ]
     }
   ],
+  "pinData": {},
   "connections": {
     "Send next invitation manually": {
       "main": [
@@ -410,10 +406,11 @@
       ]
     }
   },
+  "active": true,
   "settings": {
     "executionOrder": "v1",
-    "timezone": "America/Chicago"
-  },
-  "active": false,
-  "tags": []
+    "timezone": "America/Chicago",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  }
 }

@@ -15,10 +15,10 @@
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
-        -620,
-        20
+        0,
+        448
       ],
-      "id": "bdc55742-1d63-445e-a922-acd0d11c8bb0",
+      "id": "745ccea5-e098-4a34-885a-87f06ff5301e",
       "name": "Check Review Reminders Hourly"
     },
     {
@@ -26,15 +26,14 @@
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
       "position": [
-        -620,
-        160
+        0,
+        592
       ],
-      "id": "89c51a78-f599-4fd4-a381-d911e60df4af",
+      "id": "fd8883a6-a8b2-46dc-8c5a-70dcfe016bc8",
       "name": "Run Reminder Check Manually"
     },
     {
       "parameters": {
-        "operation": "executeQuery",
         "projectId": {
           "__rl": true,
           "value": "apex-marketing-n8n",
@@ -49,11 +48,48 @@
       "type": "n8n-nodes-base.googleBigQuery",
       "typeVersion": 2.1,
       "position": [
-        -340,
-        90
+        288,
+        512
       ],
-      "id": "f2739891-d592-46d5-8e5b-0418dd748878",
+      "id": "71c172c4-63d5-46c5-9b70-eb92973d62fd",
       "name": "Prepare 48-Hour Review Reminders"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://n8n.apexdentalautomation.com/webhook/aac/doctor-message/send",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ doctor_id: $json.doctor_id, article_id: $json.article_id, campaign_id: $json.campaign_id, communication_type: $json.communication_type, subject: $json.subject, message_text: $json.message_text, action_url: $json.action_url }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        544,
+        512
+      ],
+      "id": "637c6c2d-c823-462c-9817-166abb4bc031",
+      "name": "Send Through Doctor Message Router",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "content": "## AAC Phase 1K - Doctor Review Reminders\n\nRuns hourly at minute 15 and finds pending doctor reviews entering their final 48 hours. Each article receives at most one successful 48-hour reminder.\n\nThe workflow rotates the one-time review link before delivery, stores only its SHA-256 hash, and sends the raw URL directly to the centralized `AAC - 16 - Send Doctor Message` router. No token is stored in the communications log.\n\nActivate workflow 16 first, then connect **Google BigQuery account** here. Keep this workflow inactive until the routing workflow has been tested with a non-patient recipient.",
+        "height": 360,
+        "width": 540
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "6fe9cc24-f9a8-41e3-8205-d5eb7a42079f",
+      "name": "Phase 1K Reminder Notes"
     },
     {
       "parameters": {
@@ -61,89 +97,26 @@
           "__rl": true,
           "value": "cZtS9x6kbI46Q2Bi",
           "mode": "list",
+          "cachedResultUrl": "/workflow/cZtS9x6kbI46Q2Bi",
           "cachedResultName": "AAC - 16 - Send Doctor Message"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
-          "value": {
-            "doctor_id": "={{ $json.doctor_id }}",
-            "article_id": "={{ $json.article_id }}",
-            "campaign_id": "={{ $json.campaign_id }}",
-            "communication_type": "={{ $json.communication_type }}",
-            "subject": "={{ $json.subject }}",
-            "message_text": "={{ $json.message_text }}",
-            "action_url": "={{ $json.action_url }}"
-          },
-          "matchingColumns": [],
-          "schema": [
-            {
-              "id": "doctor_id",
-              "displayName": "doctor_id",
-              "type": "string"
-            },
-            {
-              "id": "article_id",
-              "displayName": "article_id",
-              "type": "string"
-            },
-            {
-              "id": "campaign_id",
-              "displayName": "campaign_id",
-              "type": "string"
-            },
-            {
-              "id": "communication_type",
-              "displayName": "communication_type",
-              "type": "string"
-            },
-            {
-              "id": "subject",
-              "displayName": "subject",
-              "type": "string"
-            },
-            {
-              "id": "message_text",
-              "displayName": "message_text",
-              "type": "string"
-            },
-            {
-              "id": "action_url",
-              "displayName": "action_url",
-              "type": "string"
-            }
-          ],
-          "attemptToConvertTypes": false,
-          "convertFieldsToString": true
+          "value": {}
         },
-        "options": {
-          "waitForSubWorkflow": true
-        }
+        "options": {}
       },
       "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.2,
+      "typeVersion": 1.3,
       "position": [
-        -80,
-        90
+        0,
+        0
       ],
-      "id": "4d07a2d7-ab92-4b76-b825-d78b5303b2d0",
-      "name": "Call Private Doctor Message Router"
-    },
-    {
-      "parameters": {
-        "content": "## AAC Phase 1K - Doctor Review Reminders\n\nRuns hourly at minute 15 and finds pending doctor reviews entering their final 48 hours. Each article receives at most one successful 48-hour reminder.\n\nThe workflow rotates the one-time review link before delivery, stores only its SHA-256 hash, and calls the private `AAC - 16 - Send Doctor Message` sub-workflow. No public message-sending webhook exists, and no token is stored in the communications log.\n\nConnect **Google BigQuery account** here. Keep this workflow inactive until production reminder timing is approved.\n\nThe campaign-level `send_doctor_review_reminders` setting can suppress reminders for a specific campaign. Existing campaigns with no setting retain the current one-reminder behavior.",
-        "height": 360,
-        "width": 540
-      },
-      "type": "n8n-nodes-base.stickyNote",
-      "typeVersion": 1,
-      "position": [
-        -620,
-        -420
-      ],
-      "id": "b607d78d-5ed0-4974-a931-24aa8dc9bf4e",
-      "name": "Phase 1K Reminder Notes"
+      "id": "68b431c4-6799-4d5f-b03d-0cb0d96615cd",
+      "name": "Call 'AAC - 16 - Send Doctor Message'"
     }
   ],
+  "pinData": {},
   "connections": {
     "Check Review Reminders Hourly": {
       "main": [
@@ -171,7 +144,12 @@
       "main": [
         [
           {
-            "node": "Call Private Doctor Message Router",
+            "node": "Send Through Doctor Message Router",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Call 'AAC - 16 - Send Doctor Message'",
             "type": "main",
             "index": 0
           }
@@ -179,10 +157,8 @@
       ]
     }
   },
-  "settings": {
-    "executionOrder": "v1",
-    "timezone": "America/Chicago"
-  },
   "active": true,
-  "versionId": "e824c56f-fb5a-43cd-8b59-97622e2135e8"
+  "settings": {
+    "executionOrder": "v1"
+  }
 }

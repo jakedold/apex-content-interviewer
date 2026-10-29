@@ -19,6 +19,8 @@ const row = (overrides = {}) => ({
   practice_id: 'practice_test_001', doctor_email: 'jdold@apexdp.com',
   doctor_name: 'Dr. Dold', credentials: 'DDS',
   publisher_type: 'WORDPRESS', website_domain: 'https://test.example.test',
+  featured_image_source_url: 'https://apexparent.hostmanpowered.com/wp-content/uploads/test-featured.jpg',
+  featured_image_alt_text: 'A dental team discussing care',
   publisher_config_reference: JSON.stringify({
     credential_name: 'Wordpress account',
     wordpress_base_url: 'https://apexparent.hostmanpowered.com/test001',

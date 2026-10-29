@@ -32,7 +32,7 @@
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1.1,
       "position": [
-        -760,
+        -768,
         80
       ],
       "id": "9b772223-1168-4bb3-b9a0-dffd9fd40101",
@@ -40,7 +40,6 @@
     },
     {
       "parameters": {
-        "operation": "executeQuery",
         "projectId": {
           "__rl": true,
           "value": "apex-marketing-n8n",
@@ -63,7 +62,6 @@
     },
     {
       "parameters": {
-        "operation": "executeQuery",
         "projectId": {
           "__rl": true,
           "value": "apex-marketing-n8n",
@@ -109,7 +107,7 @@
       "type": "n8n-nodes-base.googleBigQuery",
       "typeVersion": 2.1,
       "position": [
-        -520,
+        -528,
         80
       ],
       "id": "1af09149-3a85-4ee4-9b68-dbe7b20e3438",
@@ -142,7 +140,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        -280,
+        -288,
         80
       ],
       "id": "85df2fc5-a14b-4c92-a27a-68661e60e1f0",
@@ -159,8 +157,8 @@
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
       "position": [
-        -40,
-        -20
+        -48,
+        -16
       ],
       "id": "50dbd848-3fd1-4f76-8ad0-d0d72ca2e14f",
       "name": "Send Doctor Email",
@@ -173,8 +171,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        200,
-        -20
+        208,
+        -16
       ],
       "id": "3285f048-818e-4efd-b8c9-81071da10226",
       "name": "Normalize Email Result"
@@ -186,15 +184,14 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        200,
-        180
+        208,
+        192
       ],
       "id": "f283b180-47cb-4452-adfc-91d00eed21d5",
       "name": "Normalize Routing Failure"
     },
     {
       "parameters": {
-        "operation": "executeQuery",
         "projectId": {
           "__rl": true,
           "value": "apex-marketing-n8n",
@@ -252,7 +249,7 @@
       "type": "n8n-nodes-base.googleBigQuery",
       "typeVersion": 2.1,
       "position": [
-        460,
+        464,
         80
       ],
       "id": "1b461d65-e5c3-4149-8130-bf127aed4db7",
@@ -267,13 +264,14 @@
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -760,
-        -420
+        -768,
+        -416
       ],
       "id": "36949f70-2203-40c4-a62e-0f986114755f",
       "name": "Phase 1K Message Routing Notes"
     }
   ],
+  "pinData": {},
   "connections": {
     "Receive Doctor Message Internally": {
       "main": [
@@ -360,10 +358,11 @@
       ]
     }
   },
+  "active": false,
   "settings": {
     "executionOrder": "v1",
-    "timezone": "America/Chicago"
-  },
-  "active": false,
-  "versionId": "f96d97fd-2fdd-47c8-adf8-b1c764ec70a5"
+    "timezone": "America/Chicago",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  }
 }

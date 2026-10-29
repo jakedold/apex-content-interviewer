@@ -8,11 +8,11 @@ test('census sync is hourly, privacy-limited, and credential-free in source cont
   assert.equal(workflow.active, false);
   assert.ok(workflow.nodes.some((node) => node.type === 'n8n-nodes-base.scheduleTrigger'));
   const readers = workflow.nodes.filter((node) => node.type === 'n8n-nodes-base.googleSheets');
-  assert.equal(readers.length, 5);
+  assert.equal(readers.length, 6);
   assert.ok(readers.every((node) => !node.credentials));
   assert.deepEqual(
     readers.map((node) => node.parameters.options.dataLocationOnSheet.values.range).sort(),
-    ['A1:C250', 'A1:D100', 'A1:N250', 'A2:D250', 'I2:I250'].sort(),
+    ['A1:C250', 'A1:D100', 'A1:K500', 'A1:N250', 'A2:D250', 'I2:I250'].sort(),
   );
 });
 

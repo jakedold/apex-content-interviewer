@@ -11,6 +11,8 @@ const row = (config) => ({
   publisher_type: 'WORDPRESS',
   publisher_config_reference: JSON.stringify(config),
   website_domain: 'https://public-dental.test',
+  featured_image_source_url: 'https://apexparent.hostmanpowered.com/wp-content/uploads/test-featured.jpg',
+  featured_image_alt_text: 'A dental team discussing care',
   doctor_name: 'Dr. Test',
   practice_name: 'Test Dental',
   publication_package_json: JSON.stringify({

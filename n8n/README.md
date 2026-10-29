@@ -1,6 +1,6 @@
 # n8n workflow exports
 
-This directory stores version-controlled exports of the discrete n8n workflows used by the browser interview vertical slice.
+This directory stores version-controlled exports of the discrete n8n workflows used by the Automated Article Creation system.
 
 The deployed n8n instance remains the runtime source for credentials and environment-specific configuration. Exports must never contain credentials or secrets.
 
@@ -31,6 +31,15 @@ Version-controlled workflow exports:
 - `20-revise-article-from-marketing-feedback.json` — marketing-requested revision; new immutable version and fresh marketing review without doctor reapproval
 - `24-admin-command-router.json` — authenticated admin boundary for audited approvals and dashboard campaign creation from selected linked doctors
 - `25-sync-doctor-census.json` — hourly, privacy-limited reconciliation of eligible Doctor Census rows and location mappings into BigQuery; preserves history and never enables publishing
+
+On 2026-10-29, the tracked exports for AAC-02, AAC-15, AAC-16, AAC-17, and
+AAC-24 were refreshed from the current n8n workflows. Top-level instance
+workflow IDs, version metadata, credential bindings, and webhook IDs are
+omitted. AAC-17
+calls AAC-16 as a private sub-workflow; after importing into another n8n
+instance, reconnect credentials and select the corresponding AAC-16 workflow.
+The `active` field records the observed runtime state and does not replace the
+normal review and activation process.
 
 On September 23, 2026, the [inactive Prestonwood draft pilot](https://n8n.apexdentalautomation.com/workflow/x8P9o3fLDyDMxJ4s)
 ran manually using the existing `Wordpress account` credential. Its
@@ -63,7 +72,7 @@ practice is active and has a separately verified publishing mapping and
 credential. The command validates every selected doctor and mapping, rejects a
 duplicate campaign name/month, and never silently reassigns a doctor. The form
 records the campaign and its doctors in BigQuery. The
-invitation dispatcher checks for READY doctors every five minutes and sends
+invitation dispatcher checks for READY doctors every minute and sends
 one email containing three secure interview links to each doctor. Each link
 expires after 30 days. Failed deliveries can be retried, while successful
 deliveries are not repeated. The older `02-create-topic-interview-links.json`

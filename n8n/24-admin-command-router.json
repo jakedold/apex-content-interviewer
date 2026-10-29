@@ -9,27 +9,26 @@
         "responseMode": "responseNode",
         "options": {}
       },
-      "id": "receive-admin-command",
+      "id": "2706ef90-65b0-492e-859a-61a88c6960c4",
       "name": "Receive Authenticated Admin Command",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        -760,
-        0
-      ],
-      "webhookId": "5ec73bd6-2412-4a1a-bff0-acde00000024"
+        -496,
+        448
+      ]
     },
     {
       "parameters": {
-        "jsCode": "const body = $json.body || {};\nconst required = (name) => { const value = String(body[name] ?? '').trim(); if (!value) throw new Error('Missing ' + name); return value; };\nconst action = required('action');\nconst actorEmail = required('actor_email').toLowerCase();\nif (!/^[^\\s@]+@apexdp\\.com$/i.test(actorEmail)) throw new Error('Administrator identity must be an Apex Workspace account.');\nconst idempotencyKey = required('idempotency_key');\nif (!/^[A-Za-z0-9_-]{16,100}$/.test(idempotencyKey)) throw new Error('Invalid idempotency key.');\n\nif (action === 'approve_for_doctor') {\n  const reason = required('reason');\n  if (reason.length < 12 || reason.length > 2000) throw new Error('Approval evidence must be 12–2000 characters.');\n  const expectedVersion = Number(body.expected_version);\n  if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw new Error('A valid expected article version is required.');\n  return [{ json: { action, actor_email: actorEmail, idempotency_key: idempotencyKey, article_id: required('article_id'), campaign_id: required('campaign_id'), doctor_id: required('doctor_id'), expected_status: required('expected_status'), expected_version: expectedVersion, reason } }];\n}\n\nif (action === 'launch_campaign') {\n  const audience = required('audience');\n  if (!['Linked doctors', 'Presentation preview'].includes(audience)) throw new Error('Unsupported campaign audience.');\n\n  const allowedSourceTypes = new Set(['Apex-owned or commissioned', 'Licensed stock', 'AI-generated with approved terms']);\n  const topics = Array.isArray(body.topics) ? body.topics.map((topic, index) => {\n    const number = index + 1;\n    const title = String(topic?.title || '').trim();\n    const sourceUrl = String(topic?.featured_image_source_url || '').trim();\n    const altText = String(topic?.featured_image_alt_text || '').trim();\n    const sourceType = String(topic?.featured_image_source_type || '').trim();\n    const rightsReference = String(topic?.featured_image_rights_reference || '').trim();\n    if (!title) throw new Error('Topic ' + number + ' title is required.');\n    if (!sourceUrl.startsWith('https://apexparent.hostmanpowered.com/wp-content/uploads/')) throw new Error('Topic ' + number + ' featured image must use the direct Apex Parent Media Library file URL.');\n    if (altText.length < 8) throw new Error('Topic ' + number + ' needs useful featured image alt text.');\n    if (!allowedSourceTypes.has(sourceType)) throw new Error('Topic ' + number + ' image source type is not allowed.');\n    if (!rightsReference) throw new Error('Topic ' + number + ' image rights or source reference is required.');\n    return { title, featured_image_source_url: sourceUrl, featured_image_alt_text: altText, featured_image_source_type: sourceType, featured_image_rights_reference: rightsReference };\n  }) : [];\n  if (topics.length !== 3 || new Set(topics.map((topic) => topic.title.toLowerCase())).size !== 3) {\n    throw new Error('Exactly three distinct topics with complete image records are required.');\n  }\n\n  const doctorIds = Array.isArray(body.doctor_ids) ? [...new Set(body.doctor_ids.map((id) => String(id).trim()).filter(Boolean))] : [];\n  if (!doctorIds.length || doctorIds.length > 50) throw new Error('Campaigns require 1–50 linked doctors.');\n\n  const sendMode = required('send_mode');\n  if (!['now', 'in_10', 'scheduled'].includes(sendMode)) throw new Error('Unsupported send mode.');\n  const scheduledSendLocal = String(body.scheduled_send_local ?? '').trim();\n  const scheduledSendTimezone = String(body.scheduled_send_timezone ?? '').trim();\n  if (sendMode === 'scheduled') {\n    if (!/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$/.test(scheduledSendLocal)) throw new Error('Scheduled send local time must use YYYY-MM-DDTHH:MM.');\n    if (!/^[A-Za-z_]+\\/[A-Za-z0-9_+\\-\\/]+$/.test(scheduledSendTimezone)) throw new Error('Scheduled send timezone must be a valid IANA-style timezone.');\n  }\n\n  const campaignName = required('campaign_name');\n  const month = required('campaign_month');\n  if (!/^\\d{4}-\\d{2}$/.test(month)) throw new Error('Campaign month must use YYYY-MM.');\n  const slug = campaignName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 48);\n  if (!slug) throw new Error('Campaign name must contain letters or numbers.');\n  const campaignId = 'campaign_' + month.replace('-', '') + '_' + slug;\n\n  return [{ json: {\n    action,\n    audience,\n    actor_email: actorEmail,\n    idempotency_key: idempotencyKey,\n    campaign_id: campaignId,\n    campaign_name: campaignName,\n    campaign_month: month + '-01',\n    send_mode: sendMode,\n    scheduled_send_local: scheduledSendLocal,\n    scheduled_send_timezone: scheduledSendTimezone,\n    topics_json: JSON.stringify(topics),\n    doctor_ids_json: JSON.stringify(doctorIds),\n  } }];\n}\n\nthrow new Error('Unsupported administrative action.');"
+        "jsCode": "const body = $json.body || {};\nconst required = (name) => { const value = String(body[name] ?? '').trim(); if (!value) throw new Error('Missing ' + name); return value; };\nconst action = required('action');\nconst actorEmail = required('actor_email').toLowerCase();\nif (!/^[^\\s@]+@apexdp\\.com$/i.test(actorEmail)) throw new Error('Administrator identity must be an Apex Workspace account.');\nconst idempotencyKey = required('idempotency_key');\nif (!/^[A-Za-z0-9_-]{16,100}$/.test(idempotencyKey)) throw new Error('Invalid idempotency key.');\n\nif (action === 'approve_for_doctor') {\n  const reason = required('reason');\n  if (reason.length < 12 || reason.length > 2000) throw new Error('Approval evidence must be 12–2000 characters.');\n  const expectedVersion = Number(body.expected_version);\n  if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw new Error('A valid expected article version is required.');\n  return [{ json: { action, actor_email: actorEmail, idempotency_key: idempotencyKey, article_id: required('article_id'), campaign_id: required('campaign_id'), doctor_id: required('doctor_id'), expected_status: required('expected_status'), expected_version: expectedVersion, reason } }];\n}\n\nif (action === 'approve_for_marketing') {\n  const reason = required('reason');\n  if (reason.length < 12 || reason.length > 2000) throw new Error('Marketing approval evidence must be 12–2000 characters.');\n  const expectedVersion = Number(body.expected_version);\n  if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw new Error('A valid expected article version is required.');\n  const expectedStatus = required('expected_status');\n  if (!['DOCTOR_APPROVED', 'DOCTOR_AUTO_APPROVED', 'MARKETING_REVIEW'].includes(expectedStatus)) throw new Error('The article is not waiting for marketing approval.');\n  return [{ json: { action, actor_email: actorEmail, idempotency_key: idempotencyKey, article_id: required('article_id'), campaign_id: required('campaign_id'), doctor_id: required('doctor_id'), expected_status: expectedStatus, expected_version: expectedVersion, reason } }];\n}\n\nif (action === 'archive_campaign' || action === 'restore_campaign') {\n  return [{ json: { action, actor_email: actorEmail, idempotency_key: idempotencyKey, campaign_id: required('campaign_id'), archive: action === 'archive_campaign' ? 'true' : 'false' } }];\n}\n\nif (action === 'launch_campaign') {\n  const audience = required('audience');\n  if (!['Linked doctors', 'Presentation preview'].includes(audience)) throw new Error('Unsupported campaign audience.');\n\n  const interviewDeadline = String(body.interview_deadline ?? '').trim();\n  if (interviewDeadline) {\n    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(interviewDeadline)) throw new Error('Interview deadline must use YYYY-MM-DD.');\n    const parsedDeadline = new Date(interviewDeadline + 'T00:00:00Z');\n    if (!Number.isFinite(parsedDeadline.getTime()) || parsedDeadline.toISOString().slice(0, 10) !== interviewDeadline) throw new Error('Interview deadline is not a valid calendar date.');\n  }\n  const trainingResourceUrl = String(body.training_resource_url ?? '').trim();\n  if (trainingResourceUrl) {\n    let parsedTrainingUrl;\n    try { parsedTrainingUrl = new URL(trainingResourceUrl); } catch { throw new Error('Training resource URL is invalid.'); }\n    if (parsedTrainingUrl.protocol !== 'https:' || !parsedTrainingUrl.hostname) throw new Error('Training resource URL must use HTTPS.');\n    if (parsedTrainingUrl.username || parsedTrainingUrl.password) throw new Error('Training resource URL cannot contain embedded credentials.');\n  }\n  if (body.send_doctor_review_reminders !== undefined && typeof body.send_doctor_review_reminders !== 'boolean') {\n    throw new Error('Doctor review reminder setting must be true or false.');\n  }\n  const sendDoctorReviewReminders = body.send_doctor_review_reminders !== false;\n\n  const topics = Array.isArray(body.topics) ? body.topics.map((topic, index) => {\n    const number = index + 1;\n    const title = String(topic?.title || '').trim();\n    const sourceUrl = String(topic?.featured_image_source_url || '').trim();\n    const altText = String(topic?.featured_image_alt_text || '').trim();\n    const publishDate = String(topic?.wordpress_publish_date || '').trim();\n    if (!title) throw new Error('Topic ' + number + ' title is required.');\n    if (!sourceUrl.startsWith('https://apexparent.hostmanpowered.com/wp-content/uploads/')) throw new Error('Topic ' + number + ' featured image must use the direct Apex Parent Media Library file URL.');\n    if (altText.length < 8) throw new Error('Topic ' + number + ' needs useful featured image alt text.');\n    if (publishDate && !/^\\d{4}-\\d{2}-\\d{2}$/.test(publishDate)) throw new Error('Topic ' + number + ' WordPress publish date must use YYYY-MM-DD.');\n    return { title, featured_image_source_url: sourceUrl, featured_image_alt_text: altText, wordpress_publish_date: publishDate || null };\n  }) : [];\n  if (topics.length !== 3 || new Set(topics.map((topic) => topic.title.toLowerCase())).size !== 3) {\n    throw new Error('Exactly three distinct topics with complete image records are required.');\n  }\n\n  const doctorIds = Array.isArray(body.doctor_ids) ? [...new Set(body.doctor_ids.map((id) => String(id).trim()).filter(Boolean))] : [];\n  if (!doctorIds.length || doctorIds.length > 200) throw new Error('Campaigns require 1–200 linked doctors.');\n\n  const sendMode = required('send_mode');\n  if (!['now', 'in_10', 'scheduled'].includes(sendMode)) throw new Error('Unsupported send mode.');\n  const scheduledSendLocal = String(body.scheduled_send_local ?? '').trim();\n  const scheduledSendTimezone = String(body.scheduled_send_timezone ?? '').trim();\n  if (sendMode === 'scheduled') {\n    if (!/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$/.test(scheduledSendLocal)) throw new Error('Scheduled send local time must use YYYY-MM-DDTHH:MM.');\n    if (!/^[A-Za-z_]+\\/[A-Za-z0-9_+\\-\\/]+$/.test(scheduledSendTimezone)) throw new Error('Scheduled send timezone must be a valid IANA-style timezone.');\n  }\n\n  const campaignName = required('campaign_name');\n  const month = required('campaign_month');\n  if (!/^\\d{4}-\\d{2}$/.test(month)) throw new Error('Campaign month must use YYYY-MM.');\n  const slug = campaignName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 48);\n  if (!slug) throw new Error('Campaign name must contain letters or numbers.');\n  const campaignId = 'campaign_' + month.replace('-', '') + '_' + slug;\n\n  return [{ json: {\n    action,\n    audience,\n    actor_email: actorEmail,\n    idempotency_key: idempotencyKey,\n    campaign_id: campaignId,\n    campaign_name: campaignName,\n    campaign_month: month + '-01',\n    send_mode: sendMode,\n    scheduled_send_local: scheduledSendLocal,\n    scheduled_send_timezone: scheduledSendTimezone,\n    interview_deadline: interviewDeadline,\n    training_resource_url: trainingResourceUrl,\n    send_doctor_review_reminders: sendDoctorReviewReminders,\n    topics_json: JSON.stringify(topics),\n    doctor_ids_json: JSON.stringify(doctorIds),\n  } }];\n}\n\nthrow new Error('Unsupported administrative action.');"
       },
-      "id": "validate-admin-command",
+      "id": "8b95c9a4-1e89-47c2-8b6f-84b6980bdcc2",
       "name": "Validate and Normalize Command",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -540,
-        0
+        -272,
+        448
       ]
     },
     {
@@ -51,7 +50,8 @@
                     "operator": {
                       "type": "string",
                       "operation": "equals"
-                    }
+                    },
+                    "id": "6e61f869-3b99-42a4-a8f0-c307a503aff7"
                   }
                 ],
                 "combinator": "and"
@@ -70,17 +70,92 @@
                 "conditions": [
                   {
                     "leftValue": "={{ $json.action }}",
+                    "rightValue": "approve_for_marketing",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "e31848db-0aae-48ee-9607-1699746564d7"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "marketing_approval"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
                     "rightValue": "launch_campaign",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
-                    }
+                    },
+                    "id": "232f3b27-e277-4226-ae5e-576a09fde5ef"
                   }
                 ],
                 "combinator": "and"
               },
               "renameOutput": true,
               "outputKey": "campaign"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "4b00354f-29fe-4288-ac0e-6a8e5689312b",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "archive_campaign",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "archive_campaign"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "56d919ce-93e6-4356-b313-19a7971fee0b",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "restore_campaign",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "restore_campaign"
             }
           ]
         },
@@ -88,18 +163,17 @@
           "fallbackOutput": "extra"
         }
       },
-      "id": "route-command",
+      "id": "e2b45737-be18-4e41-b93a-2f33368463ee",
       "name": "Route Narrow Command",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.2,
       "position": [
-        -300,
-        0
+        -32,
+        448
       ]
     },
     {
       "parameters": {
-        "authentication": "serviceAccount",
         "projectId": {
           "__rl": true,
           "value": "apex-marketing-n8n",
@@ -146,13 +220,13 @@
           }
         }
       },
-      "id": "record-admin-approval",
+      "id": "6bc99e13-63b8-4964-9b8f-9986c735fc5c",
       "name": "Record Audited Doctor Approval",
       "type": "n8n-nodes-base.googleBigQuery",
       "typeVersion": 2.1,
       "position": [
-        -40,
-        -140
+        224,
+        304
       ]
     },
     {
@@ -183,24 +257,23 @@
           "waitForSubWorkflow": true
         }
       },
-      "id": "continue-approved-article",
+      "id": "8022c13f-1d60-4b75-b2f9-b4aeaad906ea",
       "name": "Continue Approved Article",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
-        200,
-        -140
+        480,
+        304
       ]
     },
     {
       "parameters": {
-        "authentication": "serviceAccount",
         "projectId": {
           "__rl": true,
           "value": "apex-marketing-n8n",
           "mode": "id"
         },
-        "sqlQuery": "DECLARE v_send_at TIMESTAMP DEFAULT CASE\n  WHEN @send_mode = 'scheduled' THEN TIMESTAMP(PARSE_DATETIME('%Y-%m-%dT%H:%M', @scheduled_send_local), @scheduled_send_timezone)\n  WHEN @send_mode = 'in_10' THEN TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 10 MINUTE)\n  ELSE CURRENT_TIMESTAMP()\nEND;\nDECLARE v_scheduled BOOL DEFAULT v_send_at > CURRENT_TIMESTAMP();\n\nCREATE TABLE IF NOT EXISTS `apex-marketing-n8n.automated_article_creation.admin_commands` (\n  idempotency_key STRING NOT NULL, action STRING NOT NULL, actor_email STRING NOT NULL,\n  entity_id STRING NOT NULL, requested_at TIMESTAMP NOT NULL, completed_at TIMESTAMP, payload JSON\n);\n\nALTER TABLE `apex-marketing-n8n.automated_article_creation.campaign_topics`\n  ADD COLUMN IF NOT EXISTS featured_image_source_url STRING;\nALTER TABLE `apex-marketing-n8n.automated_article_creation.campaign_topics`\n  ADD COLUMN IF NOT EXISTS featured_image_alt_text STRING;\nALTER TABLE `apex-marketing-n8n.automated_article_creation.campaign_topics`\n  ADD COLUMN IF NOT EXISTS featured_image_source_type STRING;\nALTER TABLE `apex-marketing-n8n.automated_article_creation.campaign_topics`\n  ADD COLUMN IF NOT EXISTS featured_image_rights_reference STRING;\nALTER TABLE `apex-marketing-n8n.automated_article_creation.campaigns`\n  ADD COLUMN IF NOT EXISTS invitation_send_at TIMESTAMP;\nALTER TABLE `apex-marketing-n8n.automated_article_creation.campaigns`\n  ADD COLUMN IF NOT EXISTS preview_only BOOL;\n\nASSERT NOT EXISTS (\n  SELECT 1 FROM `apex-marketing-n8n.automated_article_creation.admin_commands`\n  WHERE idempotency_key = @idempotency_key\n) AS 'This command was already processed.';\nASSERT @audience IN ('Linked doctors', 'Presentation preview') AS 'Unsupported campaign audience.';\nASSERT @send_mode IN ('now', 'in_10', 'scheduled') AS 'Unsupported send mode.';\nASSERT v_send_at <= TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 90 DAY) AS 'Scheduled send cannot be more than 90 days away.';\nASSERT @send_mode = 'now' OR v_send_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 MINUTE) AS 'Scheduled send time is already in the past.';\n\nASSERT NOT EXISTS (\n  SELECT 1 FROM `apex-marketing-n8n.automated_article_creation.campaigns`\n  WHERE campaign_id = @campaign_id\n) AS 'This campaign already exists.';\n\nASSERT ARRAY_LENGTH(JSON_QUERY_ARRAY(PARSE_JSON(@topics_json))) = 3 AS 'Exactly three topics are required.';\nASSERT NOT EXISTS (\n  SELECT 1\n  FROM UNNEST(JSON_QUERY_ARRAY(PARSE_JSON(@topics_json))) topic\n  WHERE NOT STARTS_WITH(JSON_VALUE(topic, '$.featured_image_source_url'), 'https://apexparent.hostmanpowered.com/wp-content/uploads/')\n    OR LENGTH(TRIM(JSON_VALUE(topic, '$.featured_image_alt_text'))) < 8\n    OR JSON_VALUE(topic, '$.featured_image_source_type') NOT IN ('Apex-owned or commissioned', 'Licensed stock', 'AI-generated with approved terms')\n    OR NULLIF(TRIM(JSON_VALUE(topic, '$.featured_image_rights_reference')), '') IS NULL\n) AS 'Every topic needs a valid central image URL, alt text, source type, and rights reference.';\n\nASSERT (\n  SELECT COUNT(*)\n  FROM `apex-marketing-n8n.automated_article_creation.doctors` d\n  JOIN `apex-marketing-n8n.automated_article_creation.practices` p USING (practice_id)\n  WHERE d.doctor_id IN UNNEST(JSON_VALUE_ARRAY(PARSE_JSON(@doctor_ids_json)))\n    AND d.active = TRUE\n    AND NULLIF(TRIM(d.email), '') IS NOT NULL\n    AND (\n      @audience = 'Presentation preview'\n      OR (\n        p.active = TRUE\n        AND UPPER(COALESCE(p.publisher_type, '')) = 'WORDPRESS'\n        AND NULLIF(TRIM(JSON_VALUE(SAFE.PARSE_JSON(p.publisher_config_reference), '$.wordpress_base_url')), '') IS NOT NULL\n        AND NULLIF(TRIM(JSON_VALUE(SAFE.PARSE_JSON(p.publisher_config_reference), '$.credential_name')), '') IS NOT NULL\n        AND (\n          p.practice_id = 'practice_test_001'\n          OR UPPER(COALESCE(JSON_VALUE(SAFE.PARSE_JSON(p.publisher_config_reference), '$.mapping_status'), '')) = 'VERIFIED'\n        )\n      )\n    )\n) = ARRAY_LENGTH(JSON_VALUE_ARRAY(PARSE_JSON(@doctor_ids_json)))\nAS 'Every selected doctor must be active and linked to a practice. Full article campaigns also require a verified publishing site.';\n\nBEGIN TRANSACTION;\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.campaigns`\n(campaign_id, campaign_name, campaign_month, status, doctor_review_days, require_marketing_approval, created_at, launched_at, invitation_send_at, preview_only)\nVALUES (\n  @campaign_id,\n  @campaign_name,\n  DATE(@campaign_month),\n  IF(v_scheduled, 'SCHEDULED', 'LAUNCHED'),\n  5,\n  IF(@audience = 'Presentation preview', FALSE, TRUE),\n  CURRENT_TIMESTAMP(),\n  IF(v_scheduled, NULL, CURRENT_TIMESTAMP()),\n  v_send_at,\n  @audience = 'Presentation preview'\n);\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.campaign_topics`\n(topic_id, campaign_id, topic_title, topic_description, interview_guidance,\n  featured_image_source_url, featured_image_alt_text, featured_image_source_type,\n  featured_image_rights_reference, topic_sort_order, active, created_at)\nSELECT\n  CONCAT(@campaign_id, '_topic_', CAST(offset + 1 AS STRING)),\n  @campaign_id,\n  JSON_VALUE(topic, '$.title'),\n  JSON_VALUE(topic, '$.title'),\n  NULL,\n  JSON_VALUE(topic, '$.featured_image_source_url'),\n  JSON_VALUE(topic, '$.featured_image_alt_text'),\n  JSON_VALUE(topic, '$.featured_image_source_type'),\n  JSON_VALUE(topic, '$.featured_image_rights_reference'),\n  offset + 1,\n  TRUE,\n  CURRENT_TIMESTAMP()\nFROM UNNEST(JSON_QUERY_ARRAY(PARSE_JSON(@topics_json))) topic WITH OFFSET;\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.campaign_doctors`\n(campaign_id, doctor_id, status, invited_at, created_at, updated_at)\nSELECT @campaign_id, doctor_id, IF(v_scheduled, 'SCHEDULED', 'READY'), NULL, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP()\nFROM UNNEST(JSON_VALUE_ARRAY(PARSE_JSON(@doctor_ids_json))) doctor_id;\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.workflow_events`\n(event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id, payload)\nVALUES (\n  GENERATE_UUID(),\n  'campaign',\n  @campaign_id,\n  IF(v_scheduled, 'campaign.scheduled_by_admin', 'campaign.started_by_admin'),\n  CURRENT_TIMESTAMP(),\n  'admin_dashboard',\n  NULL,\n  TO_JSON(STRUCT(\n    @actor_email AS actor_email,\n    (SELECT COUNT(DISTINCT practice_id) FROM `apex-marketing-n8n.automated_article_creation.doctors` WHERE doctor_id IN UNNEST(JSON_VALUE_ARRAY(PARSE_JSON(@doctor_ids_json)))) AS practice_count,\n    @audience AS audience,\n    (@audience = 'Presentation preview') AS preview_only,\n    @idempotency_key AS idempotency_key,\n    v_send_at AS invitation_send_at,\n    3 AS topic_count,\n    ARRAY_LENGTH(JSON_VALUE_ARRAY(PARSE_JSON(@doctor_ids_json))) AS recipient_count\n  ))\n);\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.admin_commands`\n(idempotency_key, action, actor_email, entity_id, requested_at, completed_at, payload)\nVALUES (\n  @idempotency_key,\n  'launch_campaign',\n  @actor_email,\n  @campaign_id,\n  CURRENT_TIMESTAMP(),\n  CURRENT_TIMESTAMP(),\n  TO_JSON(STRUCT(\n    (SELECT COUNT(DISTINCT practice_id) FROM `apex-marketing-n8n.automated_article_creation.doctors` WHERE doctor_id IN UNNEST(JSON_VALUE_ARRAY(PARSE_JSON(@doctor_ids_json)))) AS practice_count,\n    @audience AS audience,\n    (@audience = 'Presentation preview') AS preview_only,\n    @send_mode AS send_mode,\n    v_send_at AS invitation_send_at,\n    @topics_json AS topics_json,\n    @doctor_ids_json AS doctor_ids_json\n  ))\n);\n\nCOMMIT TRANSACTION;\n\nSELECT TRUE AS ok, IF(v_scheduled, 'SCHEDULED', 'LAUNCHED') AS status, @campaign_id AS campaign_id, v_send_at AS invitation_send_at;",
+        "sqlQuery": "DECLARE v_send_at TIMESTAMP DEFAULT CASE\n  WHEN @send_mode = 'scheduled' THEN TIMESTAMP(PARSE_DATETIME('%Y-%m-%dT%H:%M', @scheduled_send_local), @scheduled_send_timezone)\n  WHEN @send_mode = 'in_10' THEN TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 10 MINUTE)\n  ELSE CURRENT_TIMESTAMP()\nEND;\nDECLARE v_scheduled BOOL DEFAULT v_send_at > CURRENT_TIMESTAMP();\n\nCREATE TABLE IF NOT EXISTS `apex-marketing-n8n.automated_article_creation.admin_commands` (\n  idempotency_key STRING NOT NULL, action STRING NOT NULL, actor_email STRING NOT NULL,\n  entity_id STRING NOT NULL, requested_at TIMESTAMP NOT NULL, completed_at TIMESTAMP, payload JSON\n);\n\nALTER TABLE `apex-marketing-n8n.automated_article_creation.campaign_topics`\n  ADD COLUMN IF NOT EXISTS featured_image_source_url STRING;\nALTER TABLE `apex-marketing-n8n.automated_article_creation.campaign_topics`\n  ADD COLUMN IF NOT EXISTS featured_image_alt_text STRING; ALTER TABLE `apex-marketing-n8n.automated_article_creation.campaign_topics` ADD COLUMN IF NOT EXISTS wordpress_publish_date DATE;\nALTER TABLE `apex-marketing-n8n.automated_article_creation.campaign_topics`\n  ADD COLUMN IF NOT EXISTS featured_image_source_type STRING;\nALTER TABLE `apex-marketing-n8n.automated_article_creation.campaign_topics`\n  ADD COLUMN IF NOT EXISTS featured_image_rights_reference STRING;\nALTER TABLE `apex-marketing-n8n.automated_article_creation.campaigns`\n  ADD COLUMN IF NOT EXISTS invitation_send_at TIMESTAMP;\nALTER TABLE `apex-marketing-n8n.automated_article_creation.campaigns`\n  ADD COLUMN IF NOT EXISTS preview_only BOOL;\n\nASSERT NOT EXISTS (\n  SELECT 1 FROM `apex-marketing-n8n.automated_article_creation.admin_commands`\n  WHERE idempotency_key = @idempotency_key\n) AS 'This command was already processed.';\nASSERT @audience IN ('Linked doctors', 'Presentation preview') AS 'Unsupported campaign audience.';\nASSERT @send_mode IN ('now', 'in_10', 'scheduled') AS 'Unsupported send mode.'; ASSERT ARRAY_LENGTH(JSON_VALUE_ARRAY(PARSE_JSON(@doctor_ids_json))) BETWEEN 1 AND 200 AS 'Campaigns require 1-200 linked doctors.';\nASSERT v_send_at <= TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 90 DAY) AS 'Scheduled send cannot be more than 90 days away.';\nASSERT @send_mode = 'now' OR v_send_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 MINUTE) AS 'Scheduled send time is already in the past.';\n\nASSERT NOT EXISTS (\n  SELECT 1 FROM `apex-marketing-n8n.automated_article_creation.campaigns`\n  WHERE campaign_id = @campaign_id\n) AS 'This campaign already exists.';\n\nASSERT ARRAY_LENGTH(JSON_QUERY_ARRAY(PARSE_JSON(@topics_json))) = 3 AS 'Exactly three topics are required.';\nASSERT NOT EXISTS (\n  SELECT 1\n  FROM UNNEST(JSON_QUERY_ARRAY(PARSE_JSON(@topics_json))) topic\n  WHERE NOT STARTS_WITH(JSON_VALUE(topic, '$.featured_image_source_url'), 'https://apexparent.hostmanpowered.com/wp-content/uploads/')\n    OR LENGTH(TRIM(JSON_VALUE(topic, '$.featured_image_alt_text'))) < 8 OR (NULLIF(TRIM(JSON_VALUE(topic, '$.wordpress_publish_date')), '') IS NOT NULL AND (SAFE_CAST(JSON_VALUE(topic, '$.wordpress_publish_date') AS DATE) IS NULL OR SAFE_CAST(JSON_VALUE(topic, '$.wordpress_publish_date') AS DATE) > CURRENT_DATE('America/Chicago')))\n     \n     \n) AS 'Every topic needs a valid central image URL, alt text, and valid WordPress publish date.';\n\nASSERT (\n  SELECT COUNT(*)\n  FROM `apex-marketing-n8n.automated_article_creation.doctors` d\n  JOIN `apex-marketing-n8n.automated_article_creation.practices` p USING (practice_id)\n  WHERE d.doctor_id IN UNNEST(JSON_VALUE_ARRAY(PARSE_JSON(@doctor_ids_json)))\n    AND d.active = TRUE\n    AND NULLIF(TRIM(d.email), '') IS NOT NULL\n    AND (\n      @audience = 'Presentation preview'\n      OR (\n        p.active = TRUE\n        AND UPPER(COALESCE(p.publisher_type, '')) = 'WORDPRESS'\n        AND NULLIF(TRIM(JSON_VALUE(SAFE.PARSE_JSON(p.publisher_config_reference), '$.wordpress_base_url')), '') IS NOT NULL\n        AND NULLIF(TRIM(JSON_VALUE(SAFE.PARSE_JSON(p.publisher_config_reference), '$.credential_name')), '') IS NOT NULL\n        AND (\n          p.practice_id = 'practice_test_001'\n          OR UPPER(COALESCE(JSON_VALUE(SAFE.PARSE_JSON(p.publisher_config_reference), '$.mapping_status'), '')) = 'VERIFIED'\n        )\n      )\n    )\n) = ARRAY_LENGTH(JSON_VALUE_ARRAY(PARSE_JSON(@doctor_ids_json)))\nAS 'Every selected doctor must be active and linked to a practice. Full article campaigns also require a verified publishing site.';\n\nBEGIN TRANSACTION;\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.campaigns`\n(campaign_id, campaign_name, campaign_month, status, doctor_review_days, require_marketing_approval, created_at, launched_at, invitation_send_at, preview_only)\nVALUES (\n  @campaign_id,\n  @campaign_name,\n  DATE(@campaign_month),\n  IF(v_scheduled, 'SCHEDULED', 'LAUNCHED'),\n  5,\n  IF(@audience = 'Presentation preview', FALSE, TRUE),\n  CURRENT_TIMESTAMP(),\n  IF(v_scheduled, NULL, CURRENT_TIMESTAMP()),\n  v_send_at,\n  @audience = 'Presentation preview'\n);\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.campaign_topics`\n(topic_id, campaign_id, topic_title, topic_description, interview_guidance,\n  featured_image_source_url, featured_image_alt_text, wordpress_publish_date,  \n    topic_sort_order, active, created_at)\nSELECT\n  CONCAT(@campaign_id, '_topic_', CAST(offset + 1 AS STRING)),\n  @campaign_id,\n  JSON_VALUE(topic, '$.title'),\n  JSON_VALUE(topic, '$.title'),\n  NULL,\n  JSON_VALUE(topic, '$.featured_image_source_url'),\n  JSON_VALUE(topic, '$.featured_image_alt_text'), SAFE_CAST(JSON_VALUE(topic, '$.wordpress_publish_date') AS DATE),\n   \n   \n  offset + 1,\n  TRUE,\n  CURRENT_TIMESTAMP()\nFROM UNNEST(JSON_QUERY_ARRAY(PARSE_JSON(@topics_json))) topic WITH OFFSET;\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.campaign_doctors`\n(campaign_id, doctor_id, status, invited_at, created_at, updated_at)\nSELECT @campaign_id, doctor_id, IF(v_scheduled, 'SCHEDULED', 'READY'), NULL, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP()\nFROM UNNEST(JSON_VALUE_ARRAY(PARSE_JSON(@doctor_ids_json))) doctor_id;\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.workflow_events`\n(event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id, payload)\nVALUES (\n  GENERATE_UUID(),\n  'campaign',\n  @campaign_id,\n  IF(v_scheduled, 'campaign.scheduled_by_admin', 'campaign.started_by_admin'),\n  CURRENT_TIMESTAMP(),\n  'admin_dashboard',\n  NULL,\n  TO_JSON(STRUCT(\n    @actor_email AS actor_email,\n    (SELECT COUNT(DISTINCT practice_id) FROM `apex-marketing-n8n.automated_article_creation.doctors` WHERE doctor_id IN UNNEST(JSON_VALUE_ARRAY(PARSE_JSON(@doctor_ids_json)))) AS practice_count,\n    @audience AS audience,\n    (@audience = 'Presentation preview') AS preview_only,\n    @idempotency_key AS idempotency_key,\n    v_send_at AS invitation_send_at,\n    3 AS topic_count,\n    ARRAY_LENGTH(JSON_VALUE_ARRAY(PARSE_JSON(@doctor_ids_json))) AS recipient_count\n  ))\n);\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.admin_commands`\n(idempotency_key, action, actor_email, entity_id, requested_at, completed_at, payload)\nVALUES (\n  @idempotency_key,\n  'launch_campaign',\n  @actor_email,\n  @campaign_id,\n  CURRENT_TIMESTAMP(),\n  CURRENT_TIMESTAMP(),\n  TO_JSON(STRUCT(\n    (SELECT COUNT(DISTINCT practice_id) FROM `apex-marketing-n8n.automated_article_creation.doctors` WHERE doctor_id IN UNNEST(JSON_VALUE_ARRAY(PARSE_JSON(@doctor_ids_json)))) AS practice_count,\n    @audience AS audience,\n    (@audience = 'Presentation preview') AS preview_only,\n    @send_mode AS send_mode,\n    v_send_at AS invitation_send_at,\n    @topics_json AS topics_json,\n    @doctor_ids_json AS doctor_ids_json\n  ))\n);\n\nCOMMIT TRANSACTION;\n\nSELECT TRUE AS ok, IF(v_scheduled, 'SCHEDULED', 'LAUNCHED') AS status, @campaign_id AS campaign_id, v_send_at AS invitation_send_at;\n\nALTER TABLE `apex-marketing-n8n.automated_article_creation.campaigns` ADD COLUMN IF NOT EXISTS interview_deadline DATE;\nALTER TABLE `apex-marketing-n8n.automated_article_creation.campaigns` ADD COLUMN IF NOT EXISTS training_resource_url STRING;\nALTER TABLE `apex-marketing-n8n.automated_article_creation.campaigns` ADD COLUMN IF NOT EXISTS send_doctor_review_reminders BOOL;\nASSERT NULLIF(@interview_deadline, '') IS NULL OR SAFE_CAST(@interview_deadline AS DATE) IS NOT NULL AS 'The interview deadline must be a valid date.';\nASSERT NULLIF(@training_resource_url, '') IS NULL OR STARTS_WITH(@training_resource_url, 'https://') AS 'The training resource must use HTTPS.';\nUPDATE `apex-marketing-n8n.automated_article_creation.campaigns`\nSET interview_deadline = SAFE_CAST(NULLIF(@interview_deadline, '') AS DATE),\n    training_resource_url = NULLIF(@training_resource_url, ''),\n    send_doctor_review_reminders = LOWER(@send_doctor_review_reminders) != 'false'\nWHERE campaign_id = @campaign_id;\nSELECT TRUE AS ok, IF(v_scheduled, 'SCHEDULED', 'LAUNCHED') AS status, @campaign_id AS campaign_id, v_send_at AS invitation_send_at;",
         "options": {
           "location": "US",
           "queryParameters": {
@@ -248,18 +321,30 @@
               {
                 "name": "actor_email",
                 "value": "={{ $json.actor_email }}"
+              },
+              {
+                "name": "interview_deadline",
+                "value": "={{ $json.interview_deadline || '' }}"
+              },
+              {
+                "name": "training_resource_url",
+                "value": "={{ $json.training_resource_url || '' }}"
+              },
+              {
+                "name": "send_doctor_review_reminders",
+                "value": "={{ $json.send_doctor_review_reminders === false ? 'false' : 'true' }}"
               }
             ]
           }
         }
       },
-      "id": "launch-admin-campaign",
+      "id": "aad204ed-da34-4731-ba37-a82967e96305",
       "name": "Create Audited Campaign",
       "type": "n8n-nodes-base.googleBigQuery",
       "typeVersion": 2.1,
       "position": [
-        -40,
-        140
+        224,
+        592
       ]
     },
     {
@@ -268,13 +353,13 @@
         "responseBody": "={{ { ok: true, action: 'approve_for_doctor', status: $json.next_status || $json.status, article_id: $json.article_id } }}",
         "options": {}
       },
-      "id": "respond-approval",
+      "id": "98ef0d2c-6aad-4d4d-853d-c48fc8855c03",
       "name": "Return Approval Result",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.4,
       "position": [
-        440,
-        -140
+        720,
+        304
       ]
     },
     {
@@ -283,31 +368,236 @@
         "responseBody": "={{ { ok: true, action: 'launch_campaign', status: $json.status, campaign_id: $json.campaign_id, invitation_send_at: $json.invitation_send_at || null } }}",
         "options": {}
       },
-      "id": "respond-campaign",
+      "id": "b086e566-6f43-4c4f-a7c4-60f32139633a",
       "name": "Return Campaign Result",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.4,
       "position": [
-        200,
-        140
+        480,
+        592
       ]
     },
     {
       "parameters": {
-        "content": "## AAC Admin Command Boundary\n\nPrivate webhook called only by the Cloudflare Worker. Attach a Header Auth credential that validates `X-AAC-Admin-Secret`, plus the existing BigQuery credential.\n\nCampaign launch accepts 1–50 existing doctors selected from one active practice with a complete WordPress configuration. Non-test practices must carry `mapping_status: VERIFIED`. The command never creates a doctor from free-form name/email input and never reassigns an existing doctor. It supports exactly three topics with approved central image records and immediate, ten-minute, or scheduled invitation release.\n\nAny future invitation time stores the campaign as `SCHEDULED` until the invitation dispatcher releases it at or after `invitation_send_at`. Presentation preview campaigns are marked `preview_only = TRUE`; their interview transcripts are saved, but article generation, review requests, marketing review, and publishing are intentionally blocked.\n\nCommands are idempotent, state-checked, and audited before n8n continues orchestration.",
+        "content": "## AAC Admin Command Boundary\n\nPrivate webhook called only by the Cloudflare Worker. Attach a Header Auth credential that validates `X-AAC-Admin-Secret`, plus the existing BigQuery credential.\n\nCampaign launch accepts 1–200 active linked doctors from active verified WordPress practices, or a presentation/demo cohort. The dispatcher processes up to 50 recipients per run, so larger campaigns continue in later runs. Campaigns require exactly three topics with approved central image records and support immediate, ten-minute, or scheduled invitation release. Presentation recipients use `doctor_demo_...` aliases so production doctor identities are not overwritten.\n\nAny future invitation time stores the campaign as `SCHEDULED` until the invitation dispatcher releases it at or after `invitation_send_at`. Presentation/demo campaigns are marked `preview_only = TRUE`; their interview transcripts are saved, but article generation, review requests, marketing review, and publishing are intentionally blocked.\n\nCommands are idempotent, state-checked, and audited before n8n continues orchestration.\n\nDashboard marketing approvals require written evidence and a current article version. An approved article proceeds through the existing publisher workflow.",
         "height": 300,
         "width": 430
       },
-      "id": "admin-command-notes",
+      "id": "ccfcf430-b774-4512-b558-54443acab7d7",
       "name": "Admin Command Security Notes",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -760,
-        -400
+        -496,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "value": "apex-marketing-n8n",
+          "mode": "id"
+        },
+        "sqlQuery": "CREATE TABLE IF NOT EXISTS `apex-marketing-n8n.automated_article_creation.admin_commands` (\n  idempotency_key STRING NOT NULL, action STRING NOT NULL, actor_email STRING NOT NULL,\n  entity_id STRING NOT NULL, requested_at TIMESTAMP NOT NULL, completed_at TIMESTAMP, payload JSON\n);\nCREATE TABLE IF NOT EXISTS `apex-marketing-n8n.automated_article_creation.marketing_review_links` (\n  marketing_review_link_id STRING NOT NULL, article_id STRING NOT NULL, secure_token_hash STRING NOT NULL,\n  status STRING NOT NULL, created_at TIMESTAMP NOT NULL, expires_at TIMESTAMP NOT NULL,\n  first_opened_at TIMESTAMP, responded_at TIMESTAMP\n);\nASSERT NOT EXISTS (\n  SELECT 1 FROM `apex-marketing-n8n.automated_article_creation.admin_commands`\n  WHERE idempotency_key = @idempotency_key\n) AS 'This command was already processed.';\nASSERT (\n  SELECT COUNT(*)\n  FROM `apex-marketing-n8n.automated_article_creation.articles` a\n  JOIN `apex-marketing-n8n.automated_article_creation.campaigns` c USING (campaign_id)\n  JOIN `apex-marketing-n8n.automated_article_creation.practices` p ON p.practice_id = a.practice_id\n  JOIN `apex-marketing-n8n.automated_article_creation.doctors` d ON d.doctor_id = a.doctor_id\n  WHERE a.article_id = @article_id AND a.campaign_id = @campaign_id AND a.doctor_id = @doctor_id\n    AND a.status = @expected_status AND a.current_version = CAST(@expected_version AS INT64)\n    AND a.status IN ('DOCTOR_APPROVED', 'DOCTOR_AUTO_APPROVED', 'MARKETING_REVIEW')\n    AND c.require_marketing_approval = TRUE\n    AND p.active = TRUE AND UPPER(COALESCE(p.publisher_type, '')) = 'WORDPRESS'\n    AND NULLIF(TRIM(p.website_domain), '') IS NOT NULL\n    AND NULLIF(TRIM(JSON_VALUE(SAFE.PARSE_JSON(p.publisher_config_reference), '$.wordpress_base_url')), '') IS NOT NULL\n    AND NULLIF(TRIM(JSON_VALUE(SAFE.PARSE_JSON(p.publisher_config_reference), '$.credential_name')), '') IS NOT NULL\n    AND ((p.practice_id = 'practice_test_001'\n        AND JSON_VALUE(SAFE.PARSE_JSON(p.publisher_config_reference), '$.wordpress_base_url') = 'https://apexparent.hostmanpowered.com/test001')\n      OR (p.practice_id != 'practice_test_001'\n        AND UPPER(COALESCE(JSON_VALUE(SAFE.PARSE_JSON(p.publisher_config_reference), '$.mapping_status'), '')) = 'VERIFIED'))\n    AND (a.campaign_id != 'campaign_test_202609_aac_prestonwood_pilot_2026_09_23'\n      OR LOWER(d.email) = 'jdold@apexdp.com')\n    AND EXISTS (\n      SELECT 1 FROM `apex-marketing-n8n.automated_article_creation.article_versions` v\n      WHERE v.article_id = a.article_id AND v.version_number = a.current_version\n    )\n) = 1 AS 'The article changed, does not require marketing approval, or is not ready for its configured publisher.';\nBEGIN TRANSACTION;\nUPDATE `apex-marketing-n8n.automated_article_creation.marketing_review_links`\nSET status = 'RESPONDED', responded_at = CURRENT_TIMESTAMP()\nWHERE article_id = @article_id AND status IN ('READY', 'OPENED');\nMERGE `apex-marketing-n8n.automated_article_creation.approvals` T\nUSING (\n  SELECT GENERATE_UUID() AS approval_id, @article_id AS article_id,\n    'MARKETING_REVIEW' AS approval_type, CURRENT_TIMESTAMP() AS responded_at\n) S\nON T.article_id = S.article_id AND T.approval_type = S.approval_type AND T.status = 'PENDING'\nWHEN MATCHED THEN UPDATE SET status = 'APPROVED', responded_at = S.responded_at, response = @reason\nWHEN NOT MATCHED THEN INSERT\n  (approval_id, article_id, approval_type, status, requested_at, responded_at, response)\n  VALUES (S.approval_id, S.article_id, S.approval_type, 'APPROVED', S.responded_at, S.responded_at, @reason);\nUPDATE `apex-marketing-n8n.automated_article_creation.articles`\nSET status = 'MARKETING_APPROVED', marketing_approved_at = CURRENT_TIMESTAMP()\nWHERE article_id = @article_id AND status = @expected_status\n  AND current_version = CAST(@expected_version AS INT64);\nUPDATE `apex-marketing-n8n.automated_article_creation.campaign_doctors`\nSET status = 'MARKETING_APPROVED', updated_at = CURRENT_TIMESTAMP()\nWHERE campaign_id = @campaign_id AND doctor_id = @doctor_id;\nINSERT INTO `apex-marketing-n8n.automated_article_creation.workflow_events`\n(event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id, payload)\nVALUES (GENERATE_UUID(), 'article', @article_id, 'marketing.approved_by_admin', CURRENT_TIMESTAMP(), 'admin_dashboard', NULL,\n  TO_JSON(STRUCT(@actor_email AS actor_email, @reason AS evidence, CAST(@expected_version AS INT64) AS version_number, @idempotency_key AS idempotency_key)));\nINSERT INTO `apex-marketing-n8n.automated_article_creation.admin_commands`\n(idempotency_key, action, actor_email, entity_id, requested_at, completed_at, payload)\nVALUES (@idempotency_key, 'approve_for_marketing', @actor_email, @article_id, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP(),\n  TO_JSON(STRUCT(@campaign_id AS campaign_id, @doctor_id AS doctor_id, @reason AS evidence, CAST(@expected_version AS INT64) AS version_number)));\nCOMMIT TRANSACTION;\nSELECT TRUE AS ok, 'MARKETING_APPROVED' AS status, @article_id AS article_id;",
+        "options": {
+          "location": "US",
+          "queryParameters": {
+            "namedParameters": [
+              {
+                "name": "idempotency_key",
+                "value": "={{ $json.idempotency_key }}"
+              },
+              {
+                "name": "article_id",
+                "value": "={{ $json.article_id }}"
+              },
+              {
+                "name": "campaign_id",
+                "value": "={{ $json.campaign_id }}"
+              },
+              {
+                "name": "doctor_id",
+                "value": "={{ $json.doctor_id }}"
+              },
+              {
+                "name": "expected_status",
+                "value": "={{ $json.expected_status }}"
+              },
+              {
+                "name": "expected_version",
+                "value": "={{ $json.expected_version }}"
+              },
+              {
+                "name": "reason",
+                "value": "={{ $json.reason }}"
+              },
+              {
+                "name": "actor_email",
+                "value": "={{ $json.actor_email }}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "75784537-9bc3-4364-a708-697bc5f22d3b",
+      "name": "Record Audited Marketing Approval",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [
+        240,
+        448
+      ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "kGd2YSJ2MVJwRld0",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/kGd2YSJ2MVJwRld0",
+          "cachedResultName": "AAC - 15 - Publish Approved Article to WordPress"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "article_id": "={{ $json.article_id }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "article_id",
+              "displayName": "article_id",
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "eef245fd-e861-4cfc-b130-62aa40dc2933",
+      "name": "Publish Marketing-Approved Article",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        480,
+        448
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, action: 'approve_for_marketing', status: $json.status || 'MARKETING_APPROVED', article_id: $json.article_id } }}",
+        "options": {}
+      },
+      "id": "144218c8-387d-4177-95a3-e445383a1f3a",
+      "name": "Return Marketing Approval Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        720,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"ok\": false,\n  \"action\": \"approve_for_marketing\",\n  \"error\": \"MARKETING_APPROVAL_FAILED\",\n  \"message\": \"Marketing approval was not recorded, and publishing did not start. Check the n8n execution details before retrying.\"\n}",
+        "options": {
+          "responseCode": 500
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        592,
+        688
+      ],
+      "id": "4238e4c3-aff3-40ee-9c15-63469b977ba7",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"ok\": false,\n  \"action\": \"approve_for_marketing\",\n  \"status\": \"MARKETING_APPROVED\",\n  \"published\": false,\n  \"error\": \"WORDPRESS_PUBLISH_FAILED\",\n  \"message\": \"Marketing approval was recorded, but WordPress publishing did not complete. Check the publisher execution before retrying.\"\n}",
+        "options": {
+          "responseCode": 502
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        736,
+        592
+      ],
+      "id": "e83f9c8b-a183-4a50-8cb9-7351a69cc386",
+      "name": "Respond to Webhook1"
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "value": "apex-marketing-n8n",
+          "mode": "id"
+        },
+        "sqlQuery": "ALTER TABLE `apex-marketing-n8n.automated_article_creation.campaigns`\n  ADD COLUMN IF NOT EXISTS archived_at TIMESTAMP;\n\nCREATE TABLE IF NOT EXISTS `apex-marketing-n8n.automated_article_creation.admin_commands` (\n  idempotency_key STRING NOT NULL, action STRING NOT NULL, actor_email STRING NOT NULL,\n  entity_id STRING NOT NULL, requested_at TIMESTAMP NOT NULL, completed_at TIMESTAMP, payload JSON\n);\n\nASSERT NOT EXISTS (\n  SELECT 1 FROM `apex-marketing-n8n.automated_article_creation.admin_commands`\n  WHERE idempotency_key = @idempotency_key\n) AS 'This command was already processed.';\nASSERT (SELECT COUNT(*) FROM `apex-marketing-n8n.automated_article_creation.campaigns` WHERE campaign_id = @campaign_id) = 1\n  AS 'The campaign no longer exists.';\nASSERT (\n  SELECT IF(\n    LOWER(@archive) = 'true',\n    COUNTIF(archived_at IS NULL) = 1,\n    COUNTIF(archived_at IS NOT NULL) = 1\n  )\n  FROM `apex-marketing-n8n.automated_article_creation.campaigns`\n  WHERE campaign_id = @campaign_id\n) AS 'The campaign archive state changed. Refresh the dashboard before trying again.';\n\nBEGIN TRANSACTION;\nUPDATE `apex-marketing-n8n.automated_article_creation.campaigns`\nSET archived_at = IF(LOWER(@archive) = 'true', CURRENT_TIMESTAMP(), NULL)\nWHERE campaign_id = @campaign_id;\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.workflow_events`\n(event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id, payload)\nVALUES (\n  GENERATE_UUID(), 'campaign', @campaign_id,\n  IF(LOWER(@archive) = 'true', 'campaign.archived_by_admin', 'campaign.restored_by_admin'),\n  CURRENT_TIMESTAMP(), 'admin_dashboard', NULL,\n  TO_JSON(STRUCT(@actor_email AS actor_email, LOWER(@archive) = 'true' AS archived, @idempotency_key AS idempotency_key))\n);\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.admin_commands`\n(idempotency_key, action, actor_email, entity_id, requested_at, completed_at, payload)\nVALUES (\n  @idempotency_key,\n  IF(LOWER(@archive) = 'true', 'archive_campaign', 'restore_campaign'),\n  @actor_email, @campaign_id, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP(),\n  TO_JSON(STRUCT(LOWER(@archive) = 'true' AS archived))\n);\nCOMMIT TRANSACTION;\nSELECT TRUE AS ok, IF(LOWER(@archive) = 'true', 'ARCHIVED', 'RESTORED') AS status, @campaign_id AS campaign_id;",
+        "options": {
+          "location": "US",
+          "queryParameters": {
+            "namedParameters": [
+              {
+                "name": "idempotency_key",
+                "value": "={{ $json.idempotency_key }}"
+              },
+              {
+                "name": "campaign_id",
+                "value": "={{ $json.campaign_id }}"
+              },
+              {
+                "name": "archive",
+                "value": "={{ $json.action === 'archive_campaign' ? 'true' : 'false' }}"
+              },
+              {
+                "name": "actor_email",
+                "value": "={{ $json.actor_email }}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "8d9a7976-914c-43ce-8e2b-9c32457daa65",
+      "name": "Archive or Restore Campaign",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [
+        240,
+        736
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, action: $json.status === 'ARCHIVED' ? 'archive_campaign' : 'restore_campaign', status: $json.status, campaign_id: $json.campaign_id } }}",
+        "options": {}
+      },
+      "id": "8b15380e-cee1-4289-89d9-52d2c46bc3f5",
+      "name": "Return Archive Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        384,
+        880
       ]
     }
   ],
+  "pinData": {},
   "connections": {
     "Receive Authenticated Admin Command": {
       "main": [
@@ -342,7 +632,28 @@
         ],
         [
           {
+            "node": "Record Audited Marketing Approval",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
             "node": "Create Audited Campaign",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Archive or Restore Campaign",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Archive or Restore Campaign",
             "type": "main",
             "index": 0
           }
@@ -381,15 +692,59 @@
           }
         ]
       ]
+    },
+    "Record Audited Marketing Approval": {
+      "main": [
+        [
+          {
+            "node": "Publish Marketing-Approved Article",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publish Marketing-Approved Article": {
+      "main": [
+        [
+          {
+            "node": "Return Marketing Approval Result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond to Webhook1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Archive or Restore Campaign": {
+      "main": [
+        [
+          {
+            "node": "Return Archive Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
-    "executionOrder": "v1"
-  },
-  "versionId": "092b2f93-99d6-46dc-997a-acde00000024",
-  "meta": {
-    "templateCredsSetupCompleted": false
-  },
-  "tags": []
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  }
 }

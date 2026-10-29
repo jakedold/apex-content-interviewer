@@ -277,6 +277,15 @@
 
 .admin-campaign-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 0 26px 26px; }
 .admin-campaign-card { padding: 22px; border: 1px solid #dde5e9; border-radius: 9px; background: #fbfcfd; }
+.admin-campaign-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 0 26px 18px; border-bottom: 1px solid #e4eaee; }
+.admin-campaign-sort { display: grid; gap: 6px; color: #536169; font-size: 11px; font-weight: 750; }
+.admin-campaign-sort select { min-width: 210px; border: 1px solid #d4dde3; border-radius: 7px; padding: 9px 11px; color: #263841; background: #fff; font: inherit; }
+.admin-campaign-message { min-height: 17px; margin: 10px 26px 0; color: #527534; font-size: 11px; }
+.admin-campaign-title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.admin-campaign-title-row h3 { margin: 13px 0 8px; color: #173e56; font-size: 18px; }
+.admin-campaign-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 2px 8px; }
+.admin-campaign-actions .admin-text-button { white-space: nowrap; }
+.admin-campaign-month { margin: 0 0 14px; color: #7d888e; font-size: 11px; }
 .admin-campaign-topline { display: flex; align-items: center; justify-content: space-between; color: #78848b; font-size: 12px; }
 .admin-campaign-card h3 { margin: 13px 0 18px; color: #173e56; font-size: 18px; }
 .admin-progress { overflow: hidden; height: 6px; border-radius: 99px; background: #e1e8ec; }
@@ -376,6 +385,9 @@
 .admin-campaign-form fieldset { display: grid; grid-column: 1 / -1; gap: 12px; margin: 0; border: 1px solid #cfd9e1; border-radius: 8px; padding: 18px; }
 .admin-campaign-form legend { padding: 0 6px; color: #064c78; font-size: 12px; font-weight: 700; }
 .admin-campaign-form label:has(textarea), .admin-confirm-check, .admin-form-actions, .admin-form-message { grid-column: 1 / -1; }
+.admin-campaign-form .admin-toggle { display: flex; grid-column: 1 / -1; align-items: center; gap: 10px; color: #354b57; }
+.admin-campaign-form .admin-toggle input { width: auto; margin: 0; }
+.admin-campaign-form .admin-toggle span { font-weight: 600; }
 .admin-confirm-check { display: flex !important; align-items: flex-start; color: #30302f !important; font-weight: 600 !important; line-height: 1.45; }
 .admin-confirm-check input { width: auto; margin-top: 2px; }
 .admin-form-actions { display: flex; justify-content: flex-end; gap: 10px; }
@@ -493,6 +505,12 @@
 .admin-doctor-search {
   margin-top: 14px;
 }
+
+.admin-doctor-tools { display: flex; align-items: end; justify-content: space-between; gap: 14px; margin-top: 14px; }
+.admin-doctor-tools .admin-campaign-sort select { min-width: 225px; }
+.admin-doctor-bulk-actions { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.admin-campaign-message:empty { display: none; }
+.admin-recipient-options .admin-campaign-message { margin: 6px 0; }
 
 .admin-doctor-selection-summary {
   display: flex;
@@ -659,4 +677,14 @@
 .admin-campaign-title-row .admin-text-button {
   flex: 0 0 auto;
   white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+  .admin-campaign-toolbar,
+  .admin-doctor-tools { align-items: stretch; flex-direction: column; }
+  .admin-campaign-toolbar { padding-left: 18px; padding-right: 18px; }
+  .admin-campaign-sort select,
+  .admin-doctor-tools .admin-campaign-sort select { width: 100%; }
+  .admin-campaign-title-row { flex-direction: column; }
+  .admin-campaign-actions { justify-content: flex-start; }
 }

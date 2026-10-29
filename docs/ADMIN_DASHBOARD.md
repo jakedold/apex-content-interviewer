@@ -1,6 +1,8 @@
 # Admin Content Operations Dashboard
 
-The read-only admin control center is available at `/admin`.
+The admin control center is available at `/admin`. Its reporting views are
+read-only; a small set of administrator actions is handled separately through
+the audited n8n command boundary.
 
 It provides:
 
@@ -9,7 +11,7 @@ It provides:
 - status and urgency filtering
 - recent workflow event timelines
 - workflow and communication failure surfaces
-- read-only capability metadata and reserved UI space for future audited actions
+- capability metadata for available administrator actions
 
 BigQuery remains the system of record. The Worker queries it directly with a read-only service account. n8n is not used as a database or read API; it remains the orchestration and workflow diagnostics layer.
 
@@ -23,7 +25,14 @@ Administrative mutations use a separate boundary:
 - `n8n/24-admin-command-router.json` performs state checks, writes the audit event and command record in BigQuery, and only then continues orchestration.
 - The BigQuery dashboard credential remains read-only and cannot be used for mutations.
 
-Actions remain disabled until `ADMIN_ACTION_EMAILS`, `ADMIN_COMMAND_PATH`, and the `ADMIN_COMMAND_SECRET` Worker secret are configured and the n8n workflow has its Header Auth and BigQuery credentials connected. This is intentional: the existing Cloudflare Access policy permits a broad Workspace audience for viewing, which must not automatically grant approval or campaign-launch authority.
+The current live AAC-24 export also contains a marketing-approval branch. The
+recovered Worker does not allowlist or expose that action, so it is not
+available from this dashboard.
+
+Campaign launch, doctor approval, and campaign archive/restore actions are enabled
+only for identities explicitly listed in `ADMIN_ACTION_EMAILS`, with the private
+n8n command path and secret configured. Everyone else retains read-only access.
+The Worker validates the Access identity again before accepting a command.
 
 ## Current application shape
 
@@ -37,7 +46,10 @@ The dashboard uses defense in depth:
 2. The Worker validates the signed `Cf-Access-Jwt-Assertion` header, issuer, and application audience before querying BigQuery.
 3. The BigQuery service account should have only the permissions needed to run read-only queries.
 4. The response is marked `private, no-store`.
-5. The current API exposes only `GET /api/admin/overview`. There are no mutation endpoints.
+5. `GET /api/admin/overview` returns dashboard data, and
+   `GET /api/admin/campaigns/{campaign_id}/status.csv` returns a campaign status
+   export. Both are read-only. `POST /api/admin/commands` accepts only the
+   allowlisted, audited administrator actions described above.
 
 Cloudflare configuration values:
 
@@ -160,3 +172,15 @@ The launcher supports:
 Future sends are stored as `SCHEDULED` with `invitation_send_at`. The active **AAC - 02 - Dispatch Campaign Invitations** workflow checks every minute, releases due campaigns, and can process up to 50 recipients in a run. Invitations are sent sequentially through the existing private doctor-message workflow. One failed recipient remains eligible for retry without blocking the rest of the cohort.
 
 The legacy workflow named **AAC - 02 - Create Topic Interview Links** is an old manual POC and should remain inactive. It is not the scheduled invitation workflow.
+
+The invitation workflow supports an optional interview completion deadline. When set on a campaign, topic links expire at 11:59 PM Central on that date and the invitation email names the deadline. Without a campaign deadline, links keep the existing 30-day lifetime. This is an interview deadline; it does not guarantee that article review, approval, or publication will finish by then. The campaign builder also accepts one optional HTTPS training resource link for the invitation email.
+
+Doctor review reminders are one per article, sent during the final 48 hours before the configured review deadline. The active workflow checks hourly. Campaigns can disable this reminder; campaigns created before the setting existed continue to default to enabled. This reminder is separate from interview invitations, which do not currently receive a follow-up reminder.
+
+Campaign history supports sorting by month or name, current/unarchived and
+archived views, reversible archive/restore, and a per-campaign CSV export. The
+export lists each campaign doctor with current stage, interview timestamps,
+review deadline, and publication result. Archive only changes the dashboard
+history view; it does not stop pending invitations or workflow activity. Both
+archive and restore are administrator-only and audited through the n8n command
+boundary.

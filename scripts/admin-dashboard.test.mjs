@@ -17,6 +17,13 @@ test('campaign CSV is a read-only GET endpoint behind the admin handler', () => 
   assert.match(client, /\/status\.csv/);
 });
 
+test('campaign CSV query avoids the reserved BigQuery keyword ROWS as an alias', () => {
+  const query = admin.match(/function campaignStatusQuery[\s\S]*?\n}\n/)[0];
+  assert.doesNotMatch(query, /\bAS\s+rows\b/i);
+  assert.match(query, /AS roster_rows/);
+  assert.match(admin, /result\.roster_rows \?\? \[\]/);
+});
+
 test('campaign archive controls remain reversible and use the audited command route', () => {
   assert.match(client, /Current and unarchived/);
   assert.match(client, /data-campaign-action/);

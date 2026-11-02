@@ -322,7 +322,7 @@ SELECT TO_JSON_STRING(STRUCT(
   (SELECT campaign_name FROM campaign LIMIT 1) AS campaign_name,
   (SELECT campaign_month FROM campaign LIMIT 1) AS campaign_month,
   (SELECT interview_deadline FROM campaign LIMIT 1) AS interview_deadline,
-  ARRAY(SELECT AS STRUCT * FROM roster ORDER BY practice_name, doctor_name) AS rows
+  ARRAY(SELECT AS STRUCT * FROM roster ORDER BY practice_name, doctor_name) AS roster_rows
 )) AS payload;`;
 }
 
@@ -471,7 +471,7 @@ export async function handleAdminCampaignStatusCsv(request: Request, env: Env, c
       adminEnv,
       campaignStatusQuery(adminEnv.BQ_PROJECT_ID, adminEnv.BQ_DATASET),
       [stringParameter('campaign_id', campaignId)],
-    ) as { campaign_name?: string; rows?: Array<Record<string, unknown>> };
+    ) as { campaign_name?: string; roster_rows?: Array<Record<string, unknown>> };
     if (!result.campaign_name) return Response.json({ error: 'CAMPAIGN_NOT_FOUND', message: 'That campaign was not found.' }, { status: 404 });
     const columns: Array<[string, string]> = [
       ['Campaign', 'campaign_name'], ['Campaign Month', 'campaign_month'], ['Doctor', 'doctor_name'],
@@ -483,7 +483,7 @@ export async function handleAdminCampaignStatusCsv(request: Request, env: Env, c
     ];
     const lines = [
       columns.map(([label]) => csvCell(label)).join(','),
-      ...(result.rows ?? []).map((row) => columns.map(([, key]) => csvCell(row[key])).join(',')),
+      ...(result.roster_rows ?? []).map((row) => columns.map(([, key]) => csvCell(row[key])).join(',')),
     ];
     const filenameId = campaignId.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 64) || 'campaign';
     return new Response(`\uFEFF${lines.join('\r\n')}`, {

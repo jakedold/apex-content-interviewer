@@ -1,0 +1,53 @@
+name: Deploy Worker
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      # Non-secret: the account ID already appears in wrangler.jsonc management URLs.
+      CLOUDFLARE_ACCOUNT_ID: 8fe8252777ac01ec95e22fc8fa26445c
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # worker-configuration.d.ts is generated, not committed.
+      - run: npm run cf-typegen
+
+      - run: npm run build
+
+      - run: node --test scripts/*.test.mjs
+
+      - name: Check for Cloudflare API token
+        id: token
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -n "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::CLOUDFLARE_API_TOKEN is not set; skipping deploy."
+          fi
+
+      - name: Deploy to Cloudflare
+        if: steps.token.outputs.present == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx wrangler deploy

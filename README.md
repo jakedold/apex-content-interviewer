@@ -56,7 +56,9 @@ The voice interviewer prompt and the separate article-writing and revision promp
 
 ## Deployment
 
-The repository is designed for Cloudflare Workers Builds connected to the `main` branch. The Worker configuration is in `wrangler.jsonc`; the deploy command is:
+Every push to `main` runs `.github/workflows/deploy.yml`, which builds the app, runs `node --test scripts/*.test.mjs`, and deploys the Worker only if both pass. The workflow needs a `CLOUDFLARE_API_TOKEN` repository secret with **Account → Workers Scripts: Edit** and **Account → Account Settings: Read**; without it, the deploy step is skipped. It can also be run manually from the Actions tab.
+
+The Worker configuration is in `wrangler.jsonc`. A deploy replaces dashboard-edited variables with the values in that file, so change variables there rather than in the Cloudflare dashboard; secrets are not affected. To deploy manually:
 
 ```bash
 npm run deploy

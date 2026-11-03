@@ -56,7 +56,7 @@ The voice interviewer prompt and the separate article-writing and revision promp
 
 ## Deployment
 
-Every push to `main` runs `.github/workflows/deploy.yml`, which builds the app, runs `node --test scripts/*.test.mjs`, and deploys the Worker only if both pass. The workflow needs a `CLOUDFLARE_API_TOKEN` repository secret with **Account → Workers Scripts: Edit** and **Account → Account Settings: Read**; without it, the deploy step is skipped. It can also be run manually from the Actions tab.
+Every push to `main` runs `.github/workflows/deploy.yml`, which builds the app, runs `node --test scripts/*.test.mjs`, and deploys the Worker only if both pass. Manual runs are limited to `main`. The workflow needs a `CLOUDFLARE_API_TOKEN` GitHub Actions secret; without it, the deploy step is skipped. Scope the Cloudflare token to the existing `apex-content-interviewer` Worker with the **Editor** permission. Cloudflare documents this as sufficient for deploying an existing Worker; add a zone-level Workers Routes permission only if a deployment also needs to change a route or custom domain. Never commit the token to the repository.
 
 The Worker configuration is in `wrangler.jsonc`. A deploy replaces dashboard-edited variables with the values in that file, so change variables there rather than in the Cloudflare dashboard; secrets are not affected. To deploy manually:
 

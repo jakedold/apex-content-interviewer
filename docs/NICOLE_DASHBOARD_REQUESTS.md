@@ -29,6 +29,8 @@ This note records the answers and changes in the recovered dashboard source.
 5. **Shared article details.** The campaign topic stores the featured image,
    alt text, and image source details shared by doctors who choose that topic.
    The campaign builder does not set a future WordPress publication date.
+   The builder no longer asks for an image source type; that field was never
+   saved or used by the publishing workflows.
 
 6. **Meta descriptions.** The writing workflow generates and saves a
    meta-description for each article. Descriptions can vary by article and
@@ -68,7 +70,7 @@ This note records the answers and changes in the recovered dashboard source.
 
 13. **Monthly theme or three unique topics.** The campaign builder has a
     "Campaign layout" choice. "One monthly theme" (the default) lets Topics 2
-    and 3 reuse Topic 1's featured image, alt text, and image source details;
+    and 3 reuse Topic 1's featured image, alt text, and rights/source reference;
     uncheck "Use the same featured image as Topic 1" on a topic to give it its
     own image. "Three unique topics" asks for a separate image for each topic.
     Duplicating a campaign keeps whichever layout the original used.

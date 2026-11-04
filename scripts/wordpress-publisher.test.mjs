@@ -63,3 +63,25 @@ test('the publisher loads the topic slug from the campaign topic', () => {
     ?? workflow.nodes.find((node) => node.name === 'Load Approved WordPress Article').parameters.sqlQuery;
   assert.match(query, /'\$\.wordpress_slug'\) AS topic_wordpress_slug/);
 });
+
+test('the doctor bio sits in the left sidebar directly under the FAQ, not below the article', () => {
+  const layoutSource = workflow.nodes.find((node) => node.name === 'Set Featured Image and Prepare Post').parameters.jsCode;
+  const candidate = row(verifiedConfig);
+  candidate.photo_source_url = 'https://public-dental.test/doctor.jpg';
+  candidate.profile_url = 'https://public-dental.test/about';
+  candidate.publication_package_json = JSON.stringify({
+    metadata: { h1: 'Test article', slug: 'test-article', meta_description: 'Test summary' },
+    author_bio: 'Dr. Test is a placeholder dentist used only in this automated layout test.',
+    article_html: '<h1>Test article</h1><p>Body</p><section class="aac-article-faq"><h2>FAQ</h2><p>Answer</p></section><p>Schedule at {{APPOINTMENT_URL}}</p>',
+  });
+  const prepared = prepare(candidate)[0].json;
+  const $ = () => ({ first: () => ({ json: prepared }) });
+  const content = new Function('$json', '$', layoutSource)({ id: 7, source_url: 'https://apexparent.hostmanpowered.com/wp-content/uploads/test.jpg' }, $)[0].json.content;
+  const sidebar = content.match(/<aside class="aac-article-sidebar"[\s\S]*<\/aside>/)?.[0] || '';
+  assert.ok(sidebar.indexOf('aac-article-faq') > -1 && sidebar.indexOf('aac-author-bio-card') > sidebar.indexOf('aac-article-faq'));
+  assert.equal(content.match(/About Dr\. Test/g).length, 1);
+  assert.ok(content.trim().endsWith('</aside></div>'));
+  assert.match(sidebar, /View full bio/);
+  assert.match(sidebar, /href="https:\/\/public-dental\.test" target="_blank" rel="noopener">Book appointment/);
+  assert.match(content, /\.aac-article-sidebar\{grid-column:1!important/);
+});

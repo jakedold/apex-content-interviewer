@@ -66,6 +66,10 @@ type WorkItem = {
   published_url: string;
   updated_at: string | null;
   urgency: 'error' | 'attention' | 'complete' | 'active';
+  current_version?: number | null;
+  require_marketing_approval?: boolean;
+  marketing_auto_approved?: boolean;
+  doctor_auto_approved?: boolean;
 };
 
 type WorkflowEvent = {
@@ -203,8 +207,8 @@ const app = appElement;
 let adminData: AdminResponse | null = null;
 let queueFilter = 'all';
 let queueSearch = '';
-// Work items selected in the queue for "Mark selected as published".
-const selectedForPublish = new Set<string>();
+// Work items selected in the queue to move to their next step together.
+const selectedForNextStep = new Set<string>();
 let campaignArchiveFilter: 'active' | 'archived' = 'active';
 let campaignSort: 'month_desc' | 'month_asc' | 'name_asc' = 'month_desc';
 
@@ -353,19 +357,39 @@ function isReadyToPush(item: WorkItem): boolean {
   return item.status === 'PUBLISHED' && Boolean(item.article_id);
 }
 
-function canMarkPublished(): boolean {
-  return Boolean(adminData?.capabilities.enabledActions.includes('mark_live_on_website'));
+type QueueStep = 'approve_for_doctor' | 'approve_for_marketing' | 'mark_live_on_website';
+const queueStepLabels: Record<QueueStep, { verb: string; done: string }> = {
+  approve_for_doctor: { verb: 'approve on the doctor’s behalf', done: 'approved for the doctor' },
+  approve_for_marketing: { verb: 'approve and send to WordPress', done: 'approved and sent to WordPress' },
+  mark_live_on_website: { verb: 'mark as published', done: 'marked as published' },
+};
+
+// The next step a work item can be moved to from the queue, if the viewer is allowed to take it.
+function queueNextStep(item: WorkItem): QueueStep | null {
+  const allowed = adminData?.capabilities.enabledActions ?? [];
+  let step: QueueStep | null = null;
+  if (!item.article_id || !item.current_version) step = null;
+  else if (item.status === 'DOCTOR_REVIEW_PENDING') step = 'approve_for_doctor';
+  else if (item.require_marketing_approval && /^(DOCTOR_APPROVED|DOCTOR_AUTO_APPROVED|MARKETING_REVIEW)$/.test(item.status)) step = 'approve_for_marketing';
+  else if (isReadyToPush(item)) step = 'mark_live_on_website';
+  return step && allowed.includes(step) ? step : null;
+}
+
+function autoApprovalFlag(item: { marketing_auto_approved?: boolean; doctor_auto_approved?: boolean }): string {
+  const who = [item.doctor_auto_approved ? 'doctor' : '', item.marketing_auto_approved ? 'marketing' : ''].filter(Boolean);
+  if (!who.length) return '';
+  return `<span class="admin-flag" title="Approved automatically because nobody responded in time. Give it extra attention before pushing live.">Auto-approved (${escapeHtml(who.join(' and '))}) · check carefully</span>`;
 }
 
 function workItemRow(item: WorkItem): string {
   const doctor = [item.doctor_name, item.credentials].filter(Boolean).join(', ');
-  const selectable = canMarkPublished() && isReadyToPush(item);
+  const step = queueNextStep(item);
   return `
     <tr data-work-item="${escapeHtml(item.work_item_id)}">
-      <td class="admin-select-cell">${selectable ? `<input type="checkbox" data-publish-select="${escapeHtml(item.work_item_id)}" aria-label="Select ${escapeHtml(doctor)} to mark as published" ${selectedForPublish.has(item.work_item_id) ? 'checked' : ''} />` : ''}</td>
+      <td class="admin-select-cell">${step ? `<input type="checkbox" data-step-select="${escapeHtml(item.work_item_id)}" aria-label="Select ${escapeHtml(doctor)} to ${escapeHtml(queueStepLabels[step].verb)}" ${selectedForNextStep.has(item.work_item_id) ? 'checked' : ''} />` : ''}</td>
       <td><strong>${escapeHtml(doctor)}</strong><small>${escapeHtml(item.practice_name || 'Practice not assigned')}</small></td>
       <td><strong>${escapeHtml(item.topic_title)}</strong><small>${escapeHtml(item.campaign_name)}</small></td>
-      <td>${statusPill(isReadyToPush(item) ? 'READY_TO_PUSH' : item.status)}</td>
+      <td>${statusPill(isReadyToPush(item) ? 'READY_TO_PUSH' : item.status)}${autoApprovalFlag(item)}${step ? `<small class="admin-next-step">Next: ${escapeHtml(queueStepLabels[step].verb)}</small>` : ''}</td>
       <td><time datetime="${escapeHtml(item.updated_at)}">${escapeHtml(formatDate(item.updated_at, true))}</time></td>
       <td><button class="admin-text-button" type="button" data-view-item="${escapeHtml(item.work_item_id)}">View</button></td>
     </tr>`;
@@ -383,71 +407,89 @@ function renderQueueRows(): void {
   for (const button of document.querySelectorAll<HTMLButtonElement>('[data-view-item]')) {
     button.addEventListener('click', () => openWorkItem(button.dataset.viewItem ?? ''));
   }
-  for (const checkbox of document.querySelectorAll<HTMLInputElement>('[data-publish-select]')) {
+  for (const checkbox of document.querySelectorAll<HTMLInputElement>('[data-step-select]')) {
     checkbox.addEventListener('change', () => {
-      const id = checkbox.dataset.publishSelect ?? '';
-      if (checkbox.checked) selectedForPublish.add(id); else selectedForPublish.delete(id);
-      updateBulkPublishBar();
+      const id = checkbox.dataset.stepSelect ?? '';
+      if (checkbox.checked) selectedForNextStep.add(id); else selectedForNextStep.delete(id);
+      updateBulkStepBar();
     });
   }
-  const selectAll = document.querySelector<HTMLInputElement>('#admin-publish-select-all');
+  const selectAll = document.querySelector<HTMLInputElement>('#admin-step-select-all');
   if (selectAll) {
-    const shown = items.filter(isReadyToPush);
-    selectAll.disabled = !canMarkPublished() || !shown.length;
-    selectAll.checked = shown.length > 0 && shown.every((item) => selectedForPublish.has(item.work_item_id));
+    const shown = items.filter((item) => queueNextStep(item));
+    selectAll.disabled = !shown.length;
+    selectAll.checked = shown.length > 0 && shown.every((item) => selectedForNextStep.has(item.work_item_id));
     selectAll.onchange = () => {
       for (const item of shown) {
-        if (selectAll.checked) selectedForPublish.add(item.work_item_id); else selectedForPublish.delete(item.work_item_id);
+        if (selectAll.checked) selectedForNextStep.add(item.work_item_id); else selectedForNextStep.delete(item.work_item_id);
       }
       renderQueueRows();
     };
   }
-  updateBulkPublishBar();
+  updateBulkStepBar();
 }
 
-function updateBulkPublishBar(): void {
-  const bar = document.querySelector<HTMLElement>('#admin-bulk-publish');
+function selectedQueueItems(): Array<{ item: WorkItem; step: QueueStep }> {
+  return (adminData?.overview.work_queue ?? [])
+    .filter((item) => selectedForNextStep.has(item.work_item_id))
+    .map((item) => ({ item, step: queueNextStep(item) }))
+    .filter((entry): entry is { item: WorkItem; step: QueueStep } => Boolean(entry.step));
+}
+
+function updateBulkStepBar(): void {
+  const bar = document.querySelector<HTMLFormElement>('#admin-bulk-step');
   if (!bar) return;
-  // Only keep selections that are still ready to push.
-  const readyIds = new Set((adminData?.overview.work_queue ?? []).filter(isReadyToPush).map((item) => item.work_item_id));
-  for (const id of [...selectedForPublish]) if (!readyIds.has(id)) selectedForPublish.delete(id);
-  const count = selectedForPublish.size;
-  bar.hidden = count === 0;
+  // Drop selections that no longer have a next step (for example after a refresh).
+  const selected = selectedQueueItems();
+  const keep = new Set(selected.map(({ item }) => item.work_item_id));
+  for (const id of [...selectedForNextStep]) if (!keep.has(id)) selectedForNextStep.delete(id);
+  bar.hidden = selected.length === 0;
+  const counts = new Map<QueueStep, number>();
+  for (const { step } of selected) counts.set(step, (counts.get(step) ?? 0) + 1);
   const label = bar.querySelector<HTMLElement>('[data-bulk-count]');
-  if (label) label.textContent = `${count} article${count === 1 ? '' : 's'} selected`;
+  if (label) label.textContent = `${selected.length} selected: ` + [...counts].map(([step, number]) => `${number} to ${queueStepLabels[step].verb}`).join(' · ');
+  // A reason is required when any approval is included; a note is optional when only marking as published.
+  const needsReason = selected.some(({ step }) => step !== 'mark_live_on_website');
+  const reason = bar.querySelector<HTMLTextAreaElement>('textarea[name="reason"]');
+  if (reason) {
+    reason.required = needsReason;
+    reason.minLength = needsReason ? 12 : 0;
+    reason.placeholder = needsReason
+      ? 'Reason for the approvals, e.g. fast-tracking after marketing reviewed these in the dashboard…'
+      : 'Note (optional), e.g. pushed in Headless Hostman on…';
+  }
 }
 
-async function submitBulkPublish(event: SubmitEvent): Promise<void> {
+async function submitBulkStep(event: SubmitEvent): Promise<void> {
   event.preventDefault();
   const form = event.currentTarget as HTMLFormElement;
-  const message = form.querySelector<HTMLElement>('#admin-bulk-publish-message');
+  const message = form.querySelector<HTMLElement>('#admin-bulk-step-message');
   const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]');
-  const note = String(new FormData(form).get('note') ?? '').trim();
-  const items = (adminData?.overview.work_queue ?? []).filter((item) => selectedForPublish.has(item.work_item_id) && isReadyToPush(item));
-  if (!items.length) return;
+  const reason = String(new FormData(form).get('reason') ?? '').trim();
+  const selected = selectedQueueItems();
+  if (!selected.length) return;
   if (submit) submit.disabled = true;
   const failures: string[] = [];
   let done = 0;
   // One audited command per article, sent one at a time so each gets its own record and result.
-  for (const item of items) {
-    if (message) message.textContent = `Marking ${done + failures.length + 1} of ${items.length} as published…`;
+  for (const { item, step } of selected) {
+    if (message) message.textContent = `Working on ${done + failures.length + 1} of ${selected.length}…`;
     try {
-      await postAdminCommand({ action: 'mark_live_on_website', article_id: item.article_id, campaign_id: item.campaign_id, doctor_id: item.doctor_id,
-        expected_status: item.status, reason: note });
+      await postAdminCommand({ action: step, article_id: item.article_id, campaign_id: item.campaign_id, doctor_id: item.doctor_id,
+        expected_status: item.status, expected_version: item.current_version, reason });
       done += 1;
-      selectedForPublish.delete(item.work_item_id);
+      selectedForNextStep.delete(item.work_item_id);
     } catch (error) {
       const text = friendlyCommandError(error);
-      failures.push(`${[item.doctor_name, item.credentials].filter(Boolean).join(', ')}: ${text}`);
-      if (/not switched on in n8n/.test(text)) break;
+      failures.push(`${[item.doctor_name, item.credentials].filter(Boolean).join(', ')} (${queueStepLabels[step].verb}): ${text}`);
     }
   }
   if (!failures.length) {
-    if (message) message.textContent = `Marked ${done} article${done === 1 ? '' : 's'} as published.`;
+    if (message) message.textContent = `Moved ${done} article${done === 1 ? '' : 's'} to the next step.`;
     await initializeAdmin();
     return;
   }
-  if (message) message.textContent = `Marked ${done} of ${items.length} as published. Not marked: ${failures.join(' · ')}`;
+  if (message) message.textContent = `Moved ${done} of ${selected.length}. Not moved: ${failures.join(' · ')}`;
   if (submit) submit.disabled = false;
   if (done) renderQueueRows();
 }
@@ -475,16 +517,16 @@ function renderQueue(data: AdminResponse): string {
         </div>
         <label class="admin-search"><span class="sr-only">Search work queue</span><input id="admin-queue-search" type="search" placeholder="Search doctor, practice, topic…" value="${escapeHtml(queueSearch)}" /></label>
       </div>
-      <form class="admin-bulk-publish" id="admin-bulk-publish" hidden>
+      <form class="admin-bulk-publish" id="admin-bulk-step" hidden>
         <strong data-bulk-count></strong>
-        <label class="admin-bulk-note"><span class="sr-only">Note (optional)</span><input name="note" type="text" maxlength="500" placeholder="Note (optional), e.g. pushed in Headless Hostman on…" /></label>
-        <label class="admin-confirm-check"><input name="confirmation" type="checkbox" required /> I confirm these articles were pushed live through Headless Hostman.</label>
-        <button class="admin-primary-button" type="submit">Mark selected as published</button>
-        <p class="admin-form-message" id="admin-bulk-publish-message" role="status"></p>
+        <label class="admin-bulk-note"><span class="sr-only">Reason or note</span><textarea name="reason" rows="2" maxlength="2000"></textarea></label>
+        <label class="admin-confirm-check"><input name="confirmation" type="checkbox" required /> I confirm each selected article can move to the next step listed for it.</label>
+        <button class="admin-primary-button" type="submit">Move selected to next step</button>
+        <p class="admin-form-message" id="admin-bulk-step-message" role="status"></p>
       </form>
       <div class="admin-table-wrap">
         <table class="admin-table">
-          <thead><tr><th class="admin-select-cell"><input type="checkbox" id="admin-publish-select-all" aria-label="Select all shown articles that are ready to push" /></th><th>Doctor</th><th>Topic and campaign</th><th>Status</th><th>Last movement</th><th><span class="sr-only">Details</span></th></tr></thead>
+          <thead><tr><th class="admin-select-cell"><input type="checkbox" id="admin-step-select-all" aria-label="Select all shown articles that can move to a next step" /></th><th>Doctor</th><th>Topic and campaign</th><th>Status</th><th>Last movement</th><th><span class="sr-only">Details</span></th></tr></thead>
           <tbody id="admin-queue-body"></tbody>
         </table>
       </div>
@@ -1236,7 +1278,7 @@ function renderDashboard(data: AdminResponse): void {
       renderQueueRows();
     });
   }
-  document.querySelector<HTMLFormElement>('#admin-bulk-publish')?.addEventListener('submit', (event) => void submitBulkPublish(event));
+  document.querySelector<HTMLFormElement>('#admin-bulk-step')?.addEventListener('submit', (event) => void submitBulkStep(event));
   document.querySelector<HTMLInputElement>('#admin-queue-search')?.addEventListener('input', (event) => {
     queueSearch = (event.currentTarget as HTMLInputElement).value;
     renderQueueRows();
@@ -1292,27 +1334,34 @@ function articleMilestones(detail: WorkItemDetail) {
     articleStatus === 'PUBLISHED',
   );
   const liveEvent = detail.events.find((event) => event.event_type === 'article.marked_live');
-  return { articleStatus, invitationSent, interviewCompleted, articleDrafted, doctorApproved, marketingApproved, onWordPress, liveEvent, liveOnWebsite: Boolean(liveEvent) };
+  // Approved automatically because nobody responded in time; flagged for extra attention.
+  const doctorAutoApproved = articleStatus === 'DOCTOR_AUTO_APPROVED'
+    || detail.approvals.some((approval) => approval.approval_type === 'DOCTOR_REVIEW' && approval.status === 'AUTO_APPROVED')
+    || detail.events.some((event) => event.event_type === 'doctor.auto_approved');
+  const marketingAutoApproved = detail.approvals.some((approval) => approval.approval_type === 'MARKETING_REVIEW' && approval.status === 'AUTO_APPROVED')
+    || detail.events.some((event) => event.event_type === 'marketing.auto_approved');
+  return { articleStatus, invitationSent, interviewCompleted, articleDrafted, doctorApproved, marketingApproved, onWordPress, liveEvent, liveOnWebsite: Boolean(liveEvent), doctorAutoApproved, marketingAutoApproved };
 }
 
 function stageVisual(detail: WorkItemDetail): string {
   const m = articleMilestones(detail);
   // Apex process: campaign created → invitation emailed → interview completed → doctor review →
   // marketing review → on WordPress → ready to push → published by the team through Headless Hostman.
-  const steps: Array<[string, boolean, string]> = [
+  const steps: Array<[string, boolean, string, string?]> = [
     ['Campaign created', true, ''],
     ['Invitation emailed', m.invitationSent, 'Waiting to send'],
     ['Interview completed', m.interviewCompleted, 'Waiting for the doctor'],
-    ['Doctor review', m.doctorApproved, m.articleDrafted ? 'Waiting for the doctor' : 'Article being drafted'],
-    [detail.item.require_marketing_approval ? 'Marketing review' : 'Marketing review (not required)', m.marketingApproved, 'Waiting for marketing'],
+    ['Doctor review', m.doctorApproved, m.articleDrafted ? 'Waiting for the doctor' : 'Article being drafted', m.doctorAutoApproved ? 'Auto-approved' : ''],
+    [detail.item.require_marketing_approval ? 'Marketing review' : 'Marketing review (not required)', m.marketingApproved,
+      /CHANGES_REQUESTED/.test(m.articleStatus) ? 'Changes being written' : 'Waiting for marketing (auto-approves after 24 hours)', m.marketingAutoApproved ? 'Auto-approved' : ''],
     ['On WordPress', m.onWordPress, 'Sending to WordPress'],
     ['Ready to Push', m.liveOnWebsite, 'Push live in Headless Hostman'],
     ['Published', m.liveOnWebsite, ''],
   ];
   const activeIndex = steps.findIndex(([, complete]) => !complete);
-  return `<ol class="admin-stage-track">${steps.map(([label, complete, waiting], index) => `
-    <li class="${complete ? 'is-complete' : index === activeIndex ? 'is-current' : ''}">
-      <span>${complete ? '✓' : index + 1}</span><strong>${escapeHtml(label)}</strong>${!complete && index === activeIndex && waiting ? `<small>${escapeHtml(waiting)}</small>` : ''}
+  return `<ol class="admin-stage-track">${steps.map(([label, complete, waiting, flag], index) => `
+    <li class="${complete ? 'is-complete' : index === activeIndex ? 'is-current' : ''}${complete && flag ? ' is-flagged' : ''}">
+      <span>${complete ? '✓' : index + 1}</span><strong>${escapeHtml(label)}</strong>${!complete && index === activeIndex && waiting ? `<small>${escapeHtml(waiting)}</small>` : ''}${complete && flag ? `<small class="admin-stage-flag">${escapeHtml(flag)}</small>` : ''}
     </li>`).join('')}</ol>`;
 }
 
@@ -1358,7 +1407,7 @@ function nextStepAction(detail: WorkItemDetail, enabledActions: string[]): { act
     return offer({
       action: 'approve_for_marketing',
       title: 'Approve for marketing and send to WordPress',
-      description: 'Skips the marketing review link and sends this exact article version to WordPress now. Your name, reason, and the time are recorded.',
+      description: 'Sends this exact article version to WordPress now instead of waiting for the marketing review link. If nobody responds, it is approved automatically 24 hours after the review was requested. Your name, reason, and the time are recorded.',
       reasonLabel: 'Why is this article approved without the marketing review link?',
       reasonPlaceholder: 'Marketing reviewed this version in the dashboard and approved it to fast-track…',
       confirmation: 'I confirm this exact article version is approved to go to WordPress.',
@@ -1386,18 +1435,42 @@ function nextStepAction(detail: WorkItemDetail, enabledActions: string[]): { act
   if (!m.interviewCompleted) {
     return { action: null, message: 'Waiting for the doctor to complete the interview. There is nothing to approve yet.' };
   }
-  if (/REVISION/.test(m.articleStatus)) {
+  if (/REVISION|CHANGES_REQUESTED/.test(m.articleStatus)) {
     return { action: null, message: 'A revision is being written. When the new version is ready, it will come back for review here.' };
   }
   return { action: null, message: 'There is no manual step for this article’s current stage.' };
 }
 
+function autoApprovalNotice(detail: WorkItemDetail): string {
+  const m = articleMilestones(detail);
+  if (m.liveOnWebsite || !(m.marketingAutoApproved || m.doctorAutoApproved)) return '';
+  const who = [m.doctorAutoApproved ? 'the doctor' : '', m.marketingAutoApproved ? 'marketing' : ''].filter(Boolean).join(' and ');
+  return `<div class="admin-auto-approval-notice" role="note"><strong>Auto-approved: check carefully</strong><p>Nobody from ${escapeHtml(who)} responded in time, so this article was approved automatically. Give it extra attention (wording, links, practice details) before it is pushed live.</p></div>`;
+}
+
+// While an article waits for marketing, a reviewer can describe small changes; the AI writes a new version,
+// which comes back to marketing review (no doctor re-approval), like the marketing review page's "Request Changes".
+function changeRequestForm(detail: WorkItemDetail, enabledActions: string[]): string {
+  const item = detail.item;
+  const m = articleMilestones(detail);
+  if (!enabledActions.includes('request_marketing_changes') || !item.article_id || !item.require_marketing_approval
+    || !/^(DOCTOR_APPROVED|DOCTOR_AUTO_APPROVED|MARKETING_REVIEW)$/.test(m.articleStatus)) return '';
+  return `
+    <form id="admin-change-form" class="admin-change-form">
+      <strong>Or request changes</strong>
+      <p>Describe what should change, for example “Reword the last paragraph to say…” or “Remove the link to…”. The AI writes a new version that keeps everything else, and it comes back here for marketing review. The doctor does not need to re-approve.</p>
+      <label>What should change?<textarea name="reason" required minlength="12" maxlength="4000" rows="4" placeholder="In the last paragraph, change the wording to… / Remove the link to… because…"></textarea></label>
+      <button class="admin-secondary-button" type="submit">Send change request</button>
+      <p class="admin-form-message" id="change-form-message" role="status"></p>
+    </form>`;
+}
+
 function nextStepPanel(detail: WorkItemDetail, enabledActions: string[]): string {
   const { action, message } = nextStepAction(detail, enabledActions);
   if (!action) {
-    return `<section class="admin-action-hook"><strong>Push to the next step</strong><p>${escapeHtml(message)}</p></section>`;
+    return `${autoApprovalNotice(detail)}<section class="admin-action-hook"><strong>Push to the next step</strong><p>${escapeHtml(message)}</p></section>`;
   }
-  return `
+  return `${autoApprovalNotice(detail)}
     <section class="admin-action-hook is-enabled">
       <strong>Push to the next step: ${escapeHtml(action.title)}</strong>
       <p>${escapeHtml(action.description)}</p>
@@ -1407,6 +1480,7 @@ function nextStepPanel(detail: WorkItemDetail, enabledActions: string[]): string
         <button class="admin-primary-button" type="submit">${escapeHtml(action.button)}</button>
         <p class="admin-form-message" id="next-step-form-message" role="status"></p>
       </form>
+      ${changeRequestForm(detail, enabledActions)}
     </section>`;
 }
 
@@ -1445,6 +1519,18 @@ function renderWorkItemDetail(response: WorkItemDetailResponse): void {
   if (!content || !item) return;
   const article = parseArticlePackage(detail.article_content);
   const milestones = articleMilestones(detail);
+  const marketingApproval = detail.approvals.find((approval) => approval.approval_type === 'MARKETING_REVIEW');
+  const marketingApprovalSummary = !item.require_marketing_approval
+    ? 'Not required for this campaign'
+    : milestones.marketingAutoApproved
+      ? 'Automatically approved after 24 hours without a response. Check carefully before pushing live.'
+      : marketingApproval?.status === 'APPROVED' || milestones.marketingApproved
+          ? 'Approved'
+          : marketingApproval?.status === 'CHANGES_REQUESTED'
+            ? 'Changes requested; a new version is being written'
+            : marketingApproval?.status === 'PENDING'
+              ? 'Waiting for marketing (auto-approves after 24 hours)'
+              : 'Not recorded';
   const doctorApproval = detail.approvals.find((approval) => approval.approval_type === 'DOCTOR_REVIEW');
   const doctorApprovalEvent = detail.events.find((event) => ['doctor.approved', 'doctor.auto_approved', 'doctor.approved_by_admin'].includes(event.event_type));
   const doctorApprovalSummary = doctorApproval?.status === 'AUTO_APPROVED' || item.article_status === 'DOCTOR_AUTO_APPROVED'
@@ -1470,6 +1556,7 @@ function renderWorkItemDetail(response: WorkItemDetailResponse): void {
       <div><dt>Publishing route</dt><dd>${escapeHtml(item.publisher_type || 'Not configured')}</dd></div>
       <div><dt>Doctor review deadline</dt><dd>${escapeHtml(formatDate(item.doctor_review_deadline, true))}</dd></div>
       <div><dt>Doctor approval</dt><dd>${escapeHtml(doctorApprovalSummary)}</dd></div>
+      <div><dt>Marketing approval</dt><dd>${escapeHtml(marketingApprovalSummary)}</dd></div>
       <div><dt>Article version</dt><dd>${item.current_version ? `Version ${item.current_version} · ${escapeHtml(titleCase(item.version_type || ''))}` : 'No draft yet'}</dd></div>
     </dl>
     <div class="admin-content-tabs" role="tablist">
@@ -1504,6 +1591,7 @@ function renderWorkItemDetail(response: WorkItemDetailResponse): void {
     });
   }
   content.querySelector<HTMLFormElement>('#admin-next-step-form')?.addEventListener('submit', (event) => void submitNextStep(event, detail, response.capabilities.enabledActions));
+  content.querySelector<HTMLFormElement>('#admin-change-form')?.addEventListener('submit', (event) => void submitChangeRequest(event, detail));
 }
 
 async function openWorkItem(id: string): Promise<void> {
@@ -1552,6 +1640,26 @@ function friendlyCommandError(error: unknown): string {
   return /unsupported administrative action/i.test(text)
     ? 'This step is not switched on in n8n yet. Jake needs to load the updated admin command workflow (24).'
     : text;
+}
+
+async function submitChangeRequest(event: SubmitEvent, detail: WorkItemDetail): Promise<void> {
+  event.preventDefault();
+  const item = detail.item;
+  const form = event.currentTarget as HTMLFormElement;
+  const message = form.querySelector<HTMLElement>('#change-form-message');
+  const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+  const reason = String(new FormData(form).get('reason') ?? '').trim();
+  if (submit) submit.disabled = true;
+  if (message) message.textContent = 'Sending change request…';
+  try {
+    await postAdminCommand({ action: 'request_marketing_changes', article_id: item.article_id, campaign_id: item.campaign_id, doctor_id: item.doctor_id,
+      expected_status: item.article_status, expected_version: item.current_version, reason });
+    if (message) message.textContent = 'Change request sent. The new version usually takes a few minutes, then it comes back for marketing review.';
+    await initializeAdmin();
+  } catch (error) {
+    if (message) message.textContent = friendlyCommandError(error);
+    if (submit) submit.disabled = false;
+  }
 }
 
 async function submitNextStep(event: SubmitEvent, detail: WorkItemDetail, enabledActions: string[]): Promise<void> {

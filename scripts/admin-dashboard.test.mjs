@@ -171,14 +171,68 @@ test('router records "live on website" only for an article on WordPress, once, w
   assert.equal(router.connections['Record Live on Website'].main[0][0].node, 'Return Live on Website Result');
 });
 
-test('several ready-to-push articles can be marked published at once, one audited command each', () => {
+test('several articles can be moved to their next step at once, one audited command each', () => {
   assert.match(client, /\['ready', 'Ready to push'/);
-  assert.match(client, /function isReadyToPush\(item: WorkItem\): boolean \{\n  return item\.status === 'PUBLISHED'/);
-  assert.match(client, /data-publish-select=/);
-  assert.match(client, /id="admin-publish-select-all"/);
-  assert.match(client, /Mark selected as published/);
-  assert.match(client, /I confirm these articles were pushed live through Headless Hostman\./);
-  const bulk = client.match(/async function submitBulkPublish[\s\S]*?\n}\n/)[0];
-  assert.match(bulk, /for \(const item of items\) \{[\s\S]*?await postAdminCommand\(\{ action: 'mark_live_on_website'/);
-  assert.match(bulk, /Not marked:/);
+  assert.match(client, /function queueNextStep\(item: WorkItem\): QueueStep \| null/);
+  assert.match(client, /item\.status === 'DOCTOR_REVIEW_PENDING'\) step = 'approve_for_doctor'/);
+  assert.match(client, /\(DOCTOR_APPROVED\|DOCTOR_AUTO_APPROVED\|MARKETING_REVIEW\)\$\/\.test\(item\.status\)\) step = 'approve_for_marketing'/);
+  assert.match(client, /isReadyToPush\(item\)\) step = 'mark_live_on_website'/);
+  assert.match(client, /data-step-select=/);
+  assert.match(client, /id="admin-step-select-all"/);
+  assert.match(client, /Move selected to next step/);
+  const bulk = client.match(/async function submitBulkStep[\s\S]*?\n}\n/)[0];
+  assert.match(bulk, /for \(const \{ item, step \} of selected\) \{[\s\S]*?await postAdminCommand\(\{ action: step,[\s\S]*?expected_version: item\.current_version/);
+  assert.match(bulk, /Not moved:/);
+  const queue = admin.match(/queue_rows AS \([\s\S]*?\n\),/)[0];
+  for (const field of ['a.current_version', 'c.require_marketing_approval', 'AS marketing_auto_approved', 'AS doctor_auto_approved']) assert.ok(queue.includes(field), field);
+});
+
+test('auto-approved articles are flagged for extra attention in the queue and the article view', () => {
+  assert.match(client, /Auto-approved \(\$\{escapeHtml\(who\.join\(' and '\)\)\}\) · check carefully/);
+  assert.match(client, /Auto-approved: check carefully/);
+  assert.match(client, /approval\.approval_type === 'MARKETING_REVIEW' && approval\.status === 'AUTO_APPROVED'/);
+  assert.match(client, /event\.event_type === 'marketing\.auto_approved'/);
+  assert.match(client, /Automatically approved after 24 hours without a response/);
+});
+
+test('marketing can request changes from the dashboard; the AI revision starts without blocking the dashboard', () => {
+  assert.match(admin, /ADMIN_ACTIONS = \[[^\]]*'request_marketing_changes'/);
+  assert.match(client, /action: 'request_marketing_changes'/);
+  assert.match(client, /Send change request/);
+  const source = router.nodes.find((node) => node.name === 'Validate and Normalize Command').parameters.jsCode;
+  const run = (body) => new Function('$json', source)({ body: { actor_email: 'admin@apexdp.com', idempotency_key: 'abcdefghijklmnop1234',
+    action: 'request_marketing_changes', article_id: 'article_1', campaign_id: 'campaign_1', doctor_id: 'doctor_1', expected_version: 2, ...body } });
+  assert.equal(run({ expected_status: 'MARKETING_REVIEW', reason: 'Remove the link to the product page.' })[0].json.reason, 'Remove the link to the product page.');
+  assert.throws(() => run({ expected_status: 'MARKETING_REVIEW', reason: 'too short' }), /12–4000/);
+  assert.throws(() => run({ expected_status: 'PUBLISHED', reason: 'Remove the link to the product page.' }), /waiting for marketing/);
+  const rules = router.nodes.find((node) => node.name === 'Route Narrow Command').parameters.rules.values;
+  const index = rules.findIndex((rule) => rule.conditions.conditions[0].rightValue === 'request_marketing_changes');
+  assert.equal(router.connections['Route Narrow Command'].main[index][0].node, 'Record Marketing Change Request');
+  const query = router.nodes.find((node) => node.name === 'Record Marketing Change Request').parameters.sqlQuery;
+  assert.match(query, /status = 'MARKETING_CHANGES_REQUESTED'/);
+  assert.match(query, /'CHANGES_REQUESTED', CURRENT_TIMESTAMP\(\), CURRENT_TIMESTAMP\(\), @reason/);
+  assert.match(query, /'revision\.requested'/);
+  const start = router.nodes.find((node) => node.name === 'Start Marketing Revision');
+  assert.equal(start.parameters.workflowId.cachedResultName, 'AAC - 20 - Revise Article from Marketing Feedback');
+  assert.equal(start.parameters.options.waitForSubWorkflow, false);
+  assert.equal(router.connections['Start Marketing Revision'].main[0][0].node, 'Return Change Request Result');
+});
+
+test('marketing reviews nobody answers are auto-approved after 24 hours, within safety limits, then sent to WordPress', () => {
+  const workflow = JSON.parse(read('n8n/21-auto-approve-expired-marketing-reviews.json'));
+  assert.equal(workflow.active, false);
+  const query = workflow.nodes.find((node) => node.name === 'Auto-Approve Expired Marketing Reviews').parameters.sqlQuery;
+  assert.match(query, /ap\.requested_at <= TIMESTAMP_SUB\(CURRENT_TIMESTAMP\(\), INTERVAL 24 HOUR\)/);
+  assert.match(query, /ap\.requested_at >= TIMESTAMP_SUB\(CURRENT_TIMESTAMP\(\), INTERVAL 7 DAY\)/);
+  assert.match(query, /LIMIT 25;/);
+  assert.match(query, /status = 'AUTO_APPROVED'/);
+  assert.match(query, /status = 'MARKETING_APPROVED'/);
+  assert.match(query, /'marketing\.auto_approved'/);
+  const send = workflow.nodes.find((node) => node.name === 'Send Auto-Approved Article to WordPress');
+  assert.equal(send.parameters.workflowId.cachedResultName, 'AAC - 15 - Publish Approved Article to WordPress');
+  assert.equal(send.parameters.mode, 'each');
+  assert.deepEqual(workflow.connections['Auto-Approve Expired Marketing Reviews'].main[0].map((c) => c.node), ['Send Auto-Approved Article to WordPress']);
+  assert.ok(workflow.nodes.every((node) => !node.credentials));
+  const invitation = JSON.parse(read('n8n/18-send-marketing-review-invitation.json'));
+  assert.match(invitation.nodes.find((node) => node.name === 'Prepare Marketing Review Email').parameters.jsCode, /within 24 hours, the article is approved automatically/);
 });

@@ -28,6 +28,7 @@ Version-controlled workflow exports:
 - `17-doctor-review-reminders.json`
 - `18-send-marketing-review-invitation.json`
 - `19-prestonwood-wordpress-draft-pilot.json` — isolated manual credential/subsite check; creates only a fixed internal draft at Prestonwood and is not part of the article pipeline
+- `21-auto-approve-expired-marketing-reviews.json` — hourly; approves a marketing review nobody answered within 24 hours (requests from the last 7 days, 25 per run), records `marketing.auto_approved`, and sends the article to WordPress for the team to check before pushing live
 - `20-revise-article-from-marketing-feedback.json` — marketing-requested revision; new immutable version and fresh marketing review without doctor reapproval
 - `24-admin-command-router.json` — authenticated admin boundary for audited approvals and dashboard campaign creation from selected linked doctors
 - `25-sync-doctor-census.json` — hourly, privacy-limited reconciliation of eligible Doctor Census rows and location mappings into BigQuery; preserves history and never enables publishing

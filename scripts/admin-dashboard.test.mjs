@@ -117,3 +117,55 @@ test('campaign launch saves the rights reference and no longer asks for an image
   assert.match(insert, /JSON_VALUE\(topic, '\$\.featured_image_alt_text'\),\s*JSON_VALUE\(topic, '\$\.featured_image_rights_reference'\)/);
   assert.doesNotMatch(sql.replace(/ADD COLUMN IF NOT EXISTS featured_image_source_type STRING/, ''), /featured_image_source_type/);
 });
+
+test('the stage tracker follows the Apex process from campaign to live on the website', () => {
+  const labels = ['Campaign created', 'Invitation emailed', 'Interview completed', 'Doctor review', 'Marketing review', 'On WordPress', 'Live on website'];
+  const tracker = client.match(/function stageVisual[\s\S]*?\n}\n/)[0];
+  let last = -1;
+  for (const label of labels) {
+    const at = tracker.indexOf("'" + label + "'");
+    assert.ok(at > last, label + ' should appear in order');
+    last = at;
+  }
+  assert.doesNotMatch(tracker, /'Topic selected'/);
+  assert.match(client, /event\.event_type === 'article\.marked_live'/);
+});
+
+test('"Push to the next step" offers the manual step for each stage through the audited command route', () => {
+  assert.match(client, /action: 'approve_for_doctor'/);
+  assert.match(client, /action: 'approve_for_marketing'/);
+  assert.match(client, /action: 'mark_live_on_website'/);
+  assert.match(client, /Approve and send to WordPress/);
+  assert.match(client, /Mark as live on website/);
+  assert.match(client, /postAdminCommand\(\{ action: action\.action/);
+  for (const action of ['approve_for_doctor', 'approve_for_marketing', 'mark_live_on_website']) {
+    assert.match(admin, new RegExp("ADMIN_ACTIONS = \\[[^\\]]*'" + action + "'"));
+  }
+  assert.match(admin, /enabledActions: canAct \? \[\.\.\.ADMIN_ACTIONS\]/);
+  assert.match(admin, /\(ADMIN_ACTIONS as readonly string\[\]\)\.includes\(String\(command\.action\)\)/);
+});
+
+test('articles on WordPress stay in the work queue until they are marked live', () => {
+  assert.match(admin, /OR \(a\.published_at >= TIMESTAMP_SUB\(CURRENT_TIMESTAMP\(\), INTERVAL 90 DAY\)[\s\S]*?event_type = 'article\.marked_live'/);
+});
+
+test('router records "live on website" only for an article on WordPress, once, without changing its status', () => {
+  const source = router.nodes.find((node) => node.name === 'Validate and Normalize Command').parameters.jsCode;
+  const run = (body) => new Function('$json', source)({ body: { actor_email: 'admin@apexdp.com', idempotency_key: 'abcdefghijklmnop1234', ...body } });
+  const command = { action: 'mark_live_on_website', article_id: 'article_1', campaign_id: 'campaign_1', doctor_id: 'doctor_1' };
+  const result = run({ ...command, expected_status: 'PUBLISHED', reason: 'Pushed in Headless Hostman' })[0].json;
+  assert.equal(result.note, 'Pushed in Headless Hostman');
+  assert.equal(run({ ...command, expected_status: 'PUBLISHED' })[0].json.note, '');
+  assert.throws(() => run({ ...command, expected_status: 'MARKETING_REVIEW' }), /on WordPress/);
+
+  const switchRules = router.nodes.find((node) => node.name === 'Route Narrow Command').parameters.rules.values;
+  const index = switchRules.findIndex((rule) => rule.conditions.conditions[0].rightValue === 'mark_live_on_website');
+  assert.ok(index >= 0);
+  assert.equal(router.connections['Route Narrow Command'].main[index][0].node, 'Record Live on Website');
+  const query = router.nodes.find((node) => node.name === 'Record Live on Website').parameters.sqlQuery;
+  assert.match(query, /status = 'PUBLISHED'/);
+  assert.match(query, /already marked live/);
+  assert.match(query, /'article\.marked_live'/);
+  assert.doesNotMatch(query, /UPDATE `[^`]*\.articles`/);
+  assert.equal(router.connections['Record Live on Website'].main[0][0].node, 'Return Live on Website Result');
+});

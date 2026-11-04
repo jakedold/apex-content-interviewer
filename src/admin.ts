@@ -261,7 +261,7 @@ function statusTone(status: string): string {
   const normalized = status.toUpperCase();
   if (/(FAILED|ERROR|REJECTED|ABANDONED)/.test(normalized)) return 'danger';
   if (/(REVIEW|REVISION|HOLD|PENDING)/.test(normalized)) return 'warning';
-  if (/(PUBLISHED|APPROVED|COMPLETED|SENT|DELIVERED)/.test(normalized)) return 'success';
+  if (/(PUBLISHED|APPROVED|COMPLETED|SENT|DELIVERED|LIVE_ON_WEBSITE)/.test(normalized)) return 'success';
   return 'info';
 }
 
@@ -353,7 +353,7 @@ function workItemRow(item: WorkItem): string {
     <tr data-work-item="${escapeHtml(item.work_item_id)}">
       <td><strong>${escapeHtml(doctor)}</strong><small>${escapeHtml(item.practice_name || 'Practice not assigned')}</small></td>
       <td><strong>${escapeHtml(item.topic_title)}</strong><small>${escapeHtml(item.campaign_name)}</small></td>
-      <td>${statusPill(item.status)}</td>
+      <td>${statusPill(item.status === 'PUBLISHED' ? 'ON_WORDPRESS' : item.status)}</td>
       <td><time datetime="${escapeHtml(item.updated_at)}">${escapeHtml(formatDate(item.updated_at, true))}</time></td>
       <td><button class="admin-text-button" type="button" data-view-item="${escapeHtml(item.work_item_id)}">View</button></td>
     </tr>`;
@@ -1184,7 +1184,8 @@ function parseArticlePackage(value: string | null): { articleHtml: string | null
   }
 }
 
-function stageVisual(detail: WorkItemDetail): string {
+// Milestones that move an article forward. Used by the stage tracker and the "Push to the next step" panel.
+function articleMilestones(detail: WorkItemDetail) {
   const item = detail.item;
   const articleStatus = String(item.article_status ?? '').toUpperCase();
   const interviewStatus = String(item.interview_status ?? '').toUpperCase();
@@ -1192,6 +1193,7 @@ function stageVisual(detail: WorkItemDetail): string {
   // Use the current article plus explicit milestone timestamps as the source of
   // truth. campaign_doctors can legitimately lag or retain a later historical
   // state in test data, so it must not mark downstream article stages complete.
+  const invitationSent = Boolean(item.invited_at || detail.communications.some((entry) => entry.status === 'SENT' || entry.delivered_at));
   const interviewCompleted = Boolean(
     item.completed_at ||
     item.article_id ||
@@ -1208,27 +1210,127 @@ function stageVisual(detail: WorkItemDetail): string {
         /^(MARKETING_APPROVED|PUBLISHING|PUBLISHED)$/.test(articleStatus),
       )
     : doctorApproved;
-  const published = Boolean(
+  const onWordPress = Boolean(
     item.published_at ||
     item.published_url ||
     articleStatus === 'PUBLISHED',
   );
+  const liveEvent = detail.events.find((event) => event.event_type === 'article.marked_live');
+  return { articleStatus, invitationSent, interviewCompleted, articleDrafted, doctorApproved, marketingApproved, onWordPress, liveEvent, liveOnWebsite: Boolean(liveEvent) };
+}
 
-  const steps = [
-    ['Invitation sent', Boolean(item.invited_at || detail.communications.some((entry) => entry.status === 'SENT' || entry.delivered_at))],
-    ['Topic selected', Boolean(item.topic_id)],
-    ['Interview completed', interviewCompleted],
-    ['Article drafted', articleDrafted],
-    ['Doctor approved', doctorApproved],
-    ['Marketing approved', marketingApproved],
-    ['Published', published],
-  ] as Array<[string, boolean]>;
-
+function stageVisual(detail: WorkItemDetail): string {
+  const m = articleMilestones(detail);
+  // Apex process: campaign created → invitation emailed → interview completed → doctor review →
+  // marketing review → pushed to WordPress → pushed live by the team through Headless Hostman.
+  const steps: Array<[string, boolean, string]> = [
+    ['Campaign created', true, ''],
+    ['Invitation emailed', m.invitationSent, 'Waiting to send'],
+    ['Interview completed', m.interviewCompleted, 'Waiting for the doctor'],
+    ['Doctor review', m.doctorApproved, m.articleDrafted ? 'Waiting for the doctor' : 'Article being drafted'],
+    [detail.item.require_marketing_approval ? 'Marketing review' : 'Marketing review (not required)', m.marketingApproved, 'Waiting for marketing'],
+    ['On WordPress', m.onWordPress, 'Sending to WordPress'],
+    ['Live on website', m.liveOnWebsite, 'Push live in Headless Hostman'],
+  ];
   const activeIndex = steps.findIndex(([, complete]) => !complete);
-  return `<ol class="admin-stage-track">${steps.map(([label, complete], index) => `
+  return `<ol class="admin-stage-track">${steps.map(([label, complete, waiting], index) => `
     <li class="${complete ? 'is-complete' : index === activeIndex ? 'is-current' : ''}">
-      <span>${complete ? '✓' : index + 1}</span><strong>${escapeHtml(label)}</strong>
+      <span>${complete ? '✓' : index + 1}</span><strong>${escapeHtml(label)}</strong>${!complete && index === activeIndex && waiting ? `<small>${escapeHtml(waiting)}</small>` : ''}
     </li>`).join('')}</ol>`;
+}
+
+type NextStepAction = {
+  action: 'approve_for_doctor' | 'approve_for_marketing' | 'mark_live_on_website';
+  title: string;
+  description: string;
+  reasonLabel: string;
+  reasonPlaceholder: string;
+  confirmation: string;
+  button: string;
+  pending: string;
+  success: string;
+};
+
+// Picks the one manual step that applies to the article's current stage, if any.
+function nextStepAction(detail: WorkItemDetail, enabledActions: string[]): { action: NextStepAction | null; message: string } {
+  const item = detail.item;
+  const m = articleMilestones(detail);
+  const readOnly = !enabledActions.length;
+  const offer = (action: NextStepAction) => readOnly || !enabledActions.includes(action.action)
+    ? { action: null, message: 'Your account has read-only access. An assigned administrator can move this article to its next step.' }
+    : { action, message: '' };
+  if (m.liveOnWebsite) {
+    const when = m.liveEvent?.event_timestamp ? formatDate(m.liveEvent.event_timestamp, true) : '';
+    return { action: null, message: `This article is marked live on the website${when ? ` (${when})` : ''}. There are no further steps.` };
+  }
+  if (m.onWordPress) {
+    return offer({
+      action: 'mark_live_on_website',
+      title: 'Mark as live on the website',
+      description: 'The article is on WordPress. After your team pushes it live through Headless Hostman, record it here so the tracker shows it as live.',
+      reasonLabel: 'Note (optional)',
+      reasonPlaceholder: 'Pushed live in Headless Hostman on…',
+      confirmation: 'I confirm this article has been pushed live on the practice website.',
+      button: 'Mark as live on website',
+      pending: 'Recording…',
+      success: 'Marked as live on the website.',
+    });
+  }
+  if (item.article_id && m.doctorApproved && !m.marketingApproved && item.require_marketing_approval
+    && /^(DOCTOR_APPROVED|DOCTOR_AUTO_APPROVED|MARKETING_REVIEW)$/.test(m.articleStatus)) {
+    return offer({
+      action: 'approve_for_marketing',
+      title: 'Approve for marketing and send to WordPress',
+      description: 'Skips the marketing review link and sends this exact article version to WordPress now. Your name, reason, and the time are recorded.',
+      reasonLabel: 'Why is this article approved without the marketing review link?',
+      reasonPlaceholder: 'Marketing reviewed this version in the dashboard and approved it to fast-track…',
+      confirmation: 'I confirm this exact article version is approved to go to WordPress.',
+      button: 'Approve and send to WordPress',
+      pending: 'Approving and sending to WordPress…',
+      success: 'Approved. The article was sent to WordPress.',
+    });
+  }
+  if (item.article_id && m.articleStatus === 'DOCTOR_REVIEW_PENDING') {
+    return offer({
+      action: 'approve_for_doctor',
+      title: 'Approve on the doctor’s behalf',
+      description: 'Use this when the doctor approved outside the review portal, or when your team has decided this article can skip doctor review. Your name, reason, and the time are recorded, and the article moves to marketing review.',
+      reasonLabel: 'How did the doctor approve, or why is doctor review being skipped?',
+      reasonPlaceholder: 'Dr. Allen confirmed approval by email on… / Fast-tracking because…',
+      confirmation: 'I confirm this exact article version can move forward without further doctor review.',
+      button: 'Approve and continue to marketing review',
+      pending: 'Recording approval…',
+      success: 'Approval recorded. The article is moving to marketing review.',
+    });
+  }
+  if (m.interviewCompleted && !m.articleDrafted) {
+    return { action: null, message: 'The article is drafted automatically after the interview, usually within a few minutes. There is nothing to approve yet. If no draft appears within an hour, the drafting step may have stopped; ask Jake to check the article generation workflow.' };
+  }
+  if (!m.interviewCompleted) {
+    return { action: null, message: 'Waiting for the doctor to complete the interview. There is nothing to approve yet.' };
+  }
+  if (/REVISION/.test(m.articleStatus)) {
+    return { action: null, message: 'A revision is being written. When the new version is ready, it will come back for review here.' };
+  }
+  return { action: null, message: 'There is no manual step for this article’s current stage.' };
+}
+
+function nextStepPanel(detail: WorkItemDetail, enabledActions: string[]): string {
+  const { action, message } = nextStepAction(detail, enabledActions);
+  if (!action) {
+    return `<section class="admin-action-hook"><strong>Push to the next step</strong><p>${escapeHtml(message)}</p></section>`;
+  }
+  return `
+    <section class="admin-action-hook is-enabled">
+      <strong>Push to the next step: ${escapeHtml(action.title)}</strong>
+      <p>${escapeHtml(action.description)}</p>
+      <form id="admin-next-step-form" data-action="${escapeHtml(action.action)}">
+        <label>${escapeHtml(action.reasonLabel)}<textarea name="reason" ${action.action === 'mark_live_on_website' ? '' : 'required minlength="12"'} rows="3" placeholder="${escapeHtml(action.reasonPlaceholder)}"></textarea></label>
+        <label class="admin-confirm-check"><input name="confirmation" type="checkbox" required /> ${escapeHtml(action.confirmation)}</label>
+        <button class="admin-primary-button" type="submit">${escapeHtml(action.button)}</button>
+        <p class="admin-form-message" id="next-step-form-message" role="status"></p>
+      </form>
+    </section>`;
 }
 
 function detailEventRow(event: WorkflowEvent): string {
@@ -1265,7 +1367,7 @@ function renderWorkItemDetail(response: WorkItemDetailResponse): void {
   const content = document.querySelector<HTMLDivElement>('#admin-detail-content');
   if (!content || !item) return;
   const article = parseArticlePackage(detail.article_content);
-  const canApprove = response.capabilities.enabledActions.includes('approve_for_doctor') && item.article_status === 'DOCTOR_REVIEW_PENDING';
+  const milestones = articleMilestones(detail);
   const doctorApproval = detail.approvals.find((approval) => approval.approval_type === 'DOCTOR_REVIEW');
   const doctorApprovalEvent = detail.events.find((event) => ['doctor.approved', 'doctor.auto_approved', 'doctor.approved_by_admin'].includes(event.event_type));
   const doctorApprovalSummary = doctorApproval?.status === 'AUTO_APPROVED' || item.article_status === 'DOCTOR_AUTO_APPROVED'
@@ -1273,7 +1375,7 @@ function renderWorkItemDetail(response: WorkItemDetailResponse): void {
     : doctorApprovalEvent?.event_type === 'doctor.approved'
       ? 'Doctor approved through the review portal'
       : doctorApprovalEvent?.event_type === 'doctor.approved_by_admin'
-        ? 'Administrator recorded off-portal doctor approval'
+        ? 'Approved by an administrator in the dashboard'
         : doctorApproval?.status === 'APPROVED'
           ? 'Approval recorded; source not available'
           : doctorApproval?.status === 'PENDING'
@@ -1285,7 +1387,7 @@ function renderWorkItemDetail(response: WorkItemDetailResponse): void {
     <p class="admin-detail-topic">${escapeHtml(item.topic_title || 'Topic not selected')}</p>
     ${stageVisual(detail)}
     <dl class="admin-detail-list">
-      <div><dt>Current status</dt><dd>${statusPill(item.article_status || item.interview_status || item.campaign_doctor_status)}</dd></div>
+      <div><dt>Current status</dt><dd>${milestones.liveOnWebsite ? statusPill('LIVE_ON_WEBSITE') : milestones.onWordPress ? statusPill('ON_WORDPRESS') : statusPill(item.article_status || item.interview_status || item.campaign_doctor_status)}</dd></div>
       <div><dt>Intended website</dt><dd>${item.website_domain ? `<a href="${escapeHtml(item.website_domain)}" target="_blank" rel="noreferrer">${escapeHtml(item.website_domain)}</a>` : 'Not configured'}</dd></div>
       <div><dt>Practice</dt><dd>${escapeHtml(item.practice_name || 'Not assigned')}</dd></div>
       <div><dt>Publishing route</dt><dd>${escapeHtml(item.publisher_type || 'Not configured')}</dd></div>
@@ -1314,17 +1416,7 @@ function renderWorkItemDetail(response: WorkItemDetailResponse): void {
       <p class="admin-version-note">A sent status records the workflow’s send step; it does not confirm inbox placement.</p>
       <ol class="admin-event-list admin-event-list-compact">${detail.communications.length ? detail.communications.map(detailCommunicationRow).join('') : '<li class="admin-empty">No communication records are available for this work item.</li>'}</ol>
     </section>
-    <section class="admin-action-hook ${canApprove ? 'is-enabled' : ''}">
-      <strong>Push to the next step</strong>
-      ${canApprove ? `
-        <p>Use this only after the doctor has clearly approved the current article outside the portal. The administrator, reason, timestamp, and prior state will be recorded.</p>
-        <form id="admin-approve-form">
-          <label>How did the doctor confirm approval?<textarea name="reason" required minlength="12" rows="3" placeholder="Dr. Allen confirmed approval by email on…"></textarea></label>
-          <label class="admin-confirm-check"><input name="confirmation" type="checkbox" required /> I confirm the doctor approved this exact article version.</label>
-          <button class="admin-primary-button" type="submit">Record doctor approval and continue</button>
-          <p class="admin-form-message" id="approval-form-message" role="status"></p>
-        </form>` : `<p>${item.article_status === 'DOCTOR_REVIEW_PENDING' ? 'Your account has read-only access. An assigned administrator can record an off-platform doctor approval.' : 'No safe manual-approval action applies to the current stage.'}</p>`}
-    </section>`;
+    ${nextStepPanel(detail, response.capabilities.enabledActions)}`;
 
   const iframe = content.querySelector<HTMLIFrameElement>('.admin-article-preview');
   if (iframe && article.articleHtml) iframe.srcdoc = article.articleHtml;
@@ -1334,7 +1426,7 @@ function renderWorkItemDetail(response: WorkItemDetailResponse): void {
       content.querySelectorAll('[data-detail-panel]').forEach((panel) => panel.classList.toggle('is-active', panel.getAttribute('data-detail-panel') === tab.dataset.detailTab));
     });
   }
-  content.querySelector<HTMLFormElement>('#admin-approve-form')?.addEventListener('submit', (event) => void submitDoctorApproval(event, item));
+  content.querySelector<HTMLFormElement>('#admin-next-step-form')?.addEventListener('submit', (event) => void submitNextStep(event, detail, response.capabilities.enabledActions));
 }
 
 async function openWorkItem(id: string): Promise<void> {
@@ -1378,21 +1470,29 @@ async function postAdminCommand(body: Record<string, unknown>): Promise<Record<s
   return result && typeof result === 'object' ? result as Record<string, unknown> : {};
 }
 
-async function submitDoctorApproval(event: SubmitEvent, item: WorkItemDetail['item']): Promise<void> {
+async function submitNextStep(event: SubmitEvent, detail: WorkItemDetail, enabledActions: string[]): Promise<void> {
   event.preventDefault();
+  const item = detail.item;
+  const { action } = nextStepAction(detail, enabledActions);
   const form = event.currentTarget as HTMLFormElement;
-  const message = form.querySelector<HTMLElement>('#approval-form-message');
+  const message = form.querySelector<HTMLElement>('#next-step-form-message');
   const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+  if (!action) return;
   const data = new FormData(form);
   if (submit) submit.disabled = true;
-  if (message) message.textContent = 'Recording approval…';
+  if (message) message.textContent = action.pending;
   try {
-    await postAdminCommand({ action: 'approve_for_doctor', article_id: item.article_id, campaign_id: item.campaign_id, doctor_id: item.doctor_id,
-      expected_status: item.article_status, expected_version: item.current_version, reason: String(data.get('reason') ?? '') });
-    if (message) message.textContent = 'Approval recorded. The workflow is moving to its next configured step.';
+    await postAdminCommand({ action: action.action, article_id: item.article_id, campaign_id: item.campaign_id, doctor_id: item.doctor_id,
+      expected_status: item.article_status, expected_version: item.current_version, reason: String(data.get('reason') ?? '').trim() });
+    if (message) message.textContent = action.success;
     await initializeAdmin();
   } catch (error) {
-    if (message) message.textContent = error instanceof Error ? error.message : 'The approval could not be recorded.';
+    const text = error instanceof Error ? error.message : 'The step could not be recorded.';
+    if (message) {
+      message.textContent = /unsupported administrative action/i.test(text)
+        ? 'This step is not switched on in n8n yet. Jake needs to load the updated admin command workflow (24).'
+        : text;
+    }
     if (submit) submit.disabled = false;
   }
 }

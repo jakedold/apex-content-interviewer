@@ -26,7 +26,8 @@ The transcript remains the source of the doctor's experience, professional judgm
 - Do not silently make unrelated editorial changes.
 - Do not introduce new clinical claims without checking authoritative sources.
 - If a requested statement would be inaccurate, unsafe, or unsupported, make the closest defensible revision and explain the limitation in the review document.
-- Keep confirmed WordPress Shortcoder tags exactly intact, including `[sc name="practice_name"][/sc]` and any verified practice contact tags. Do not introduce legacy `{{...}}` publishing tokens, invent a Shortcoder name, or substitute the generic `doctor_01`/`doctor_02` tags for the interviewed doctor.
+- Keep the `<section class="aac-article-faq">` FAQ block with exactly 4 question-and-answer items (`<h3>` question, `<p>` answer) after the final article section, with FAQ 1 as the most important question answered directly in 2 to 4 sentences. Keep the H1 and most H2 headings phrased as natural patient questions. If the original article has no FAQ block or a different number of items, add or adjust it to this format.
+- Keep confirmed WordPress Shortcoder tags exactly intact, including `[sc name="practice_name"][/sc]`, `[hh_short name="practice_city_and_state"]`, and any verified practice contact tags. Do not introduce legacy `{{...}}` publishing tokens, invent a Shortcoder name, or substitute the generic `doctor_01`/`doctor_02` tags for the interviewed doctor.
 - Preserve clean production HTML with no `<html>`, `<head>`, `<body>`, `<script>`, or `<style>` tags.
 - Preserve the five required metadata comments before the `<h1>`.
 - The production article must contain no internal review comments.

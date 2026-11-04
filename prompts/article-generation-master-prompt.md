@@ -540,6 +540,8 @@ and not:
 
 SENSATIONAL + MISLEADING
 
+House format for Apex expert blogs: phrase the H1 as the natural question a patient would ask or type into a search box, for example "Why Do My Gums Bleed When I Brush My Teeth?" A question headline can still be compelling; it must stay accurate and match what the article answers.
+
 ==================================================
 STEP 14: SEO TITLE VS. H1
 ==================================================
@@ -616,7 +618,7 @@ Avoid excessive fragmentation.
 
 Do not create a new H2 for every interview topic.
 
-As a general editorial target, most articles should contain approximately 4 to 8 meaningful H2 sections, plus an optional FAQ and CTA.
+As a general editorial target, most articles should contain approximately 4 to 8 meaningful H2 sections, plus the required 4-item FAQ and a CTA.
 
 This is not a hard numerical rule.
 
@@ -831,13 +833,31 @@ AND
 
 as a source from which search systems can accurately extract useful passages.
 
+House format for Apex expert blogs: phrase most H2 headings as the natural, specific questions patients ask (for example "Is Bleeding Gums a Sign of Gingivitis or Periodontitis?" or "When Should You See a Dentist for Bleeding Gums?"), and answer each question directly in the first sentences of its section. A heading that is clearer as a statement may stay a statement. Do not repeat the same keyword in every heading.
+
 ==================================================
 STEP 25: FAQ
 ==================================================
 
-An FAQ is OPTIONAL supporting content.
+Every Apex expert blog includes an FAQ with EXACTLY 4 items, ordered from highest to lowest priority for the reader and for search.
 
-Include 3 to 6 FAQ items only when they provide genuine additional value.
+- FAQ 1 is the single most important question the reader came with, usually the article's core search question. Its answer must be a direct, self-contained 2 to 4 sentence answer. The website shows FAQ 1 as a highlighted answer box at the top of the article.
+- FAQs 2 to 4 answer important secondary questions. The website shows them as collapsible questions in the sidebar. Keep each answer to 1 to 3 sentences.
+- At least one answer, usually FAQ 4, naturally mentions the practice using the confirmed website fields, for example `[sc name="practice_name"][/sc]` or `[hh_short name="practice_city_and_state"]`.
+
+Place the FAQ after the final article section and before the closing call to action, using exactly this markup:
+
+<section class="aac-article-faq">
+<h2>Frequently Asked Questions</h2>
+<h3>[FAQ 1 question]</h3>
+<p>[FAQ 1 answer]</p>
+<h3>[FAQ 2 question]</h3>
+<p>[FAQ 2 answer]</p>
+<h3>[FAQ 3 question]</h3>
+<p>[FAQ 3 answer]</p>
+<h3>[FAQ 4 question]</h3>
+<p>[FAQ 4 answer]</p>
+</section>
 
 Use the FAQ primarily to answer:
 
@@ -887,9 +907,10 @@ The WordPress sites use the Shortcoder plugin for reusable practice details. In 
 - Practice phone number: `[sc name="practice_phone_number"][/sc]`
 - Practice address: `[sc name="practice_address"][/sc]`
 - Practice city: `[sc name="practice_city"][/sc]`
+- Practice city and state (the field marketing uses on expert blogs; prefer it for location references): `[hh_short name="practice_city_and_state"]`
 - Practice email: `[sc name="practice_email"][/sc]`
 
-Preserve each tag exactly, including its closing `[/sc]`. Do not replace it with a guessed value. Do not invent other Shortcoder names. The interviewed doctor's name and credentials come from the interview context, not the site's generic `doctor_01` or `doctor_02` tags. Use a site-specific booking shortcode only when that subsite's intended placement and behavior have been verified. Never place a Shortcoder tag in an HTML attribute or metadata field.
+Preserve each tag exactly, including its closing `[/sc]`. Do not replace it with a guessed value. Do not invent other Shortcoder names. The interviewed doctor's name and credentials come from the interview context, not the site's generic `doctor_01` or `doctor_02` tags. Use a site-specific booking shortcode only when that subsite's intended placement and behavior have been verified. Never place a Shortcoder tag in an HTML attribute or metadata field, and never in the H1: the H1 becomes the WordPress post title, which does not run shortcodes.
 
 Use them naturally where relevant.
 
@@ -902,6 +923,8 @@ Appropriate uses may include:
 - appointment links
 - provider profile links
 - metadata
+
+In every Apex expert blog, mention the practice by its Shortcoder tag at least once in the opening section and once in the closing call to action, and mention the practice location once where it reads naturally using `[hh_short name="practice_city_and_state"]`. The closing call to action may include the practice phone number tag.
 
 Do not mechanically repeat city or state names throughout the article.
 
@@ -1041,6 +1064,7 @@ Use semantic HTML such as:
 <tr>
 <th>
 <td>
+<section class="aac-article-faq"> (only to wrap the required FAQ, exactly as shown in STEP 25)
 
 Do not add:
 
@@ -1549,7 +1573,7 @@ SEARCH QUALITY
 
 29. Does it naturally contain important terminology and related concepts?
 
-30. Are direct answers available where useful without turning the article into an FAQ?
+30. Are direct answers available where useful without turning the article into an FAQ? Are the H1 and most H2 headings natural patient questions? Does the article end with exactly 4 FAQ items in the required `aac-article-faq` markup, with FAQ 1 answered directly in 2 to 4 sentences?
 
 31. Is any sentence present primarily to manipulate search rankings rather than help the reader?
 

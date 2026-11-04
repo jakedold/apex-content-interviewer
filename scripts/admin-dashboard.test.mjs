@@ -41,6 +41,19 @@ test('campaign builder keeps filtered select-all and deselect-all controls', () 
   assert.match(client, /visibleOptions\.forEach/);
 });
 
+test('campaign launch validates and saves featured image source metadata', () => {
+  const validator = router.nodes.find((node) => node.name === 'Validate and Normalize Command').parameters.jsCode;
+  const createCampaign = router.nodes.find((node) => node.name === 'Create Audited Campaign').parameters.sqlQuery;
+
+  assert.match(validator, /allowedSourceTypes\.includes\(sourceType\)/);
+  assert.match(validator, /!rightsReference/);
+  assert.match(validator, /featured_image_source_type: sourceType/);
+  assert.match(validator, /featured_image_rights_reference: rightsReference/);
+  assert.match(createCampaign, /featured_image_source_type,\s*featured_image_rights_reference, wordpress_publish_date/);
+  assert.match(createCampaign, /JSON_VALUE\(topic, '\$\.featured_image_source_type'\)/);
+  assert.match(createCampaign, /JSON_VALUE\(topic, '\$\.featured_image_rights_reference'\)/);
+});
+
 test('Worker preserves same-origin interview API proxy routes', () => {
   for (const route of ['/api/validate', '/api/start', '/api/complete']) {
     assert.ok(worker.includes(`'${route}': '/webhook/aac/interview/${route.split('/').at(-1)}'`), `${route} should remain proxied`);

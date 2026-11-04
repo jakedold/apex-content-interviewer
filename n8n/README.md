@@ -78,6 +78,13 @@ expires after 30 days. Failed deliveries can be retried, while successful
 deliveries are not repeated. The older `02-create-topic-interview-links.json`
 is a legacy test workflow and should remain inactive.
 
+The AAC-24 export validates and saves each topic's image source type and
+rights/source reference along with its image URL and alt text. Updating the
+GitHub repository does not update the active n8n workflow; install the reviewed
+export in n8n and verify the active workflow separately. Campaigns created
+before that workflow update will still have blank source details, so enter
+those values again when duplicating an older campaign.
+
 The older free-entry launch form remains inactive. Its first version accepted
 only a practice profile ID. The revised export includes explicit location and
 website fields plus mapping validation; it is not yet installed in live n8n.

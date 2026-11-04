@@ -747,6 +747,7 @@ async function duplicateCampaign(campaignId: string): Promise<void> {
       if (copyCheckbox instanceof HTMLInputElement) copyCheckbox.checked = sameImageAsFirst(topic);
       setCampaignField(form, `topic_${number}_featured_image_source_url`, topic?.featured_image_source_url ?? '');
       setCampaignField(form, `topic_${number}_featured_image_alt_text`, topic?.featured_image_alt_text ?? '');
+      setCampaignField(form, `topic_${number}_featured_image_source_type`, topic?.featured_image_source_type ?? '');
       setCampaignField(form, `topic_${number}_featured_image_rights_reference`, topic?.featured_image_rights_reference ?? '');
     }
 
@@ -760,6 +761,7 @@ async function duplicateCampaign(campaignId: string): Promise<void> {
     const missingAssetFields = topics.some((topic) =>
       !topic?.featured_image_source_url ||
       !topic?.featured_image_alt_text ||
+      !topic?.featured_image_source_type ||
       !topic?.featured_image_rights_reference
     );
     if (message) {
@@ -775,6 +777,7 @@ async function duplicateCampaign(campaignId: string): Promise<void> {
 const CAMPAIGN_TOPIC_IMAGE_FIELDS = [
   'featured_image_source_url',
   'featured_image_alt_text',
+  'featured_image_source_type',
   'featured_image_rights_reference',
 ] as const;
 
@@ -809,9 +812,17 @@ function renderCampaignTopicFields(number: number): string {
             <div class="admin-topic-image-fields" data-topic-image-fields="${number}">
               <label>Topic ${number} featured image central source URL<input name="topic_${number}_featured_image_source_url" type="url" required placeholder="https://apexparent.hostmanpowered.com/wp-content/uploads/..." /></label>
               <label>Topic ${number} featured image alt text<input name="topic_${number}_featured_image_alt_text" required minlength="8" /></label>
+              <label>Topic ${number} featured image source type
+                <select name="topic_${number}_featured_image_source_type" required>
+                  <option value="">Select an option</option>
+                  <option>Apex-owned or commissioned</option>
+                  <option>Licensed stock</option>
+                  <option>AI-generated with approved terms</option>
+                </select>
+              </label>
               <label>Topic ${number} featured image rights or source reference<input name="topic_${number}_featured_image_rights_reference" required placeholder="Asset record, license, commission, or generation reference" /></label>
             </div>
-            ${sharesImage ? `<p class="admin-muted admin-topic-image-note" data-topic-image-note="${number}">This topic uses the featured image, alt text, and rights/source reference entered under Topic 1.</p>` : ''}
+            ${sharesImage ? `<p class="admin-muted admin-topic-image-note" data-topic-image-note="${number}">This topic uses the featured image, alt text, source type, and rights/source reference entered under Topic 1.</p>` : ''}
           </fieldset>`;
 }
 
@@ -903,7 +914,7 @@ function renderDashboard(data: AdminResponse): void {
             <li>Create or obtain one approved featured image for the month's theme, or one for each topic if the three topics are unrelated.</li>
             <li><a href="https://apexparent.hostmanpowered.com/wp-admin/upload.php?mlo-category=all-files" target="_blank" rel="noreferrer">Upload each image once to the Apex Parent Media Library</a>.</li>
             <li>For each image, copy the <strong>direct file URL</strong>. It must begin with <code>https://apexparent.hostmanpowered.com/wp-content/uploads/</code>. Do not paste the Media Library page URL.</li>
-            <li>Have useful alt text and the image rights/source reference ready.</li>
+            <li>Have useful alt text, the image source type, and rights/source reference ready.</li>
             <li>Optionally, choose the WordPress URL slug for each topic, such as <code>why-brushing-before-bed-matters</code>.</li>
             <li>If you schedule the invitations, choose the local date/time and the timezone where you want the send to occur. The dispatcher checks every minute, so delivery begins shortly after the scheduled time.</li>
           </ol>
@@ -1448,6 +1459,7 @@ async function submitCampaign(event: SubmitEvent): Promise<void> {
       return {
         featured_image_source_url: value('featured_image_source_url'),
         featured_image_alt_text: value('featured_image_alt_text'),
+        featured_image_source_type: value('featured_image_source_type'),
         featured_image_rights_reference: value('featured_image_rights_reference'),
       };
     };
@@ -1457,6 +1469,9 @@ async function submitCampaign(event: SubmitEvent): Promise<void> {
         throw new Error(`Topic ${number} featured image must use the direct Apex Parent Media Library file URL.`);
       }
       if (image.featured_image_alt_text.length < 8) throw new Error(`Topic ${number} needs useful featured image alt text.`);
+      if (!['Apex-owned or commissioned', 'Licensed stock', 'AI-generated with approved terms'].includes(image.featured_image_source_type)) {
+        throw new Error(`Topic ${number} needs a supported featured image source type.`);
+      }
       const wordpressSlug = String(data.get(`topic_${number}_wordpress_slug`) ?? '').trim().toLowerCase();
       if (wordpressSlug && (wordpressSlug.length > WORDPRESS_SLUG_MAX_LENGTH || !WORDPRESS_SLUG_PATTERN.test(wordpressSlug))) {
         throw new Error(`Topic ${number} WordPress URL slug can use only lowercase letters, numbers, and single hyphens between words.`);

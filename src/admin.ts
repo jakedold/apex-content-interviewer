@@ -1230,7 +1230,7 @@ function stageVisual(detail: WorkItemDetail): string {
     ['Doctor review', m.doctorApproved, m.articleDrafted ? 'Waiting for the doctor' : 'Article being drafted'],
     [detail.item.require_marketing_approval ? 'Marketing review' : 'Marketing review (not required)', m.marketingApproved, 'Waiting for marketing'],
     ['On WordPress', m.onWordPress, 'Sending to WordPress'],
-    ['Live on website', m.liveOnWebsite, 'Push live in Headless Hostman'],
+    ['Ready to Push', m.liveOnWebsite, 'Push live in Headless Hostman'],
   ];
   const activeIndex = steps.findIndex(([, complete]) => !complete);
   return `<ol class="admin-stage-track">${steps.map(([label, complete, waiting], index) => `

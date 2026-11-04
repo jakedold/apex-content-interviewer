@@ -119,7 +119,7 @@ test('campaign launch saves the rights reference and no longer asks for an image
 });
 
 test('the stage tracker follows the Apex process from campaign to live on the website', () => {
-  const labels = ['Campaign created', 'Invitation emailed', 'Interview completed', 'Doctor review', 'Marketing review', 'On WordPress', 'Live on website'];
+  const labels = ['Campaign created', 'Invitation emailed', 'Interview completed', 'Doctor review', 'Marketing review', 'On WordPress', 'Ready to Push'];
   const tracker = client.match(/function stageVisual[\s\S]*?\n}\n/)[0];
   let last = -1;
   for (const label of labels) {

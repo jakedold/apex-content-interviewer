@@ -16,13 +16,17 @@ The generation and revision prompts in `prompts/` require:
 
 - an H1 and most H2 headings phrased as natural patient questions;
 - exactly 4 FAQs at the end, wrapped in `<section class="aac-article-faq">` with `<h3>` questions and `<p>` answers, FAQ 1 being the most important question answered in 2 to 4 sentences;
-- the practice name Shortcoder tag in the opening and the closing call to action, and the practice city tag once where natural.
+- the practice name field in the opening and the closing call to action, and `[hh_short name="practice_city_and_state"]` once where natural; no website fields in the H1.
 
 Articles written before this format that have an "FAQ" or "Frequently Asked Questions" H2 followed by H3 questions are formatted the same way.
 
+## Automated local SEO review
+
+Right after the first draft is written, and before the doctor sees it, workflow 06 runs the draft through the rules from Brenna's "AEO/SEO Page Updates" GPT (`prompts/local-seo-review-prompt.md`). It can rewrite the H1, H2 headings and FAQ questions, and add short practice or location references to paragraphs and FAQ answers. Safety checks skip any suggestion that would change existing medical wording, add or change links or HTML, use a website field that is not approved, or put a field in the title. Applied changes are listed at the end of the review document under "Local SEO Updates (automated)". If the review fails, the draft continues unchanged with a note asking marketing to check locations by hand.
+
 ## Still done by people
 
-- Running the "AEO SEO Page Updates" and "SEO/GEO Article Analysis" custom GPTs for extra suggestions (optional; the writer now follows the same heading and FAQ rules).
+- Running the "SEO/GEO Article Analysis" custom GPT for extra suggestions (optional; the writer now follows the same heading and FAQ rules, and the "AEO/SEO Page Updates" rules run automatically).
 - Clicking through links to confirm they work and match their link text.
 - Checking the post on desktop and phone after publishing.
 
@@ -30,4 +34,4 @@ Articles written before this format that have an "FAQ" or "Frequently Asked Ques
 
 - That the theme's own title is hidden on each practice theme (`h1.entry-title`, `.page-header h1`, `.wp-block-post-title`, and the Elementor post-title widget are covered).
 - The byline uses the verified interview doctor name rather than the generic `doctor_01` Shortcoder field (see `docs/SHORTCODER.md`).
-- "City and state" uses only the confirmed `practice_city` tag; there is no confirmed state tag.
+- That `[hh_short name="practice_city_and_state"]` renders on each practice site, including TEST001.

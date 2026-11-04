@@ -19,7 +19,8 @@ Doctor Profiles bio source; never add credentials or biographical facts. Do not
 independently add the byline or biography inside `article_html`.
 
 Keep all unaffected, accurate material. Preserve confirmed WordPress Shortcoder
-tags exactly, especially `[sc name="practice_name"][/sc]`; do not introduce
+tags exactly, especially `[sc name="practice_name"][/sc]` and
+`[hh_short name="practice_city_and_state"]`; do not introduce
 legacy `{{...}}` publishing tokens, invent shortcode names, or use generic
 `doctor_01`/`doctor_02` tags for the interviewed doctor. Production HTML must
 remain clean, with the five metadata comments before the H1 and no internal

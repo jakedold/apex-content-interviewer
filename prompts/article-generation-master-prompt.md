@@ -843,7 +843,7 @@ Every Apex expert blog includes an FAQ with EXACTLY 4 items, ordered from highes
 
 - FAQ 1 is the single most important question the reader came with, usually the article's core search question. Its answer must be a direct, self-contained 2 to 4 sentence answer. The website shows FAQ 1 as a highlighted answer box at the top of the article.
 - FAQs 2 to 4 answer important secondary questions. The website shows them as collapsible questions in the sidebar. Keep each answer to 1 to 3 sentences.
-- At least one answer, usually FAQ 4, naturally mentions the practice using the confirmed Shortcoder tags, for example `[sc name="practice_name"][/sc]` or `[sc name="practice_city"][/sc]`.
+- At least one answer, usually FAQ 4, naturally mentions the practice using the confirmed website fields, for example `[sc name="practice_name"][/sc]` or `[hh_short name="practice_city_and_state"]`.
 
 Place the FAQ after the final article section and before the closing call to action, using exactly this markup:
 
@@ -907,9 +907,10 @@ The WordPress sites use the Shortcoder plugin for reusable practice details. In 
 - Practice phone number: `[sc name="practice_phone_number"][/sc]`
 - Practice address: `[sc name="practice_address"][/sc]`
 - Practice city: `[sc name="practice_city"][/sc]`
+- Practice city and state (the field marketing uses on expert blogs; prefer it for location references): `[hh_short name="practice_city_and_state"]`
 - Practice email: `[sc name="practice_email"][/sc]`
 
-Preserve each tag exactly, including its closing `[/sc]`. Do not replace it with a guessed value. Do not invent other Shortcoder names. The interviewed doctor's name and credentials come from the interview context, not the site's generic `doctor_01` or `doctor_02` tags. Use a site-specific booking shortcode only when that subsite's intended placement and behavior have been verified. Never place a Shortcoder tag in an HTML attribute or metadata field.
+Preserve each tag exactly, including its closing `[/sc]`. Do not replace it with a guessed value. Do not invent other Shortcoder names. The interviewed doctor's name and credentials come from the interview context, not the site's generic `doctor_01` or `doctor_02` tags. Use a site-specific booking shortcode only when that subsite's intended placement and behavior have been verified. Never place a Shortcoder tag in an HTML attribute or metadata field, and never in the H1: the H1 becomes the WordPress post title, which does not run shortcodes.
 
 Use them naturally where relevant.
 
@@ -923,7 +924,7 @@ Appropriate uses may include:
 - provider profile links
 - metadata
 
-In every Apex expert blog, mention the practice by its Shortcoder tag at least once in the opening section and once in the closing call to action, and mention the practice city by its Shortcoder tag once where it reads naturally. The closing call to action may include the practice phone number tag.
+In every Apex expert blog, mention the practice by its Shortcoder tag at least once in the opening section and once in the closing call to action, and mention the practice location once where it reads naturally using `[hh_short name="practice_city_and_state"]`. The closing call to action may include the practice phone number tag.
 
 Do not mechanically repeat city or state names throughout the article.
 

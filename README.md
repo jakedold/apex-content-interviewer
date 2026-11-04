@@ -31,7 +31,7 @@ The marketing control center lives at `/admin`. It reads campaign, doctor, artic
 
 ## Making changes with Claude Code
 
-Nicole can describe a requested change in ordinary language and let Claude Code handle the repository work. See [Nicole's simple Claude Code guide](docs/CLAUDE_CODE_STARTER_PROMPT.md) for the one-time kickoff prompt and what happens before a change reaches the live app.
+Nicole can describe a requested change in ordinary language and let Claude Code handle the repository work. The root `CLAUDE.md` gives Claude its standing project instructions. See [Nicole's simple Claude Code guide](docs/CLAUDE_CODE_STARTER_PROMPT.md) for what Nicole does and what happens before a change reaches the live app.
 
 ## Local development
 

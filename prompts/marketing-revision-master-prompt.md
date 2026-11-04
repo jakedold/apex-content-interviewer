@@ -25,6 +25,13 @@ legacy `{{...}}` publishing tokens, invent shortcode names, or use generic
 remain clean, with the five metadata comments before the H1 and no internal
 review comments, script, style, or document wrapper tags.
 
+Keep the `<section class="aac-article-faq">` FAQ block with exactly 4
+question-and-answer items (`<h3>` question, `<p>` answer) after the final
+article section, with FAQ 1 as the most important question answered directly
+in 2 to 4 sentences. Keep the H1 and most H2 headings phrased as natural
+patient questions. If the article has no FAQ block or a different number of
+items, add or adjust it to this format.
+
 The result must contain the full revised article HTML and full human-readable
 review document, not a diff. The review document's article wording must match
 the HTML. Update source notes, editorial notes, and review checklist wherever

@@ -85,3 +85,84 @@ test('the doctor bio sits in the left sidebar directly under the FAQ, not below 
   assert.match(sidebar, /href="https:\/\/public-dental\.test" target="_blank" rel="noopener">Book appointment/);
   assert.match(content, /\.aac-article-sidebar\{grid-column:1!important/);
 });
+
+const layoutSource = workflow.nodes.find((node) => node.name === 'Set Featured Image and Prepare Post').parameters.jsCode;
+const chooseSource = workflow.nodes.find((node) => node.name === 'Choose WordPress Create or Update').parameters.jsCode;
+const faqList = [
+  ['Why do my gums bleed when I brush?', 'Plaque buildup is the most common cause.'],
+  ['How do I stop bleeding gums?', 'Brush gently twice a day.'],
+  ['Is bleeding normal?', 'It is common but not normal.'],
+  ['Can [sc name="practice_name"][/sc] help?', 'Yes, our team can check your gums.'],
+];
+const publishLayout = (faqHtml, extra = {}) => {
+  const candidate = { ...row(verifiedConfig), photo_source_url: 'https://public-dental.test/doctor.jpg', wordpress_publish_date: '2026-10-16', ...extra };
+  candidate.publication_package_json = JSON.stringify({
+    metadata: { h1: 'Why Do My Gums Bleed When I Brush My Teeth?', slug: 'test-article', meta_description: 'Test summary' },
+    author_bio: 'Dr. Test is a placeholder dentist used only in this automated layout test.',
+    article_html: '<h1>Why Do My Gums Bleed When I Brush My Teeth?</h1>\n<p><strong>By Dr. Test, DDS</strong></p>\n<h2>Why Do Gums Bleed?</h2><p>See the <a href="https://www.ada.org/">ADA</a>.</p>' + faqHtml + '<p>Closing call to action at {{APPOINTMENT_URL}}</p>',
+  });
+  const prepared = prepare(candidate)[0].json;
+  const chosen = new Function('$input', '$', chooseSource)({ all: () => [] }, () => ({ first: () => ({ json: prepared }) }))[0].json;
+  return new Function('$json', '$', layoutSource)({ id: 7, source_url: 'https://apexparent.hostmanpowered.com/wp-content/uploads/test.jpg' }, () => ({ first: () => ({ json: chosen }) }))[0].json.content;
+};
+const faqMarkup = (items) => items.map(([question, answer]) => '<h3>' + question + '</h3><p>' + answer + '</p>').join('');
+
+test('the dark title banner shows the title, byline, and date with a round featured image', () => {
+  const content = publishLayout('<section class="aac-article-faq"><h2>Frequently Asked Questions</h2>' + faqMarkup(faqList) + '</section>');
+  const hero = content.match(/<div class="aac-article-hero"[\s\S]*?<\/div><\/div><\/div>/)?.[0] || '';
+  assert.match(hero, /background-color:#231f20/);
+  assert.match(hero, /<h1 class="aac-article-title"[^>]*>Why Do My Gums Bleed When I Brush My Teeth\?<\/h1>/);
+  assert.match(hero, /class="aac-article-byline"[^>]*>By Dr\. Test, DDS</);
+  assert.match(hero, /class="aac-article-date"[^>]*>October 16, 2026</);
+  assert.match(hero, /border-radius:50%/);
+  assert.equal(content.match(/By Dr\. Test, DDS/g).length, 1);
+  assert.match(content, /h1\.entry-title:not\(\.aac-article-title\)[^{]*\{display:none!important\}/);
+});
+
+test('FAQ 1 becomes the answer box and FAQs 2 to 4 become collapsible sidebar questions', () => {
+  const content = publishLayout('<section class="aac-article-faq"><h2>Frequently Asked Questions</h2>' + faqMarkup(faqList) + '</section>');
+  const main = content.match(/<div class="aac-article-main"[\s\S]*?(?=<aside)/)?.[0] || '';
+  const sidebar = content.match(/<aside class="aac-article-sidebar"[\s\S]*<\/aside>/)?.[0] || '';
+  assert.match(main, /^<div class="aac-article-main"[^>]*><section class="aac-featured-answer"[^>]*><h2[^>]*>Why do my gums bleed when I brush\?<\/h2>/);
+  assert.equal((sidebar.match(/<details class="aac-faq-item"/g) || []).length, 3);
+  assert.ok(sidebar.indexOf('aac-article-faq-box') < sidebar.indexOf('aac-author-bio-card'));
+  assert.match(sidebar, /<summary[^>]*>Can \[sc name="practice_name"\]\[\/sc\] help\?<\/summary>/);
+  assert.doesNotMatch(main, /Frequently Asked Questions/);
+});
+
+test('every article link opens in a new tab', () => {
+  const content = publishLayout('');
+  assert.match(content, /<a href="https:\/\/www\.ada\.org\/" target="_blank" rel="noopener">ADA<\/a>/);
+  const links = content.match(/<a\b[^>]*\bhref=[^>]*>/g) || [];
+  assert.ok(links.length >= 2);
+  for (const link of links) assert.match(link, /target="_blank"/);
+});
+
+test('an older article with an FAQ heading but no FAQ wrapper is still formatted, and its closing text stays in the article', () => {
+  const content = publishLayout('<h2>Frequently Asked Questions</h2>' + faqMarkup(faqList));
+  const main = content.match(/<div class="aac-article-main"[\s\S]*?(?=<aside)/)?.[0] || '';
+  assert.match(main, /aac-featured-answer/);
+  assert.match(main, /Closing call to action at https:\/\/public-dental\.test/);
+  assert.equal((content.match(/<details class="aac-faq-item"/g) || []).length, 3);
+});
+
+test('updating an existing post keeps its original date in the banner', () => {
+  const content = publishLayout('', { wordpress_publish_date: '' });
+  assert.match(content, /class="aac-article-date"/);
+  const chosen = new Function('$input', '$', chooseSource)(
+    { all: () => [{ json: { id: 55, slug: 'test-article-article-article-test', date: '2026-09-01T12:00:00' } }] },
+    () => ({ first: () => ({ json: { ...prepare(row(verifiedConfig))[0].json } }) }),
+  )[0].json;
+  assert.equal(chosen.existing_post_date, '2026-09-01T12:00:00');
+});
+
+test('the article writers are told to produce the 4-item FAQ block the publisher formats', () => {
+  const generation = JSON.parse(fs.readFileSync(new URL('../n8n/06-generate-article.json', import.meta.url), 'utf8'))
+    .nodes.find((node) => node.name === 'Prepare Article Generation Request').parameters.jsCode;
+  assert.match(generation, /EXACTLY 4 items/);
+  assert.match(generation, /<section class=\\"aac-article-faq\\">/);
+  for (const file of ['10-revise-article-from-doctor-feedback.json', '20-revise-article-from-marketing-feedback.json']) {
+    const source = fs.readFileSync(new URL('../n8n/' + file, import.meta.url), 'utf8');
+    assert.match(source, /exactly 4/);
+  }
+});

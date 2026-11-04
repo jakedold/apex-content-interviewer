@@ -145,7 +145,7 @@ Before launch:
 2. Prepare exactly three distinct topics.
 3. Upload one approved featured image per topic to the Apex Parent central Media Library:
    `https://apexparent.hostmanpowered.com/wp-admin/upload.php?mlo-category=all-files`
-4. For each topic, record the direct `https://apexparent.hostmanpowered.com/wp-content/uploads/...` file URL, useful alt text, and rights/source reference.
+4. For each topic, record the direct `https://apexparent.hostmanpowered.com/wp-content/uploads/...` file URL and useful alt text. With one monthly theme, enter these once under Topic 1.
 5. Choose an audience and invitation timing.
 6. Type `SEND INVITATIONS` exactly before launch.
 

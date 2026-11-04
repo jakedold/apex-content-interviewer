@@ -29,6 +29,10 @@ The interview UI includes microphone startup, visible loading/thinking/speaking 
 
 The marketing control center lives at `/admin`. It reads campaign, doctor, article, workflow event, and communication state directly from BigQuery after validating Cloudflare Access identity. Setup and activation requirements are documented in [Admin dashboard](docs/ADMIN_DASHBOARD.md).
 
+## Making changes with Claude Code
+
+Nicole can describe a requested change in ordinary language and let Claude Code handle the repository work. See [Nicole's simple Claude Code guide](docs/CLAUDE_CODE_STARTER_PROMPT.md) for the one-time kickoff prompt and what happens before a change reaches the live app.
+
 ## Local development
 
 ```bash

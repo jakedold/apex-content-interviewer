@@ -46,3 +46,43 @@ test('Worker preserves same-origin interview API proxy routes', () => {
     assert.ok(worker.includes(`'${route}': '/webhook/aac/interview/${route.split('/').at(-1)}'`), `${route} should remain proxied`);
   }
 });
+
+test('launch_campaign carries featured image source type and rights reference into campaign_topics', () => {
+  const normalizer = router.nodes.find((node) => node.name === 'Validate and Normalize Command').parameters.jsCode;
+  const run = (body) => new Function('$json', normalizer)({ body });
+  const topic = (number, overrides = {}) => ({
+    title: `Topic ${number}`,
+    featured_image_source_url: `https://apexparent.hostmanpowered.com/wp-content/uploads/topic-${number}.jpg`,
+    featured_image_alt_text: `Featured image for topic ${number}`,
+    featured_image_source_type: '  Licensed stock  ',
+    featured_image_rights_reference: `  License ${number}  `,
+    ...overrides,
+  });
+  const body = (firstTopic = topic(1)) => ({
+    action: 'launch_campaign',
+    actor_email: 'admin@apexdp.com',
+    idempotency_key: 'test_idempotency_key_0001',
+    audience: 'Presentation preview',
+    campaign_name: 'Image rights test',
+    campaign_month: '2026-12',
+    send_mode: 'now',
+    doctor_ids: ['doctor_1'],
+    topics: [firstTopic, topic(2), topic(3)],
+  });
+
+  const topics = JSON.parse(run(body())[0].json.topics_json);
+  assert.equal(topics[0].featured_image_source_type, 'Licensed stock');
+  assert.equal(topics[0].featured_image_rights_reference, 'License 1');
+
+  for (const sourceType of ['Apex-owned or commissioned', 'Licensed stock', 'AI-generated with approved terms']) {
+    assert.doesNotThrow(() => run(body(topic(1, { featured_image_source_type: sourceType }))));
+  }
+  assert.throws(() => run(body(topic(1, { featured_image_source_type: '' }))), /Topic 1 needs a supported featured image source type/);
+  assert.throws(() => run(body(topic(1, { featured_image_source_type: 'Found online' }))), /Topic 1 needs a supported featured image source type/);
+  assert.throws(() => run(body(topic(1, { featured_image_rights_reference: '   ' }))), /Topic 1 needs a featured image rights or source reference/);
+
+  const sql = router.nodes.find((node) => node.name === 'Create Audited Campaign').parameters.sqlQuery;
+  const insert = sql.match(/INSERT INTO `[^`]+\.campaign_topics`([\s\S]*?)FROM UNNEST/)[1];
+  assert.match(insert, /wordpress_publish_date,\s*featured_image_source_type, featured_image_rights_reference,\s*topic_sort_order/);
+  assert.match(insert, /JSON_VALUE\(topic, '\$\.featured_image_source_type'\),\s*JSON_VALUE\(topic, '\$\.featured_image_rights_reference'\),\s*offset \+ 1/);
+});

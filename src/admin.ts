@@ -26,6 +26,7 @@ type CampaignTemplateTopic = {
   featured_image_alt_text: string | null;
   featured_image_source_type: string | null;
   featured_image_rights_reference: string | null;
+  wordpress_slug?: string | null;
   topic_sort_order: number | string;
 };
 
@@ -620,7 +621,7 @@ function renderAdminControls(data: AdminResponse): string {
       <article class="admin-control-card admin-control-primary">
         <span class="admin-kicker">New work</span>
         <h2>Start an article campaign</h2>
-        <p>Create one monthly campaign with exactly three topics and a selected doctor list. Launching is handed to n8n and recorded in BigQuery.</p>
+        <p>Create one monthly campaign with three topics — one shared theme or three unique topics — and a selected doctor list. Launching is handed to n8n and recorded in BigQuery.</p>
         <button class="admin-primary-button" id="open-campaign-builder" type="button" ${enabled ? '' : 'disabled'}>New campaign</button>
         ${enabled ? '' : '<small>The form is ready; activation is waiting for the audited command workflow and an assigned administrator.</small>'}
       </article>
@@ -733,10 +734,17 @@ async function duplicateCampaign(campaignId: string): Promise<void> {
     sendMode?.dispatchEvent(new Event('change'));
 
     const topics = [...template.topics].sort((a, b) => Number(a.topic_sort_order) - Number(b.topic_sort_order));
+    const sameImageAsFirst = (topic: CampaignTemplateTopic | undefined) => Boolean(topic && topics[0]) &&
+      CAMPAIGN_TOPIC_IMAGE_FIELDS.every((field) => (topic?.[field] ?? '') === (topics[0]?.[field] ?? ''));
+    const sharedTheme = sameImageAsFirst(topics[1]) && sameImageAsFirst(topics[2]);
+    setCampaignField(form, 'topic_layout', sharedTheme ? 'shared_theme' : 'unique');
     for (let index = 0; index < 3; index += 1) {
       const number = index + 1;
       const topic = topics[index];
       setCampaignField(form, `topic_${number}`, topic?.topic_title ?? '');
+      setCampaignField(form, `topic_${number}_wordpress_slug`, topic?.wordpress_slug ?? '');
+      const copyCheckbox = form.elements.namedItem(`topic_${number}_use_topic_1_image`);
+      if (copyCheckbox instanceof HTMLInputElement) copyCheckbox.checked = sameImageAsFirst(topic);
       setCampaignField(form, `topic_${number}_featured_image_source_url`, topic?.featured_image_source_url ?? '');
       setCampaignField(form, `topic_${number}_featured_image_alt_text`, topic?.featured_image_alt_text ?? '');
       setCampaignField(form, `topic_${number}_featured_image_source_type`, topic?.featured_image_source_type ?? '');
@@ -748,6 +756,7 @@ async function duplicateCampaign(campaignId: string): Promise<void> {
       checkbox.checked = recipientIds.has(checkbox.value);
     });
     form.querySelector<HTMLInputElement>('#campaign-doctor-search')?.dispatchEvent(new Event('input'));
+    syncCampaignTopicImages(form);
 
     const missingAssetFields = topics.some((topic) =>
       !topic?.featured_image_source_url ||
@@ -763,6 +772,100 @@ async function duplicateCampaign(campaignId: string): Promise<void> {
   } catch (error) {
     if (message) message.textContent = error instanceof Error ? error.message : 'The campaign could not be duplicated.';
   }
+}
+
+const CAMPAIGN_TOPIC_IMAGE_FIELDS = [
+  'featured_image_source_url',
+  'featured_image_alt_text',
+  'featured_image_source_type',
+  'featured_image_rights_reference',
+] as const;
+
+const WORDPRESS_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const WORDPRESS_SLUG_MAX_LENGTH = 100;
+
+function suggestWordPressSlug(title: string): string {
+  return title
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/['’]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, WORDPRESS_SLUG_MAX_LENGTH)
+    .replace(/-+$/g, '');
+}
+
+function renderCampaignTopicFields(number: number): string {
+  const sharesImage = number > 1;
+  return `
+          <fieldset class="admin-topic-assets" data-campaign-topic="${number}"><legend>Topic ${number}</legend>
+            <label>Topic ${number}<input name="topic_${number}" required /></label>
+            <label>Topic ${number} WordPress URL slug (optional)
+              <span class="admin-slug-row">
+                <input name="topic_${number}_wordpress_slug" maxlength="${WORDPRESS_SLUG_MAX_LENGTH}" pattern="[a-z0-9]+(-[a-z0-9]+)*" autocomplete="off" spellcheck="false" placeholder="Example: why-brushing-before-bed-matters" />
+                <button class="admin-text-button" type="button" data-suggest-slug="${number}">Suggest from topic</button>
+              </span>
+              <small>Lowercase letters, numbers, and hyphens. Every article written on this topic uses this slug on its practice website. Leave blank to use the slug the article writer recommends.</small>
+            </label>
+            ${sharesImage ? `<label class="admin-toggle"><input name="topic_${number}_use_topic_1_image" type="checkbox" data-copy-topic-image="${number}" checked /><span>Use the same featured image as Topic 1</span></label>` : ''}
+            <div class="admin-topic-image-fields" data-topic-image-fields="${number}">
+              <label>Topic ${number} featured image central source URL<input name="topic_${number}_featured_image_source_url" type="url" required placeholder="https://apexparent.hostmanpowered.com/wp-content/uploads/..." /></label>
+              <label>Topic ${number} featured image alt text<input name="topic_${number}_featured_image_alt_text" required minlength="8" /></label>
+              <label>Topic ${number} featured image source type
+                <select name="topic_${number}_featured_image_source_type" required>
+                  <option value="">Select an option</option>
+                  <option>Apex-owned or commissioned</option>
+                  <option>Licensed stock</option>
+                  <option>AI-generated with approved terms</option>
+                </select>
+              </label>
+              <label>Topic ${number} featured image rights or source reference<input name="topic_${number}_featured_image_rights_reference" required placeholder="Asset record, license, commission, or generation reference" /></label>
+            </div>
+            ${sharesImage ? `<p class="admin-muted admin-topic-image-note" data-topic-image-note="${number}">This topic uses the featured image, alt text, source type, and rights/source reference entered under Topic 1.</p>` : ''}
+          </fieldset>`;
+}
+
+/** Shows or hides each topic's own image fields based on its "same image as Topic 1" checkbox. */
+function syncCampaignTopicImages(form: HTMLFormElement): void {
+  for (const number of [2, 3]) {
+    const copyCheckbox = form.querySelector<HTMLInputElement>(`[data-copy-topic-image="${number}"]`);
+    const fields = form.querySelector<HTMLElement>(`[data-topic-image-fields="${number}"]`);
+    const note = form.querySelector<HTMLElement>(`[data-topic-image-note="${number}"]`);
+    const sharesImage = Boolean(copyCheckbox?.checked);
+    if (fields) {
+      fields.hidden = sharesImage;
+      fields.querySelectorAll('input, select').forEach((field) => { (field as HTMLInputElement | HTMLSelectElement).disabled = sharesImage; });
+    }
+    if (note) note.hidden = !sharesImage;
+  }
+}
+
+function applyCampaignTopicLayout(form: HTMLFormElement, layout: string): void {
+  for (const number of [2, 3]) {
+    const copyCheckbox = form.querySelector<HTMLInputElement>(`[data-copy-topic-image="${number}"]`);
+    if (copyCheckbox) copyCheckbox.checked = layout === 'shared_theme';
+  }
+  syncCampaignTopicImages(form);
+}
+
+function bindCampaignTopicFields(form: HTMLFormElement): void {
+  const layout = form.querySelector('#campaign-topic-layout') as HTMLSelectElement | null;
+  layout?.addEventListener('change', () => applyCampaignTopicLayout(form, layout.value));
+  form.querySelectorAll<HTMLInputElement>('[data-copy-topic-image]').forEach((checkbox) => {
+    checkbox.addEventListener('change', () => syncCampaignTopicImages(form));
+  });
+  form.querySelectorAll<HTMLButtonElement>('[data-suggest-slug]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const number = button.dataset.suggestSlug;
+      const title = String((form.elements.namedItem(`topic_${number}`) as HTMLInputElement | null)?.value ?? '');
+      const slugField = form.elements.namedItem(`topic_${number}_wordpress_slug`) as HTMLInputElement | null;
+      if (slugField) slugField.value = suggestWordPressSlug(title);
+    });
+  });
+  // form.reset() restores the default layout and checkboxes before the browser updates field values.
+  form.addEventListener('reset', () => window.setTimeout(() => syncCampaignTopicImages(form), 0));
+  syncCampaignTopicImages(form);
 }
 
 function renderDashboard(data: AdminResponse): void {
@@ -808,10 +911,11 @@ function renderDashboard(data: AdminResponse): void {
         <div class="admin-campaign-instructions">
           <strong>Before you start</strong>
           <ol>
-            <li>Create or obtain one approved featured image for each of the three topics.</li>
+            <li>Create or obtain one approved featured image for the month's theme, or one for each topic if the three topics are unrelated.</li>
             <li><a href="https://apexparent.hostmanpowered.com/wp-admin/upload.php?mlo-category=all-files" target="_blank" rel="noreferrer">Upload each image once to the Apex Parent Media Library</a>.</li>
             <li>For each image, copy the <strong>direct file URL</strong>. It must begin with <code>https://apexparent.hostmanpowered.com/wp-content/uploads/</code>. Do not paste the Media Library page URL.</li>
-            <li>Have useful alt text plus the image source type and rights/source reference ready.</li>
+            <li>Have useful alt text, the image source type, and rights/source reference ready.</li>
+            <li>Optionally, choose the WordPress URL slug for each topic, such as <code>why-brushing-before-bed-matters</code>.</li>
             <li>If you schedule the invitations, choose the local date/time and the timezone where you want the send to occur. The dispatcher checks every minute, so delivery begins shortly after the scheduled time.</li>
           </ol>
         </div>
@@ -857,50 +961,17 @@ function renderDashboard(data: AdminResponse): void {
             </div>
           </fieldset>
 
-          <fieldset class="admin-topic-assets"><legend>Topic 1</legend>
-            <label>Topic 1<input name="topic_1" required /></label>
-            <label>Topic 1 featured image central source URL<input name="topic_1_featured_image_source_url" type="url" required placeholder="https://apexparent.hostmanpowered.com/wp-content/uploads/..." /></label>
-            <label>Topic 1 featured image alt text<input name="topic_1_featured_image_alt_text" required minlength="8" /></label>
-            <label>Topic 1 featured image source type
-              <select name="topic_1_featured_image_source_type" required>
-                <option value="">Select an option</option>
-                <option>Apex-owned or commissioned</option>
-                <option>Licensed stock</option>
-                <option>AI-generated with approved terms</option>
+          <fieldset class="admin-send-options"><legend>Campaign layout</legend>
+            <label>How are this month's three articles organized?
+              <select name="topic_layout" id="campaign-topic-layout">
+                <option value="shared_theme">One monthly theme — the three articles share one featured image</option>
+                <option value="unique">Three unique topics — each article has its own featured image</option>
               </select>
+              <small>With a monthly theme, enter the image details once under Topic 1. Topics 2 and 3 copy them automatically; uncheck “Use the same featured image as Topic 1” on a topic to give it a different image. Put the monthly theme in the campaign name.</small>
             </label>
-            <label>Topic 1 featured image rights or source reference<input name="topic_1_featured_image_rights_reference" required placeholder="Asset record, license, commission, or generation reference" /></label>
           </fieldset>
 
-          <fieldset class="admin-topic-assets"><legend>Topic 2</legend>
-            <label>Topic 2<input name="topic_2" required /></label>
-            <label>Topic 2 featured image central source URL<input name="topic_2_featured_image_source_url" type="url" required placeholder="https://apexparent.hostmanpowered.com/wp-content/uploads/..." /></label>
-            <label>Topic 2 featured image alt text<input name="topic_2_featured_image_alt_text" required minlength="8" /></label>
-            <label>Topic 2 featured image source type
-              <select name="topic_2_featured_image_source_type" required>
-                <option value="">Select an option</option>
-                <option>Apex-owned or commissioned</option>
-                <option>Licensed stock</option>
-                <option>AI-generated with approved terms</option>
-              </select>
-            </label>
-            <label>Topic 2 featured image rights or source reference<input name="topic_2_featured_image_rights_reference" required placeholder="Asset record, license, commission, or generation reference" /></label>
-          </fieldset>
-
-          <fieldset class="admin-topic-assets"><legend>Topic 3</legend>
-            <label>Topic 3<input name="topic_3" required /></label>
-            <label>Topic 3 featured image central source URL<input name="topic_3_featured_image_source_url" type="url" required placeholder="https://apexparent.hostmanpowered.com/wp-content/uploads/..." /></label>
-            <label>Topic 3 featured image alt text<input name="topic_3_featured_image_alt_text" required minlength="8" /></label>
-            <label>Topic 3 featured image source type
-              <select name="topic_3_featured_image_source_type" required>
-                <option value="">Select an option</option>
-                <option>Apex-owned or commissioned</option>
-                <option>Licensed stock</option>
-                <option>AI-generated with approved terms</option>
-              </select>
-            </label>
-            <label>Topic 3 featured image rights or source reference<input name="topic_3_featured_image_rights_reference" required placeholder="Asset record, license, commission, or generation reference" /></label>
-          </fieldset>
+          ${[1, 2, 3].map(renderCampaignTopicFields).join('')}
 
           <fieldset class="admin-recipient-options" id="existing-recipient-section"><legend>Doctors to invite</legend>
             <p class="admin-muted" id="campaign-doctor-guidance">Search the current Doctor Census roster, then select doctors individually. Each selection retains its own primary-practice and website mapping.</p>
@@ -1092,7 +1163,9 @@ function renderDashboard(data: AdminResponse): void {
   });
   renderCampaignCards();
 
-  document.querySelector<HTMLFormElement>('#admin-campaign-form')?.addEventListener('submit', (event) => void submitCampaign(event));
+  const campaignForm = document.querySelector<HTMLFormElement>('#admin-campaign-form');
+  campaignForm?.addEventListener('submit', (event) => void submitCampaign(event));
+  if (campaignForm) bindCampaignTopicFields(campaignForm);
   for (const button of document.querySelectorAll<HTMLButtonElement>('[data-queue-filter]')) {
     button.addEventListener('click', () => {
       queueFilter = button.dataset.queueFilter ?? 'all';
@@ -1380,21 +1453,37 @@ async function submitCampaign(event: SubmitEvent): Promise<void> {
     if (!doctorIds.length) throw new Error('Select at least one linked doctor.');
     if (doctorIds.length > 200) throw new Error('Campaigns are limited to 200 doctors.');
 
+    const topicImage = (number: number) => {
+      const sourceNumber = number > 1 && data.has(`topic_${number}_use_topic_1_image`) ? 1 : number;
+      const value = (field: string) => String(data.get(`topic_${sourceNumber}_${field}`) ?? '').trim();
+      return {
+        featured_image_source_url: value('featured_image_source_url'),
+        featured_image_alt_text: value('featured_image_alt_text'),
+        featured_image_source_type: value('featured_image_source_type'),
+        featured_image_rights_reference: value('featured_image_rights_reference'),
+      };
+    };
     const topics = [1, 2, 3].map((number) => {
-      const sourceUrl = String(data.get(`topic_${number}_featured_image_source_url`) ?? '').trim();
-      if (!sourceUrl.startsWith('https://apexparent.hostmanpowered.com/wp-content/uploads/')) {
+      const image = topicImage(number);
+      if (!image.featured_image_source_url.startsWith('https://apexparent.hostmanpowered.com/wp-content/uploads/')) {
         throw new Error(`Topic ${number} featured image must use the direct Apex Parent Media Library file URL.`);
       }
-      const altText = String(data.get(`topic_${number}_featured_image_alt_text`) ?? '').trim();
-      if (altText.length < 8) throw new Error(`Topic ${number} needs useful featured image alt text.`);
+      if (image.featured_image_alt_text.length < 8) throw new Error(`Topic ${number} needs useful featured image alt text.`);
+      if (!['Apex-owned or commissioned', 'Licensed stock', 'AI-generated with approved terms'].includes(image.featured_image_source_type)) {
+        throw new Error(`Topic ${number} needs a supported featured image source type.`);
+      }
+      const wordpressSlug = String(data.get(`topic_${number}_wordpress_slug`) ?? '').trim().toLowerCase();
+      if (wordpressSlug && (wordpressSlug.length > WORDPRESS_SLUG_MAX_LENGTH || !WORDPRESS_SLUG_PATTERN.test(wordpressSlug))) {
+        throw new Error(`Topic ${number} WordPress URL slug can use only lowercase letters, numbers, and single hyphens between words.`);
+      }
       return {
         title: String(data.get(`topic_${number}`) ?? '').trim(),
-        featured_image_source_url: sourceUrl,
-        featured_image_alt_text: altText,
-        featured_image_source_type: String(data.get(`topic_${number}_featured_image_source_type`) ?? '').trim(),
-        featured_image_rights_reference: String(data.get(`topic_${number}_featured_image_rights_reference`) ?? '').trim(),
+        ...image,
+        wordpress_slug: wordpressSlug,
       };
     });
+    const chosenSlugs = topics.map((topic) => topic.wordpress_slug).filter(Boolean);
+    if (new Set(chosenSlugs).size !== chosenSlugs.length) throw new Error('Each topic needs a different WordPress URL slug.');
 
     const result = await postAdminCommand({
       action: 'launch_campaign',

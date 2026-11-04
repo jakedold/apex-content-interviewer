@@ -27,9 +27,8 @@ This note records the answers and changes in the recovered dashboard source.
    training or video link and includes it in the invitation email when set.
 
 5. **Shared article details.** The campaign topic stores the featured image,
-   alt text, and image source details shared by doctors who choose that topic.
-   Article slugs remain article-specific and are made unique when needed on a
-   practice site. The campaign builder does not set a future WordPress
+   alt text, image source type, and rights/source reference shared by doctors
+   who choose that topic. The campaign builder does not set a future WordPress
    publication date.
 
 6. **Meta descriptions.** The writing workflow generates and saves a
@@ -67,6 +66,22 @@ This note records the answers and changes in the recovered dashboard source.
     as doctors join or leave, then allow the sync to run and refresh the
     dashboard. Updates are not written back to the workbook. A new or changed
     practice website also needs its own WordPress mapping and publishing setup.
+
+13. **Monthly theme or three unique topics.** The campaign builder has a
+    "Campaign layout" choice. "One monthly theme" (the default) lets Topics 2
+    and 3 reuse Topic 1's featured image, alt text, source type, and rights/source
+    reference; uncheck "Use the same featured image as Topic 1" on a topic to
+    give it its own image. "Three unique topics" asks for a separate image for
+    each topic. Duplicating a campaign keeps whichever layout the original used.
+
+14. **WordPress URL slug per topic.** Each topic has an optional WordPress URL
+    slug (lowercase letters, numbers, and hyphens), with a "Suggest from topic"
+    helper. When set, every article on that topic is published with that slug;
+    when blank, the article writer's recommended slug is used as before. If a
+    practice site already has a different post with that slug, the publisher
+    still makes the slug article-specific so nothing is overwritten. A
+    republished article keeps its existing URL. The slug takes effect only after
+    the updated AAC-24 and AAC-15 workflow exports are imported into n8n.
 
 ## Source and rollout status
 

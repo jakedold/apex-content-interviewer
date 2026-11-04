@@ -24,7 +24,6 @@ type CampaignTemplateTopic = {
   topic_title: string;
   featured_image_source_url: string | null;
   featured_image_alt_text: string | null;
-  featured_image_rights_reference: string | null;
   wordpress_slug?: string | null;
   topic_sort_order: number | string;
 };
@@ -733,20 +732,17 @@ async function duplicateCampaign(campaignId: string): Promise<void> {
     sendMode?.dispatchEvent(new Event('change'));
 
     const topics = [...template.topics].sort((a, b) => Number(a.topic_sort_order) - Number(b.topic_sort_order));
-    const sameImageAsFirst = (topic: CampaignTemplateTopic | undefined) => Boolean(topic && topics[0]) &&
-      CAMPAIGN_TOPIC_IMAGE_FIELDS.every((field) => (topic?.[field] ?? '') === (topics[0]?.[field] ?? ''));
-    const sharedTheme = sameImageAsFirst(topics[1]) && sameImageAsFirst(topics[2]);
+    const sharesTopicOneDetails = (topic: CampaignTemplateTopic | undefined) => Boolean(topic && topics[0]) &&
+      CAMPAIGN_TOPIC_SHARED_FIELDS.every((field) => (topic?.[field] ?? '') === (topics[0]?.[field] ?? ''));
+    const sharedTheme = sharesTopicOneDetails(topics[1]) && sharesTopicOneDetails(topics[2]);
     setCampaignField(form, 'topic_layout', sharedTheme ? 'shared_theme' : 'unique');
     for (let index = 0; index < 3; index += 1) {
       const number = index + 1;
       const topic = topics[index];
       setCampaignField(form, `topic_${number}`, topic?.topic_title ?? '');
       setCampaignField(form, `topic_${number}_wordpress_slug`, topic?.wordpress_slug ?? '');
-      const copyCheckbox = form.elements.namedItem(`topic_${number}_use_topic_1_image`);
-      if (copyCheckbox instanceof HTMLInputElement) copyCheckbox.checked = sameImageAsFirst(topic);
       setCampaignField(form, `topic_${number}_featured_image_source_url`, topic?.featured_image_source_url ?? '');
       setCampaignField(form, `topic_${number}_featured_image_alt_text`, topic?.featured_image_alt_text ?? '');
-      setCampaignField(form, `topic_${number}_featured_image_rights_reference`, topic?.featured_image_rights_reference ?? '');
     }
 
     const recipientIds = new Set(template.recipients.map((recipient) => recipient.doctor_id));
@@ -758,8 +754,7 @@ async function duplicateCampaign(campaignId: string): Promise<void> {
 
     const missingAssetFields = topics.some((topic) =>
       !topic?.featured_image_source_url ||
-      !topic?.featured_image_alt_text ||
-      !topic?.featured_image_rights_reference
+      !topic?.featured_image_alt_text
     );
     if (message) {
       message.textContent = missingAssetFields
@@ -771,10 +766,11 @@ async function duplicateCampaign(campaignId: string): Promise<void> {
   }
 }
 
-const CAMPAIGN_TOPIC_IMAGE_FIELDS = [
+/** With one monthly theme, Topics 2 and 3 reuse these Topic 1 values. */
+const CAMPAIGN_TOPIC_SHARED_FIELDS = [
+  'wordpress_slug',
   'featured_image_source_url',
   'featured_image_alt_text',
-  'featured_image_rights_reference',
 ] as const;
 
 const WORDPRESS_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -793,10 +789,11 @@ function suggestWordPressSlug(title: string): string {
 }
 
 function renderCampaignTopicFields(number: number): string {
-  const sharesImage = number > 1;
+  const canShare = number > 1;
   return `
           <fieldset class="admin-topic-assets" data-campaign-topic="${number}"><legend>Topic ${number}</legend>
             <label>Topic ${number}<input name="topic_${number}" required /></label>
+            <div class="admin-topic-image-fields" data-topic-shared-fields="${number}">
             <label>Topic ${number} WordPress URL slug (optional)
               <span class="admin-slug-row">
                 <input name="topic_${number}_wordpress_slug" maxlength="${WORDPRESS_SLUG_MAX_LENGTH}" pattern="[a-z0-9]+(-[a-z0-9]+)*" autocomplete="off" spellcheck="false" placeholder="Example: why-brushing-before-bed-matters" />
@@ -804,45 +801,35 @@ function renderCampaignTopicFields(number: number): string {
               </span>
               <small>Lowercase letters, numbers, and hyphens. Every article written on this topic uses this slug on its practice website. Leave blank to use the slug the article writer recommends.</small>
             </label>
-            ${sharesImage ? `<label class="admin-toggle"><input name="topic_${number}_use_topic_1_image" type="checkbox" data-copy-topic-image="${number}" checked /><span>Use the same featured image as Topic 1</span></label>` : ''}
-            <div class="admin-topic-image-fields" data-topic-image-fields="${number}">
               <label>Topic ${number} featured image central source URL<input name="topic_${number}_featured_image_source_url" type="url" required placeholder="https://apexparent.hostmanpowered.com/wp-content/uploads/..." /></label>
               <label>Topic ${number} featured image alt text<input name="topic_${number}_featured_image_alt_text" required minlength="8" /></label>
-              <label>Topic ${number} featured image rights or source reference<input name="topic_${number}_featured_image_rights_reference" required placeholder="Asset record, license, commission, or generation reference" /></label>
             </div>
-            ${sharesImage ? `<p class="admin-muted admin-topic-image-note" data-topic-image-note="${number}">This topic uses the featured image, alt text, and rights/source reference entered under Topic 1.</p>` : ''}
+            ${canShare ? `<p class="admin-muted admin-topic-image-note" data-topic-shared-note="${number}">One monthly theme: this topic uses the WordPress URL slug, featured image, and alt text entered under Topic 1.</p>` : ''}
           </fieldset>`;
 }
 
-/** Shows or hides each topic's own image fields based on its "same image as Topic 1" checkbox. */
-function syncCampaignTopicImages(form: HTMLFormElement): void {
-  for (const number of [2, 3]) {
-    const copyCheckbox = form.querySelector<HTMLInputElement>(`[data-copy-topic-image="${number}"]`);
-    const fields = form.querySelector<HTMLElement>(`[data-topic-image-fields="${number}"]`);
-    const note = form.querySelector<HTMLElement>(`[data-topic-image-note="${number}"]`);
-    const sharesImage = Boolean(copyCheckbox?.checked);
-    if (fields) {
-      fields.hidden = sharesImage;
-      fields.querySelectorAll('input, select').forEach((field) => { (field as HTMLInputElement | HTMLSelectElement).disabled = sharesImage; });
-    }
-    if (note) note.hidden = !sharesImage;
-  }
+function campaignUsesSharedTheme(form: HTMLFormElement): boolean {
+  const layout = form.elements.namedItem('topic_layout') as HTMLSelectElement | null;
+  return (layout?.value ?? 'shared_theme') === 'shared_theme';
 }
 
-function applyCampaignTopicLayout(form: HTMLFormElement, layout: string): void {
+/** With one monthly theme, hides Topics 2 and 3's slug and image fields because they reuse Topic 1's. */
+function syncCampaignTopicImages(form: HTMLFormElement): void {
+  const sharedTheme = campaignUsesSharedTheme(form);
   for (const number of [2, 3]) {
-    const copyCheckbox = form.querySelector<HTMLInputElement>(`[data-copy-topic-image="${number}"]`);
-    if (copyCheckbox) copyCheckbox.checked = layout === 'shared_theme';
+    const fields = form.querySelector<HTMLElement>(`[data-topic-shared-fields="${number}"]`);
+    const note = form.querySelector<HTMLElement>(`[data-topic-shared-note="${number}"]`);
+    if (fields) {
+      fields.hidden = sharedTheme;
+      fields.querySelectorAll('input, select, button').forEach((field) => { (field as HTMLInputElement | HTMLSelectElement | HTMLButtonElement).disabled = sharedTheme; });
+    }
+    if (note) note.hidden = !sharedTheme;
   }
-  syncCampaignTopicImages(form);
 }
 
 function bindCampaignTopicFields(form: HTMLFormElement): void {
   const layout = form.querySelector('#campaign-topic-layout') as HTMLSelectElement | null;
-  layout?.addEventListener('change', () => applyCampaignTopicLayout(form, layout.value));
-  form.querySelectorAll<HTMLInputElement>('[data-copy-topic-image]').forEach((checkbox) => {
-    checkbox.addEventListener('change', () => syncCampaignTopicImages(form));
-  });
+  layout?.addEventListener('change', () => syncCampaignTopicImages(form));
   form.querySelectorAll<HTMLButtonElement>('[data-suggest-slug]').forEach((button) => {
     button.addEventListener('click', () => {
       const number = button.dataset.suggestSlug;
@@ -851,7 +838,7 @@ function bindCampaignTopicFields(form: HTMLFormElement): void {
       if (slugField) slugField.value = suggestWordPressSlug(title);
     });
   });
-  // form.reset() restores the default layout and checkboxes before the browser updates field values.
+  // form.reset() restores the default layout before the browser updates field values.
   form.addEventListener('reset', () => window.setTimeout(() => syncCampaignTopicImages(form), 0));
   syncCampaignTopicImages(form);
 }
@@ -902,7 +889,7 @@ function renderDashboard(data: AdminResponse): void {
             <li>Create or obtain one approved featured image for the month's theme, or one for each topic if the three topics are unrelated.</li>
             <li><a href="https://apexparent.hostmanpowered.com/wp-admin/upload.php?mlo-category=all-files" target="_blank" rel="noreferrer">Upload each image once to the Apex Parent Media Library</a>.</li>
             <li>For each image, copy the <strong>direct file URL</strong>. It must begin with <code>https://apexparent.hostmanpowered.com/wp-content/uploads/</code>. Do not paste the Media Library page URL.</li>
-            <li>Have useful alt text and the image rights/source reference ready.</li>
+            <li>Have useful alt text ready for each image.</li>
             <li>Optionally, choose the WordPress URL slug for each topic, such as <code>why-brushing-before-bed-matters</code>.</li>
             <li>If you schedule the invitations, choose the local date/time and the timezone where you want the send to occur. The dispatcher checks every minute, so delivery begins shortly after the scheduled time.</li>
           </ol>
@@ -952,10 +939,10 @@ function renderDashboard(data: AdminResponse): void {
           <fieldset class="admin-send-options"><legend>Campaign layout</legend>
             <label>How are this month's three articles organized?
               <select name="topic_layout" id="campaign-topic-layout">
-                <option value="shared_theme">One monthly theme — the three articles share one featured image</option>
-                <option value="unique">Three unique topics — each article has its own featured image</option>
+                <option value="shared_theme">One monthly theme — the three articles share one WordPress URL slug and featured image</option>
+                <option value="unique">Three unique topics — each article has its own WordPress URL slug and featured image</option>
               </select>
-              <small>With a monthly theme, enter the image details once under Topic 1. Topics 2 and 3 copy them automatically; uncheck “Use the same featured image as Topic 1” on a topic to give it a different image. Put the monthly theme in the campaign name.</small>
+              <small>With a monthly theme, enter the WordPress URL slug and image details once under Topic 1. Topics 2 and 3 use the same ones automatically. Choose “Three unique topics” to give each topic its own. Put the monthly theme in the campaign name.</small>
             </label>
           </fieldset>
 
@@ -1441,13 +1428,13 @@ async function submitCampaign(event: SubmitEvent): Promise<void> {
     if (!doctorIds.length) throw new Error('Select at least one linked doctor.');
     if (doctorIds.length > 200) throw new Error('Campaigns are limited to 200 doctors.');
 
+    const sharedTheme = String(data.get('topic_layout') ?? 'shared_theme') === 'shared_theme';
+    const detailsTopic = (number: number) => (sharedTheme ? 1 : number);
     const topicImage = (number: number) => {
-      const sourceNumber = number > 1 && data.has(`topic_${number}_use_topic_1_image`) ? 1 : number;
-      const value = (field: string) => String(data.get(`topic_${sourceNumber}_${field}`) ?? '').trim();
+      const value = (field: string) => String(data.get(`topic_${detailsTopic(number)}_${field}`) ?? '').trim();
       return {
         featured_image_source_url: value('featured_image_source_url'),
         featured_image_alt_text: value('featured_image_alt_text'),
-        featured_image_rights_reference: value('featured_image_rights_reference'),
       };
     };
     const topics = [1, 2, 3].map((number) => {
@@ -1456,7 +1443,7 @@ async function submitCampaign(event: SubmitEvent): Promise<void> {
         throw new Error(`Topic ${number} featured image must use the direct Apex Parent Media Library file URL.`);
       }
       if (image.featured_image_alt_text.length < 8) throw new Error(`Topic ${number} needs useful featured image alt text.`);
-      const wordpressSlug = String(data.get(`topic_${number}_wordpress_slug`) ?? '').trim().toLowerCase();
+      const wordpressSlug = String(data.get(`topic_${detailsTopic(number)}_wordpress_slug`) ?? '').trim().toLowerCase();
       if (wordpressSlug && (wordpressSlug.length > WORDPRESS_SLUG_MAX_LENGTH || !WORDPRESS_SLUG_PATTERN.test(wordpressSlug))) {
         throw new Error(`Topic ${number} WordPress URL slug can use only lowercase letters, numbers, and single hyphens between words.`);
       }
@@ -1467,7 +1454,7 @@ async function submitCampaign(event: SubmitEvent): Promise<void> {
       };
     });
     const chosenSlugs = topics.map((topic) => topic.wordpress_slug).filter(Boolean);
-    if (new Set(chosenSlugs).size !== chosenSlugs.length) throw new Error('Each topic needs a different WordPress URL slug.');
+    if (!sharedTheme && new Set(chosenSlugs).size !== chosenSlugs.length) throw new Error('Each topic needs a different WordPress URL slug.');
 
     const result = await postAdminCommand({
       action: 'launch_campaign',

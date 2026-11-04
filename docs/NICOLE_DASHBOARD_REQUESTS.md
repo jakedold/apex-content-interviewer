@@ -27,9 +27,9 @@ This note records the answers and changes in the recovered dashboard source.
    training or video link and includes it in the invitation email when set.
 
 5. **Shared article details.** The campaign topic stores the featured image,
-   alt text, and rights/source reference shared by doctors who choose that
-   topic. The campaign builder does not set a future WordPress publication
-   date. The builder does not ask for an image source type.
+   and alt text shared by doctors who choose that topic. The campaign builder
+   does not set a future WordPress publication date. The builder does not ask
+   for an image source type or an image rights/source reference.
 
 6. **Meta descriptions.** The writing workflow generates and saves a
    meta-description for each article. Descriptions can vary by article and
@@ -68,14 +68,16 @@ This note records the answers and changes in the recovered dashboard source.
     practice website also needs its own WordPress mapping and publishing setup.
 
 13. **Monthly theme or three unique topics.** The campaign builder has a
-    "Campaign layout" choice. "One monthly theme" (the default) lets Topics 2
-    and 3 reuse Topic 1's featured image, alt text, and rights/source reference; uncheck "Use the same featured image as Topic 1" on a topic to
-    give it its own image. "Three unique topics" asks for a separate image for
-    each topic. Duplicating a campaign keeps whichever layout the original used.
+    "Campaign layout" choice. With "One monthly theme" (the default), the
+    WordPress URL slug, featured image, and alt text are entered once under
+    Topic 1, and Topics 2 and 3 always use the same ones. "Three unique topics"
+    asks for a separate slug and image for each topic. Duplicating a campaign
+    keeps whichever layout the original used.
 
 14. **WordPress URL slug per topic.** Each topic has an optional WordPress URL
     slug (lowercase letters, numbers, and hyphens), with a "Suggest from topic"
-    helper. When set, every article on that topic is published with that slug;
+    helper. With one monthly theme, all three topics share Topic 1's slug.
+    When set, every article on that topic is published with that slug;
     when blank, the article writer's recommended slug is used as before. If a
     practice site already has a different post with that slug, the publisher
     still makes the slug article-specific so nothing is overwritten. A

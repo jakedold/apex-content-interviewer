@@ -496,6 +496,14 @@
   margin-top: 14px;
 }
 
+.admin-topic-image-fields { display: grid; gap: 0; }
+.admin-topic-image-fields[hidden],
+.admin-topic-image-note[hidden] { display: none; }
+.admin-topic-image-note { margin-bottom: 0; font-size: 12px; }
+.admin-slug-row { display: flex; align-items: center; gap: 10px; }
+.admin-slug-row input { flex: 1; min-width: 0; }
+.admin-slug-row .admin-text-button { white-space: nowrap; }
+
 .admin-recipient-options {
   padding: 18px;
   border: 1px solid #cad8e1;

@@ -37,3 +37,29 @@ test('automatic publication rejects an unverified practice even with a WordPress
 test('publication fails closed without a separate WordPress subsite URL', () => {
   assert.throws(() => prepare(row({ credential_name: 'Wordpress account' })), /WordPress multisite subsite base URL/);
 });
+
+const verifiedConfig = { credential_name: 'Wordpress account', wordpress_base_url: 'https://apexparent.hostmanpowered.com/test001/' };
+
+test('a campaign topic WordPress slug overrides the writer-recommended slug', () => {
+  const candidate = { ...row(verifiedConfig), topic_wordpress_slug: 'why-brushing-before-bed-matters' };
+  const result = prepare(candidate)[0].json;
+  assert.equal(result.slug, 'why-brushing-before-bed-matters');
+  assert.equal(result.wordpress_body.slug, 'why-brushing-before-bed-matters');
+  assert.equal(result.article_slug_base, 'why-brushing-before-bed-matters');
+  assert.match(result.article_slug_collision, /^why-brushing-before-bed-matters-article-/);
+});
+
+test('without a topic slug the writer-recommended slug is still used', () => {
+  const result = prepare(row(verifiedConfig))[0].json;
+  assert.equal(result.slug, 'test-article');
+});
+
+test('an invalid topic slug fails closed instead of publishing an unexpected URL', () => {
+  assert.throws(() => prepare({ ...row(verifiedConfig), topic_wordpress_slug: 'Bad Slug!' }), /WordPress URL slug/);
+});
+
+test('the publisher loads the topic slug from the campaign topic', () => {
+  const query = workflow.nodes.find((node) => node.name === 'Load Approved WordPress Article').parameters.query
+    ?? workflow.nodes.find((node) => node.name === 'Load Approved WordPress Article').parameters.sqlQuery;
+  assert.match(query, /'\$\.wordpress_slug'\) AS topic_wordpress_slug/);
+});

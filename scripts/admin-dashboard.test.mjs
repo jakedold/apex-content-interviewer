@@ -51,8 +51,12 @@ test('campaign builder offers a shared monthly theme or three unique topics', ()
   assert.match(client, /name="topic_layout"/);
   assert.match(client, /value="shared_theme"/);
   assert.match(client, /value="unique"/);
-  assert.match(client, /Use the same featured image as Topic 1/);
-  assert.match(client, /data\.has\(`topic_\$\{number\}_use_topic_1_image`\) \? 1 : number/);
+  assert.doesNotMatch(client, /use_topic_1_image|Use the same featured image as Topic 1/);
+  assert.match(client, /const detailsTopic = \(number: number\) => \(sharedTheme \? 1 : number\);/);
+  assert.match(client, /data\.get\(`topic_\$\{detailsTopic\(number\)\}_\$\{field\}`\)/);
+  assert.match(client, /data\.get\(`topic_\$\{detailsTopic\(number\)\}_wordpress_slug`\)/);
+  assert.match(client, /if \(!sharedTheme && new Set\(chosenSlugs\)\.size !== chosenSlugs\.length\)/);
+  assert.match(client, /CAMPAIGN_TOPIC_SHARED_FIELDS = \[\s*'wordpress_slug',\s*'featured_image_source_url',\s*'featured_image_alt_text',\s*\]/);
 });
 
 test('campaign builder sends an optional, validated WordPress slug for each topic', () => {
@@ -78,7 +82,6 @@ test('router accepts a valid topic slug and rejects malformed or repeated slugs'
   const image = {
     featured_image_source_url: 'https://apexparent.hostmanpowered.com/wp-content/uploads/a.jpg',
     featured_image_alt_text: 'Toothbrush on a counter',
-    featured_image_rights_reference: 'License reference',
   };
   const topics = (slugs) => ['One', 'Two', 'Three'].map((title, index) => ({ title, ...image, wordpress_slug: slugs[index] }));
 
@@ -86,36 +89,34 @@ test('router accepts a valid topic slug and rejects malformed or repeated slugs'
   assert.deepEqual(stored.map((topic) => topic.wordpress_slug), ['first-topic', null, 'third-topic']);
   assert.throws(() => run(topics(['bad slug', '', ''])), /WordPress URL slug/);
   assert.throws(() => run(topics(['same', 'same', ''])), /different WordPress URL slug/);
+  assert.throws(() => run(topics(['same', 'same', 'other'])), /different WordPress URL slug/);
+  const shared = JSON.parse(run(topics(['monthly-theme', 'monthly-theme', 'monthly-theme']))[0].json.topics_json);
+  assert.deepEqual(shared.map((topic) => topic.wordpress_slug), ['monthly-theme', 'monthly-theme', 'monthly-theme']);
 });
 
-test('campaign launch saves the rights reference and no longer asks for an image source type', () => {
+test('campaign builder and AAC-24 no longer use image source type or rights reference', () => {
   const normalizer = router.nodes.find((node) => node.name === 'Validate and Normalize Command').parameters.jsCode;
-  const run = (firstTopic = topic(1)) => new Function('$json', normalizer)({ body: {
-    action: 'launch_campaign', actor_email: 'admin@apexdp.com', idempotency_key: 'test_idempotency_key_0001',
-    audience: 'Presentation preview', campaign_name: 'Image rights test', campaign_month: '2026-12',
-    send_mode: 'now', doctor_ids: ['doctor_1'], topics: [firstTopic, topic(2), topic(3)],
-  } });
-  const topic = (number, overrides = {}) => ({
+  const topic = (number) => ({
     title: `Topic ${number}`,
     featured_image_source_url: `https://apexparent.hostmanpowered.com/wp-content/uploads/topic-${number}.jpg`,
     featured_image_alt_text: `Featured image for topic ${number}`,
-    featured_image_rights_reference: `  License ${number}  `,
     wordpress_slug: `topic-${number}`,
-    ...overrides,
   });
+  const result = new Function('$json', normalizer)({ body: {
+    action: 'launch_campaign', actor_email: 'admin@apexdp.com', idempotency_key: 'test_idempotency_key_0001',
+    audience: 'Presentation preview', campaign_name: 'Image details test', campaign_month: '2026-12',
+    send_mode: 'now', doctor_ids: ['doctor_1'], topics: [topic(1), topic(2), topic(3)],
+  } });
+  const topics = JSON.parse(result[0].json.topics_json);
+  assert.deepEqual(Object.keys(topics[0]).sort(), ['featured_image_alt_text', 'featured_image_source_url', 'title', 'wordpress_publish_date', 'wordpress_slug']);
 
-  const topics = JSON.parse(run()[0].json.topics_json);
-  assert.equal(topics[0].featured_image_rights_reference, 'License 1');
-  assert.equal('featured_image_source_type' in topics[0], false);
-  assert.throws(() => run(topic(1, { featured_image_rights_reference: '   ' })), /image rights or source reference/);
-
-  assert.doesNotMatch(client, /featured_image_source_type/);
-  assert.match(client, /featured_image_rights_reference: value\('featured_image_rights_reference'\)/);
+  assert.doesNotMatch(client, /featured_image_source_type|featured_image_rights_reference/);
+  assert.doesNotMatch(admin, /featured_image_source_type|featured_image_rights_reference/);
   const sql = router.nodes.find((node) => node.name === 'Create Audited Campaign').parameters.sqlQuery;
   const insert = sql.match(/INSERT INTO `[^`]+\.campaign_topics`([\s\S]*?)FROM UNNEST/)[1];
-  assert.match(insert, /featured_image_alt_text,\s*featured_image_rights_reference, wordpress_publish_date, wordpress_slug/);
-  assert.match(insert, /JSON_VALUE\(topic, '\$\.featured_image_alt_text'\),\s*JSON_VALUE\(topic, '\$\.featured_image_rights_reference'\)/);
-  assert.doesNotMatch(sql.replace(/ADD COLUMN IF NOT EXISTS featured_image_source_type STRING/, ''), /featured_image_source_type/);
+  assert.match(insert, /featured_image_alt_text,\s*wordpress_publish_date, wordpress_slug/);
+  const withoutColumnSetup = sql.replace(/ADD COLUMN IF NOT EXISTS featured_image_(source_type|rights_reference) STRING/g, '');
+  assert.doesNotMatch(withoutColumnSetup, /featured_image_source_type|featured_image_rights_reference/);
 });
 
 test('the stage tracker follows the Apex process from campaign to live on the website', () => {

@@ -238,7 +238,6 @@ topics AS (
     topic_title,
     featured_image_source_url,
     featured_image_alt_text,
-    featured_image_rights_reference,
     JSON_VALUE(TO_JSON_STRING(t), '$.wordpress_slug') AS wordpress_slug,
     topic_sort_order
   FROM ${table('campaign_topics')} AS t

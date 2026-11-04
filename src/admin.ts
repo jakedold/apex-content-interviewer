@@ -204,6 +204,8 @@ const app = appElement;
 let adminData: AdminResponse | null = null;
 let queueFilter = 'all';
 let queueSearch = '';
+// Work items selected in the queue for "Mark selected as published".
+const selectedForPublish = new Set<string>();
 let campaignArchiveFilter: 'active' | 'archived' = 'active';
 let campaignSort: 'month_desc' | 'month_asc' | 'name_asc' = 'month_desc';
 
@@ -340,20 +342,31 @@ function filteredQueue(): WorkItem[] {
   const items = adminData?.overview.work_queue ?? [];
   const needle = queueSearch.trim().toLowerCase();
   return items.filter((item) => {
-    const matchesFilter = queueFilter === 'all' || item.urgency === queueFilter;
+    const matchesFilter = queueFilter === 'all' || (queueFilter === 'ready' ? isReadyToPush(item) : item.urgency === queueFilter);
     const haystack = [item.doctor_name, item.practice_name, item.topic_title, item.campaign_name, item.status]
       .filter(Boolean).join(' ').toLowerCase();
     return matchesFilter && (!needle || haystack.includes(needle));
   });
 }
 
+// An article that is on WordPress and waiting for the team to push it live through Headless Hostman.
+function isReadyToPush(item: WorkItem): boolean {
+  return item.status === 'PUBLISHED' && Boolean(item.article_id);
+}
+
+function canMarkPublished(): boolean {
+  return Boolean(adminData?.capabilities.enabledActions.includes('mark_live_on_website'));
+}
+
 function workItemRow(item: WorkItem): string {
   const doctor = [item.doctor_name, item.credentials].filter(Boolean).join(', ');
+  const selectable = canMarkPublished() && isReadyToPush(item);
   return `
     <tr data-work-item="${escapeHtml(item.work_item_id)}">
+      <td class="admin-select-cell">${selectable ? `<input type="checkbox" data-publish-select="${escapeHtml(item.work_item_id)}" aria-label="Select ${escapeHtml(doctor)} to mark as published" ${selectedForPublish.has(item.work_item_id) ? 'checked' : ''} />` : ''}</td>
       <td><strong>${escapeHtml(doctor)}</strong><small>${escapeHtml(item.practice_name || 'Practice not assigned')}</small></td>
       <td><strong>${escapeHtml(item.topic_title)}</strong><small>${escapeHtml(item.campaign_name)}</small></td>
-      <td>${statusPill(item.status === 'PUBLISHED' ? 'ON_WORDPRESS' : item.status)}</td>
+      <td>${statusPill(isReadyToPush(item) ? 'READY_TO_PUSH' : item.status)}</td>
       <td><time datetime="${escapeHtml(item.updated_at)}">${escapeHtml(formatDate(item.updated_at, true))}</time></td>
       <td><button class="admin-text-button" type="button" data-view-item="${escapeHtml(item.work_item_id)}">View</button></td>
     </tr>`;
@@ -367,10 +380,77 @@ function renderQueueRows(): void {
   count.textContent = `${items.length} item${items.length === 1 ? '' : 's'}`;
   body.innerHTML = items.length
     ? items.map(workItemRow).join('')
-    : '<tr><td colspan="5"><div class="admin-empty">No work items match this view.</div></td></tr>';
+    : '<tr><td colspan="6"><div class="admin-empty">No work items match this view.</div></td></tr>';
   for (const button of document.querySelectorAll<HTMLButtonElement>('[data-view-item]')) {
     button.addEventListener('click', () => openWorkItem(button.dataset.viewItem ?? ''));
   }
+  for (const checkbox of document.querySelectorAll<HTMLInputElement>('[data-publish-select]')) {
+    checkbox.addEventListener('change', () => {
+      const id = checkbox.dataset.publishSelect ?? '';
+      if (checkbox.checked) selectedForPublish.add(id); else selectedForPublish.delete(id);
+      updateBulkPublishBar();
+    });
+  }
+  const selectAll = document.querySelector<HTMLInputElement>('#admin-publish-select-all');
+  if (selectAll) {
+    const shown = items.filter(isReadyToPush);
+    selectAll.disabled = !canMarkPublished() || !shown.length;
+    selectAll.checked = shown.length > 0 && shown.every((item) => selectedForPublish.has(item.work_item_id));
+    selectAll.onchange = () => {
+      for (const item of shown) {
+        if (selectAll.checked) selectedForPublish.add(item.work_item_id); else selectedForPublish.delete(item.work_item_id);
+      }
+      renderQueueRows();
+    };
+  }
+  updateBulkPublishBar();
+}
+
+function updateBulkPublishBar(): void {
+  const bar = document.querySelector<HTMLElement>('#admin-bulk-publish');
+  if (!bar) return;
+  // Only keep selections that are still ready to push.
+  const readyIds = new Set((adminData?.overview.work_queue ?? []).filter(isReadyToPush).map((item) => item.work_item_id));
+  for (const id of [...selectedForPublish]) if (!readyIds.has(id)) selectedForPublish.delete(id);
+  const count = selectedForPublish.size;
+  bar.hidden = count === 0;
+  const label = bar.querySelector<HTMLElement>('[data-bulk-count]');
+  if (label) label.textContent = `${count} article${count === 1 ? '' : 's'} selected`;
+}
+
+async function submitBulkPublish(event: SubmitEvent): Promise<void> {
+  event.preventDefault();
+  const form = event.currentTarget as HTMLFormElement;
+  const message = form.querySelector<HTMLElement>('#admin-bulk-publish-message');
+  const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+  const note = String(new FormData(form).get('note') ?? '').trim();
+  const items = (adminData?.overview.work_queue ?? []).filter((item) => selectedForPublish.has(item.work_item_id) && isReadyToPush(item));
+  if (!items.length) return;
+  if (submit) submit.disabled = true;
+  const failures: string[] = [];
+  let done = 0;
+  // One audited command per article, sent one at a time so each gets its own record and result.
+  for (const item of items) {
+    if (message) message.textContent = `Marking ${done + failures.length + 1} of ${items.length} as published…`;
+    try {
+      await postAdminCommand({ action: 'mark_live_on_website', article_id: item.article_id, campaign_id: item.campaign_id, doctor_id: item.doctor_id,
+        expected_status: item.status, reason: note });
+      done += 1;
+      selectedForPublish.delete(item.work_item_id);
+    } catch (error) {
+      const text = friendlyCommandError(error);
+      failures.push(`${[item.doctor_name, item.credentials].filter(Boolean).join(', ')}: ${text}`);
+      if (/not switched on in n8n/.test(text)) break;
+    }
+  }
+  if (!failures.length) {
+    if (message) message.textContent = `Marked ${done} article${done === 1 ? '' : 's'} as published.`;
+    await initializeAdmin();
+    return;
+  }
+  if (message) message.textContent = `Marked ${done} of ${items.length} as published. Not marked: ${failures.join(' · ')}`;
+  if (submit) submit.disabled = false;
+  if (done) renderQueueRows();
 }
 
 function renderQueue(data: AdminResponse): string {
@@ -391,13 +471,21 @@ function renderQueue(data: AdminResponse): string {
             ['error', 'Errors', counts.error ?? 0],
             ['attention', 'Review', counts.attention ?? 0],
             ['active', 'In progress', counts.active ?? 0],
+            ['ready', 'Ready to push', data.overview.work_queue.filter(isReadyToPush).length],
           ].map(([value, label, count]) => `<button class="admin-filter ${value === queueFilter ? 'is-active' : ''}" type="button" data-queue-filter="${value}">${label} <span>${count}</span></button>`).join('')}
         </div>
         <label class="admin-search"><span class="sr-only">Search work queue</span><input id="admin-queue-search" type="search" placeholder="Search doctor, practice, topic…" value="${escapeHtml(queueSearch)}" /></label>
       </div>
+      <form class="admin-bulk-publish" id="admin-bulk-publish" hidden>
+        <strong data-bulk-count></strong>
+        <label class="admin-bulk-note"><span class="sr-only">Note (optional)</span><input name="note" type="text" maxlength="500" placeholder="Note (optional), e.g. pushed in Headless Hostman on…" /></label>
+        <label class="admin-confirm-check"><input name="confirmation" type="checkbox" required /> I confirm these articles were pushed live through Headless Hostman.</label>
+        <button class="admin-primary-button" type="submit">Mark selected as published</button>
+        <p class="admin-form-message" id="admin-bulk-publish-message" role="status"></p>
+      </form>
       <div class="admin-table-wrap">
         <table class="admin-table">
-          <thead><tr><th>Doctor</th><th>Topic and campaign</th><th>Status</th><th>Last movement</th><th><span class="sr-only">Details</span></th></tr></thead>
+          <thead><tr><th class="admin-select-cell"><input type="checkbox" id="admin-publish-select-all" aria-label="Select all shown articles that are ready to push" /></th><th>Doctor</th><th>Topic and campaign</th><th>Status</th><th>Last movement</th><th><span class="sr-only">Details</span></th></tr></thead>
           <tbody id="admin-queue-body"></tbody>
         </table>
       </div>
@@ -1161,6 +1249,7 @@ function renderDashboard(data: AdminResponse): void {
       renderQueueRows();
     });
   }
+  document.querySelector<HTMLFormElement>('#admin-bulk-publish')?.addEventListener('submit', (event) => void submitBulkPublish(event));
   document.querySelector<HTMLInputElement>('#admin-queue-search')?.addEventListener('input', (event) => {
     queueSearch = (event.currentTarget as HTMLInputElement).value;
     renderQueueRows();
@@ -1222,7 +1311,7 @@ function articleMilestones(detail: WorkItemDetail) {
 function stageVisual(detail: WorkItemDetail): string {
   const m = articleMilestones(detail);
   // Apex process: campaign created → invitation emailed → interview completed → doctor review →
-  // marketing review → pushed to WordPress → pushed live by the team through Headless Hostman.
+  // marketing review → on WordPress → ready to push → published by the team through Headless Hostman.
   const steps: Array<[string, boolean, string]> = [
     ['Campaign created', true, ''],
     ['Invitation emailed', m.invitationSent, 'Waiting to send'],
@@ -1231,6 +1320,7 @@ function stageVisual(detail: WorkItemDetail): string {
     [detail.item.require_marketing_approval ? 'Marketing review' : 'Marketing review (not required)', m.marketingApproved, 'Waiting for marketing'],
     ['On WordPress', m.onWordPress, 'Sending to WordPress'],
     ['Ready to Push', m.liveOnWebsite, 'Push live in Headless Hostman'],
+    ['Published', m.liveOnWebsite, ''],
   ];
   const activeIndex = steps.findIndex(([, complete]) => !complete);
   return `<ol class="admin-stage-track">${steps.map(([label, complete, waiting], index) => `
@@ -1261,19 +1351,19 @@ function nextStepAction(detail: WorkItemDetail, enabledActions: string[]): { act
     : { action, message: '' };
   if (m.liveOnWebsite) {
     const when = m.liveEvent?.event_timestamp ? formatDate(m.liveEvent.event_timestamp, true) : '';
-    return { action: null, message: `This article is marked live on the website${when ? ` (${when})` : ''}. There are no further steps.` };
+    return { action: null, message: `This article is published on the website${when ? ` (marked ${when})` : ''}. There are no further steps.` };
   }
   if (m.onWordPress) {
     return offer({
       action: 'mark_live_on_website',
-      title: 'Mark as live on the website',
-      description: 'The article is on WordPress. After your team pushes it live through Headless Hostman, record it here so the tracker shows it as live.',
+      title: 'Mark as published',
+      description: 'The article is on WordPress and ready to push. After your team pushes it live through Headless Hostman, record it here so the tracker shows it as published. To mark several at once, use the “Ready to push” filter in the work queue.',
       reasonLabel: 'Note (optional)',
       reasonPlaceholder: 'Pushed live in Headless Hostman on…',
-      confirmation: 'I confirm this article has been pushed live on the practice website.',
-      button: 'Mark as live on website',
+      confirmation: 'I confirm this article has been pushed live through Headless Hostman.',
+      button: 'Mark as published',
       pending: 'Recording…',
-      success: 'Marked as live on the website.',
+      success: 'Marked as published.',
     });
   }
   if (item.article_id && m.doctorApproved && !m.marketingApproved && item.require_marketing_approval
@@ -1387,7 +1477,7 @@ function renderWorkItemDetail(response: WorkItemDetailResponse): void {
     <p class="admin-detail-topic">${escapeHtml(item.topic_title || 'Topic not selected')}</p>
     ${stageVisual(detail)}
     <dl class="admin-detail-list">
-      <div><dt>Current status</dt><dd>${milestones.liveOnWebsite ? statusPill('LIVE_ON_WEBSITE') : milestones.onWordPress ? statusPill('ON_WORDPRESS') : statusPill(item.article_status || item.interview_status || item.campaign_doctor_status)}</dd></div>
+      <div><dt>Current status</dt><dd>${milestones.liveOnWebsite ? statusPill('PUBLISHED') : milestones.onWordPress ? statusPill('READY_TO_PUSH') : statusPill(item.article_status || item.interview_status || item.campaign_doctor_status)}</dd></div>
       <div><dt>Intended website</dt><dd>${item.website_domain ? `<a href="${escapeHtml(item.website_domain)}" target="_blank" rel="noreferrer">${escapeHtml(item.website_domain)}</a>` : 'Not configured'}</dd></div>
       <div><dt>Practice</dt><dd>${escapeHtml(item.practice_name || 'Not assigned')}</dd></div>
       <div><dt>Publishing route</dt><dd>${escapeHtml(item.publisher_type || 'Not configured')}</dd></div>
@@ -1470,6 +1560,13 @@ async function postAdminCommand(body: Record<string, unknown>): Promise<Record<s
   return result && typeof result === 'object' ? result as Record<string, unknown> : {};
 }
 
+function friendlyCommandError(error: unknown): string {
+  const text = error instanceof Error ? error.message : 'The step could not be recorded.';
+  return /unsupported administrative action/i.test(text)
+    ? 'This step is not switched on in n8n yet. Jake needs to load the updated admin command workflow (24).'
+    : text;
+}
+
 async function submitNextStep(event: SubmitEvent, detail: WorkItemDetail, enabledActions: string[]): Promise<void> {
   event.preventDefault();
   const item = detail.item;
@@ -1487,12 +1584,7 @@ async function submitNextStep(event: SubmitEvent, detail: WorkItemDetail, enable
     if (message) message.textContent = action.success;
     await initializeAdmin();
   } catch (error) {
-    const text = error instanceof Error ? error.message : 'The step could not be recorded.';
-    if (message) {
-      message.textContent = /unsupported administrative action/i.test(text)
-        ? 'This step is not switched on in n8n yet. Jake needs to load the updated admin command workflow (24).'
-        : text;
-    }
+    if (message) message.textContent = friendlyCommandError(error);
     if (submit) submit.disabled = false;
   }
 }

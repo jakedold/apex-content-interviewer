@@ -149,7 +149,7 @@ queue_rows AS (
     ) AS updated_at,
     CASE WHEN COALESCE(a.status, i.status, cd.status) IN ('GENERATION_FAILED','ARTICLE_GENERATION_FAILED','COMMUNICATION_FAILED','PUBLISH_FAILED') THEN 'error'
       WHEN COALESCE(a.status, i.status, cd.status) IN ('DOCTOR_REVIEW_PENDING','DOCTOR_REVIEW','REVISION_REQUESTED','DOCTOR_CHANGES_REQUESTED','MARKETING_REVIEW','MARKETING_CHANGES_REQUESTED','ON_HOLD') THEN 'attention'
-      WHEN COALESCE(a.status, i.status, cd.status) = 'PUBLISHED' THEN 'attention' ELSE 'active' END AS urgency
+      ELSE 'active' END AS urgency
   FROM ${table('campaign_doctors')} cd
   JOIN ${table('campaigns')} c USING (campaign_id)
   JOIN ${table('doctors')} d USING (doctor_id)

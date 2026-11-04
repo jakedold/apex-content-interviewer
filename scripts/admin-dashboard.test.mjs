@@ -119,7 +119,7 @@ test('campaign launch saves the rights reference and no longer asks for an image
 });
 
 test('the stage tracker follows the Apex process from campaign to live on the website', () => {
-  const labels = ['Campaign created', 'Invitation emailed', 'Interview completed', 'Doctor review', 'Marketing review', 'On WordPress', 'Ready to Push'];
+  const labels = ['Campaign created', 'Invitation emailed', 'Interview completed', 'Doctor review', 'Marketing review', 'On WordPress', 'Ready to Push', 'Published'];
   const tracker = client.match(/function stageVisual[\s\S]*?\n}\n/)[0];
   let last = -1;
   for (const label of labels) {
@@ -136,7 +136,7 @@ test('"Push to the next step" offers the manual step for each stage through the 
   assert.match(client, /action: 'approve_for_marketing'/);
   assert.match(client, /action: 'mark_live_on_website'/);
   assert.match(client, /Approve and send to WordPress/);
-  assert.match(client, /Mark as live on website/);
+  assert.match(client, /button: 'Mark as published'/);
   assert.match(client, /postAdminCommand\(\{ action: action\.action/);
   for (const action of ['approve_for_doctor', 'approve_for_marketing', 'mark_live_on_website']) {
     assert.match(admin, new RegExp("ADMIN_ACTIONS = \\[[^\\]]*'" + action + "'"));
@@ -168,4 +168,16 @@ test('router records "live on website" only for an article on WordPress, once, w
   assert.match(query, /'article\.marked_live'/);
   assert.doesNotMatch(query, /UPDATE `[^`]*\.articles`/);
   assert.equal(router.connections['Record Live on Website'].main[0][0].node, 'Return Live on Website Result');
+});
+
+test('several ready-to-push articles can be marked published at once, one audited command each', () => {
+  assert.match(client, /\['ready', 'Ready to push'/);
+  assert.match(client, /function isReadyToPush\(item: WorkItem\): boolean \{\n  return item\.status === 'PUBLISHED'/);
+  assert.match(client, /data-publish-select=/);
+  assert.match(client, /id="admin-publish-select-all"/);
+  assert.match(client, /Mark selected as published/);
+  assert.match(client, /I confirm these articles were pushed live through Headless Hostman\./);
+  const bulk = client.match(/async function submitBulkPublish[\s\S]*?\n}\n/)[0];
+  assert.match(bulk, /for \(const item of items\) \{[\s\S]*?await postAdminCommand\(\{ action: 'mark_live_on_website'/);
+  assert.match(bulk, /Not marked:/);
 });

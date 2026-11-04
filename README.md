@@ -29,6 +29,10 @@ The interview UI includes microphone startup, visible loading/thinking/speaking 
 
 The marketing control center lives at `/admin`. It reads campaign, doctor, article, workflow event, and communication state directly from BigQuery after validating Cloudflare Access identity. Setup and activation requirements are documented in [Admin dashboard](docs/ADMIN_DASHBOARD.md).
 
+## Making changes with Claude Code
+
+Nicole can describe a requested change in ordinary language and let Claude Code handle the repository work. The root `CLAUDE.md` gives Claude its standing project instructions. See [Nicole's simple Claude Code guide](docs/CLAUDE_CODE_STARTER_PROMPT.md) for what Nicole does and what happens before a change reaches the live app.
+
 ## Local development
 
 ```bash
@@ -55,6 +59,8 @@ npm run build
 The voice interviewer prompt and the separate article-writing and revision prompts are documented in [prompts/README.md](prompts/README.md), including where to view their Git history and which live component uses each file.
 
 ## Deployment
+
+Pull requests to `main` run `.github/workflows/validate-pr.yml`. It generates Worker types, builds the app, runs the automated tests, and parses the n8n workflow exports. This check does not receive the Cloudflare token and cannot deploy. GitHub's active ruleset for `main` requires changes to come through a pull request and requires the `validate` check to pass against the latest `main`. Claude is also instructed to wait for that check and ask Nicole for clear approval before merging. Merging to `main` starts the production workflow; the change is live only if that workflow successfully deploys it.
 
 Every push to `main` runs `.github/workflows/deploy.yml`, which builds the app, runs `node --test scripts/*.test.mjs`, and deploys the Worker only if both pass. Manual runs are limited to `main`. The workflow needs a `CLOUDFLARE_API_TOKEN` GitHub Actions secret; without it, the deploy step is skipped. Scope the Cloudflare token to the existing `apex-content-interviewer` Worker with the **Editor** permission. Cloudflare documents this as sufficient for deploying an existing Worker; add a zone-level Workers Routes permission only if a deployment also needs to change a route or custom domain. Never commit the token to the repository.
 

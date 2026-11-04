@@ -1,0 +1,37 @@
+name: Validate pull request
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Generate Cloudflare Worker types
+        run: npm run cf-typegen
+
+      - name: Build application
+        run: npm run build
+
+      - name: Run automated checks
+        run: node --test scripts/*.test.mjs
+
+      - name: Validate n8n workflow JSON
+        run: node --input-type=module -e 'import { readdirSync, readFileSync } from "node:fs"; for (const file of readdirSync("n8n").filter((name) => name.endsWith(".json"))) JSON.parse(readFileSync("n8n/" + file, "utf8")); console.log("Validated n8n workflow JSON");'

@@ -261,7 +261,7 @@ function statusTone(status: string): string {
   const normalized = status.toUpperCase();
   if (/(FAILED|ERROR|REJECTED|ABANDONED)/.test(normalized)) return 'danger';
   if (/(REVIEW|REVISION|HOLD|PENDING)/.test(normalized)) return 'warning';
-  if (/(PUBLISHED|APPROVED|COMPLETED|SENT)/.test(normalized)) return 'success';
+  if (/(PUBLISHED|APPROVED|COMPLETED|SENT|DELIVERED)/.test(normalized)) return 'success';
   return 'info';
 }
 
@@ -1175,6 +1175,22 @@ function detailEventRow(event: WorkflowEvent): string {
   return eventRow({ ...event, severity });
 }
 
+function detailCommunicationRow(communication: WorkItemDetail['communications'][number]): string {
+  const tone = statusTone(communication.status);
+  const severity = tone === 'danger' ? 'error' : tone === 'success' ? 'success' : 'info';
+  const sentAt = communication.sent_at ? formatDate(communication.sent_at, true) : 'No send time recorded';
+  const deliveredAt = communication.delivered_at ? ` · delivered ${formatDate(communication.delivered_at, true)}` : '';
+  return `
+    <li class="admin-event admin-event-${severity}">
+      <span class="admin-event-dot" aria-hidden="true"></span>
+      <div>
+        <strong>${escapeHtml(titleCase(communication.communication_type))}</strong>
+        <p>${escapeHtml(communication.recipient || 'Recipient not recorded')} · ${escapeHtml(titleCase(communication.channel))} · ${statusPill(communication.status)}</p>
+        <small>Sent ${escapeHtml(sentAt)}${escapeHtml(deliveredAt)}</small>
+      </div>
+    </li>`;
+}
+
 async function fetchWorkItemDetail(item: WorkItem): Promise<WorkItemDetailResponse> {
   const response = await fetch(`/api/admin/work-items/${encodeURIComponent(item.campaign_id)}/${encodeURIComponent(item.doctor_id)}`, { headers: { Accept: 'application/json' } });
   const body: unknown = await response.json();
@@ -1189,6 +1205,19 @@ function renderWorkItemDetail(response: WorkItemDetailResponse): void {
   if (!content || !item) return;
   const article = parseArticlePackage(detail.article_content);
   const canApprove = response.capabilities.enabledActions.includes('approve_for_doctor') && item.article_status === 'DOCTOR_REVIEW_PENDING';
+  const doctorApproval = detail.approvals.find((approval) => approval.approval_type === 'DOCTOR_REVIEW');
+  const doctorApprovalEvent = detail.events.find((event) => ['doctor.approved', 'doctor.auto_approved', 'doctor.approved_by_admin'].includes(event.event_type));
+  const doctorApprovalSummary = doctorApproval?.status === 'AUTO_APPROVED' || item.article_status === 'DOCTOR_AUTO_APPROVED'
+    ? 'Automatically approved after the doctor review deadline expired'
+    : doctorApprovalEvent?.event_type === 'doctor.approved'
+      ? 'Doctor approved through the review portal'
+      : doctorApprovalEvent?.event_type === 'doctor.approved_by_admin'
+        ? 'Administrator recorded off-portal doctor approval'
+        : doctorApproval?.status === 'APPROVED'
+          ? 'Approval recorded; source not available'
+          : doctorApproval?.status === 'PENDING'
+            ? 'Waiting for the doctor'
+            : 'Not recorded';
   content.innerHTML = `
     <span class="admin-kicker">${escapeHtml(item.campaign_name)}</span>
     <h2>${escapeHtml([item.doctor_name, item.credentials].filter(Boolean).join(', '))}</h2>
@@ -1200,6 +1229,7 @@ function renderWorkItemDetail(response: WorkItemDetailResponse): void {
       <div><dt>Practice</dt><dd>${escapeHtml(item.practice_name || 'Not assigned')}</dd></div>
       <div><dt>Publishing route</dt><dd>${escapeHtml(item.publisher_type || 'Not configured')}</dd></div>
       <div><dt>Doctor review deadline</dt><dd>${escapeHtml(formatDate(item.doctor_review_deadline, true))}</dd></div>
+      <div><dt>Doctor approval</dt><dd>${escapeHtml(doctorApprovalSummary)}</dd></div>
       <div><dt>Article version</dt><dd>${item.current_version ? `Version ${item.current_version} · ${escapeHtml(titleCase(item.version_type || ''))}` : 'No draft yet'}</dd></div>
     </dl>
     <div class="admin-content-tabs" role="tablist">
@@ -1219,6 +1249,9 @@ function renderWorkItemDetail(response: WorkItemDetailResponse): void {
     <section class="admin-content-panel" data-detail-panel="history">
       <h3>Workflow history</h3>
       <ol class="admin-event-list admin-event-list-compact">${detail.events.length ? detail.events.map(detailEventRow).join('') : '<li class="admin-empty">No linked workflow events are recorded.</li>'}</ol>
+      <h3>Message activity</h3>
+      <p class="admin-version-note">A sent status records the workflow’s send step; it does not confirm inbox placement.</p>
+      <ol class="admin-event-list admin-event-list-compact">${detail.communications.length ? detail.communications.map(detailCommunicationRow).join('') : '<li class="admin-empty">No communication records are available for this work item.</li>'}</ol>
     </section>
     <section class="admin-action-hook ${canApprove ? 'is-enabled' : ''}">
       <strong>Push to the next step</strong>

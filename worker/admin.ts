@@ -139,6 +139,11 @@ queue_rows AS (
     COALESCE(t.topic_title, 'Topic not selected') AS topic_title,
     COALESCE(a.status, i.status, cd.status) AS status,
     COALESCE(a.published_url, '') AS published_url,
+    a.current_version, c.require_marketing_approval,
+    EXISTS(SELECT 1 FROM ${table('approvals')} ap WHERE ap.article_id = a.article_id
+      AND ap.approval_type = 'MARKETING_REVIEW' AND ap.status = 'AUTO_APPROVED') AS marketing_auto_approved,
+    EXISTS(SELECT 1 FROM ${table('approvals')} ap WHERE ap.article_id = a.article_id
+      AND ap.approval_type = 'DOCTOR_REVIEW' AND ap.status = 'AUTO_APPROVED') AS doctor_auto_approved,
     GREATEST(
       COALESCE(a.published_at, TIMESTAMP '1970-01-01'),
       COALESCE(a.marketing_approved_at, TIMESTAMP '1970-01-01'),
@@ -409,7 +414,7 @@ function accessManagement(viewer: AccessClaims, env: AdminEnv): Record<string, u
 }
 
 // Actions the dashboard may send to the audited n8n command workflow (24).
-const ADMIN_ACTIONS = ['approve_for_doctor', 'approve_for_marketing', 'mark_live_on_website', 'launch_campaign', 'archive_campaign', 'restore_campaign'] as const;
+const ADMIN_ACTIONS = ['approve_for_doctor', 'approve_for_marketing', 'request_marketing_changes', 'mark_live_on_website', 'launch_campaign', 'archive_campaign', 'restore_campaign'] as const;
 
 function capabilities(viewer: AccessClaims, env: AdminEnv): Record<string, unknown> {
   const canAct = Boolean(viewer.email && actionEmails(env).includes(viewer.email) && env.ADMIN_COMMAND_SECRET && env.ADMIN_COMMAND_PATH);

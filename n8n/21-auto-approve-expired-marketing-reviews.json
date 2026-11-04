@@ -1,0 +1,160 @@
+{
+  "name": "AAC - 21 - Auto-Approve Expired Marketing Reviews",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "15 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "ddde7461-359f-48d2-b98e-a81b7bb47c7c",
+      "name": "Check Marketing Review Deadlines Hourly",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -440,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "bf6b6cd8-7183-4096-9786-01e9fa37ca29",
+      "name": "Run Marketing Deadline Check Manually",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -440,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "projectId": {
+          "__rl": true,
+          "value": "apex-marketing-n8n",
+          "mode": "id"
+        },
+        "sqlQuery": "-- AAC - 21: auto-approve marketing reviews nobody answered within 24 hours, then send them to WordPress.\n-- WordPress is not the public site: the team still decides whether to push each article live through\n-- Headless Hostman. Auto-approved articles are flagged in the dashboard for extra attention.\n-- Only reviews requested in the last 7 days are auto-approved, so an older backlog is not sent all at once.\nCREATE TEMP TABLE expired_marketing_reviews AS\nSELECT\n  ap.approval_id,\n  ap.article_id,\n  ap.requested_at,\n  a.doctor_id,\n  a.campaign_id,\n  a.current_version\nFROM `apex-marketing-n8n.automated_article_creation.approvals` ap\nJOIN `apex-marketing-n8n.automated_article_creation.articles` a\n  ON a.article_id = ap.article_id\nJOIN `apex-marketing-n8n.automated_article_creation.campaigns` c\n  ON c.campaign_id = a.campaign_id\nWHERE ap.approval_type = 'MARKETING_REVIEW'\n  AND ap.status = 'PENDING'\n  AND a.status = 'MARKETING_REVIEW'\n  AND c.require_marketing_approval = TRUE\n  AND ap.requested_at <= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)\n  AND ap.requested_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)\nQUALIFY ROW_NUMBER() OVER (PARTITION BY ap.article_id ORDER BY ap.requested_at DESC) = 1\nLIMIT 25;\n\nBEGIN TRANSACTION;\n\nMERGE `apex-marketing-n8n.automated_article_creation.approvals` T\nUSING expired_marketing_reviews S\nON T.approval_id = S.approval_id\nWHEN MATCHED THEN UPDATE SET\n  status = 'AUTO_APPROVED',\n  responded_at = CURRENT_TIMESTAMP(),\n  response = 'Automatically approved after 24 hours without a marketing response.';\n\nMERGE `apex-marketing-n8n.automated_article_creation.marketing_review_links` T\nUSING expired_marketing_reviews S\nON T.article_id = S.article_id AND T.status IN ('READY', 'OPENED')\nWHEN MATCHED THEN UPDATE SET\n  status = 'EXPIRED',\n  responded_at = CURRENT_TIMESTAMP();\n\nMERGE `apex-marketing-n8n.automated_article_creation.articles` T\nUSING expired_marketing_reviews S\nON T.article_id = S.article_id AND T.status = 'MARKETING_REVIEW' AND T.current_version = S.current_version\nWHEN MATCHED THEN UPDATE SET\n  status = 'MARKETING_APPROVED',\n  marketing_approved_at = CURRENT_TIMESTAMP();\n\nMERGE `apex-marketing-n8n.automated_article_creation.campaign_doctors` T\nUSING expired_marketing_reviews S\nON T.campaign_id = S.campaign_id AND T.doctor_id = S.doctor_id\nWHEN MATCHED THEN UPDATE SET\n  status = 'MARKETING_APPROVED',\n  updated_at = CURRENT_TIMESTAMP();\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.workflow_events`\n(event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id, payload)\nSELECT\n  GENERATE_UUID(),\n  'article',\n  article_id,\n  'marketing.auto_approved',\n  CURRENT_TIMESTAMP(),\n  'n8n:marketing-review-deadline',\n  NULL,\n  TO_JSON(STRUCT(approval_id, requested_at, current_version AS version_number))\nFROM expired_marketing_reviews;\n\nCOMMIT TRANSACTION;\n\n-- Articles to send to WordPress: the ones approved just now, plus any auto-approved in the last 7 days\n-- whose WordPress send did not finish (so a failed send is retried on the next hourly run).\nSELECT article_id FROM expired_marketing_reviews\nUNION DISTINCT\nSELECT a.article_id\nFROM `apex-marketing-n8n.automated_article_creation.articles` a\nJOIN `apex-marketing-n8n.automated_article_creation.approvals` ap\n  ON ap.article_id = a.article_id AND ap.approval_type = 'MARKETING_REVIEW' AND ap.status = 'AUTO_APPROVED'\nWHERE a.status = 'MARKETING_APPROVED'\n  AND a.published_at IS NULL\n  AND ap.responded_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)\n  AND ap.responded_at < TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 MINUTE);",
+        "options": {
+          "location": "US"
+        }
+      },
+      "id": "c779a3fa-01a4-49ec-be17-cee46feabaed",
+      "name": "Auto-Approve Expired Marketing Reviews",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [
+        -180,
+        100
+      ],
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "kGd2YSJ2MVJwRld0",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/kGd2YSJ2MVJwRld0",
+          "cachedResultName": "AAC - 15 - Publish Approved Article to WordPress"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "article_id": "={{ $json.article_id }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "article_id",
+              "displayName": "article_id",
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "b9022ded-23ec-4eb9-a9e8-4423a013bc34",
+      "name": "Send Auto-Approved Article to WordPress",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        80,
+        100
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "content": "## AAC 21 - Marketing auto-approval after 24 hours\n\nRuns hourly. A marketing review that nobody approves or answers within 24 hours of the request is marked `AUTO_APPROVED` (article status `MARKETING_APPROVED`, event `marketing.auto_approved`) and sent to WordPress, one article at a time. WordPress is not the public site; the team still pushes live through Headless Hostman, and the dashboard flags auto-approved articles for extra attention.\n\nSafety limits: only reviews requested in the last 7 days, at most 25 per run, and a failed WordPress send is retried on the next run for 7 days.\n\nConnect the existing **Google BigQuery account** credential before activating.",
+        "height": 360,
+        "width": 520
+      },
+      "id": "5268336d-0232-4178-a1c1-d35df0dccc77",
+      "name": "Marketing Auto-Approval Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -460,
+        -420
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Check Marketing Review Deadlines Hourly": {
+      "main": [
+        [
+          {
+            "node": "Auto-Approve Expired Marketing Reviews",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Marketing Deadline Check Manually": {
+      "main": [
+        [
+          {
+            "node": "Auto-Approve Expired Marketing Reviews",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auto-Approve Expired Marketing Reviews": {
+      "main": [
+        [
+          {
+            "node": "Send Auto-Approved Article to WordPress",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Chicago"
+  },
+  "versionId": "d6494ac6-7a42-4857-8dea-9a7cc3b374a8",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

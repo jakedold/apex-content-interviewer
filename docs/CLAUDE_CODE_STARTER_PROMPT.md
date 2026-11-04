@@ -41,9 +41,12 @@ cannot run and why. Review the final diff for unrelated files and sensitive
 values before committing.
 
 When the change is ready, commit and push the task branch and open a pull
-request against main. In the PR, summarize behavior changes, tests, risks, and
-any production follow-up. Leave the PR open for review; do not merge or deploy
-without my explicit instruction.
+request against main. Wait for the `Validate pull request` check to pass and
+review the full diff before merging. That check has read-only repository access
+and cannot deploy. Merging to `main` runs the separate production build and
+Cloudflare deployment workflow. In the PR, summarize behavior changes, tests,
+risks, and any production follow-up. Leave the PR open for review; do not merge
+or deploy without my explicit instruction.
 
 If a concrete access restriction or a decision that cannot be made safely
 blocks part of the task, explain the specific blocker and continue with any

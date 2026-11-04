@@ -78,8 +78,8 @@ expires after 30 days. Failed deliveries can be retried, while successful
 deliveries are not repeated. The older `02-create-topic-interview-links.json`
 is a legacy test workflow and should remain inactive.
 
-The AAC-24 export validates and saves each topic's image source type,
-rights/source reference, and optional WordPress slug along with its image URL
+The AAC-24 export validates and saves each topic's image rights/source
+reference and optional WordPress slug along with its image URL
 and alt text. Updating the GitHub repository does not update the active n8n
 workflow; install the reviewed export in n8n and verify the active workflow
 separately. Campaigns created before that workflow update will still have blank

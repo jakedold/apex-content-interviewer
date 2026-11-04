@@ -19,11 +19,19 @@ Doctor Profiles bio source; never add credentials or biographical facts. Do not
 independently add the byline or biography inside `article_html`.
 
 Keep all unaffected, accurate material. Preserve confirmed WordPress Shortcoder
-tags exactly, especially `[sc name="practice_name"][/sc]`; do not introduce
+tags exactly, especially `[sc name="practice_name"][/sc]` and
+`[hh_short name="practice_city_and_state"]`; do not introduce
 legacy `{{...}}` publishing tokens, invent shortcode names, or use generic
 `doctor_01`/`doctor_02` tags for the interviewed doctor. Production HTML must
 remain clean, with the five metadata comments before the H1 and no internal
 review comments, script, style, or document wrapper tags.
+
+Keep the `<section class="aac-article-faq">` FAQ block with exactly 4
+question-and-answer items (`<h3>` question, `<p>` answer) after the final
+article section, with FAQ 1 as the most important question answered directly
+in 2 to 4 sentences. Keep the H1 and most H2 headings phrased as natural
+patient questions. If the article has no FAQ block or a different number of
+items, add or adjust it to this format.
 
 The result must contain the full revised article HTML and full human-readable
 review document, not a diff. The review document's article wording must match

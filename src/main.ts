@@ -128,6 +128,11 @@ function sanitizeArticleHtml(html: string): string {
   const document = new DOMParser().parseFromString(html, 'text/html');
 
   for (const element of Array.from(document.body.querySelectorAll('*'))) {
+    if (element.tagName === 'SECTION') {
+      // Keep the FAQ block's questions and answers readable; only the wrapper is removed.
+      element.replaceWith(...Array.from(element.childNodes));
+      continue;
+    }
     if (!allowedTags.has(element.tagName)) {
       element.replaceWith(document.createTextNode(element.textContent ?? ''));
       continue;

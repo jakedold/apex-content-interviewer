@@ -7,6 +7,7 @@ This directory is the human-readable, Git-versioned home for the AI prompts:
 | `voice-interviewer.md` | Live clinician voice interview | Imported by `src/voicePrompt.ts` into the browser app |
 | `article-generation-master-prompt.md` | First article draft | Embedded in `n8n/06-generate-article.json` |
 | `article-revision-master-prompt.md` | Doctor-requested revisions | Embedded in `n8n/10-revise-article-from-doctor-feedback.json` |
+| `local-seo-review-prompt.md` | Automated local SEO review of each first draft, before doctor review (Brenna's "AEO/SEO Page Updates" GPT rules) | Embedded in `n8n/06-generate-article.json` by `node scripts/add-local-seo-review.mjs` |
 | `marketing-revision-master-prompt.md` | Marketing-requested revisions, returning to marketing without doctor reapproval | Embedded in `n8n/20-revise-article-from-marketing-feedback.json` |
 
 To review a prompt, open its file on GitHub in the `jakedold/apex-content-interviewer` repository. Use GitHub's **History** button on that file to see earlier versions and who changed them. Propose edits through a pull request so the wording and reason can be reviewed before merging to `main`.

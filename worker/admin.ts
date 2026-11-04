@@ -149,7 +149,7 @@ queue_rows AS (
     ) AS updated_at,
     CASE WHEN COALESCE(a.status, i.status, cd.status) IN ('GENERATION_FAILED','ARTICLE_GENERATION_FAILED','COMMUNICATION_FAILED','PUBLISH_FAILED') THEN 'error'
       WHEN COALESCE(a.status, i.status, cd.status) IN ('DOCTOR_REVIEW_PENDING','DOCTOR_REVIEW','REVISION_REQUESTED','DOCTOR_CHANGES_REQUESTED','MARKETING_REVIEW','MARKETING_CHANGES_REQUESTED','ON_HOLD') THEN 'attention'
-      WHEN COALESCE(a.status, i.status, cd.status) = 'PUBLISHED' THEN 'complete' ELSE 'active' END AS urgency
+      ELSE 'active' END AS urgency
   FROM ${table('campaign_doctors')} cd
   JOIN ${table('campaigns')} c USING (campaign_id)
   JOIN ${table('doctors')} d USING (doctor_id)
@@ -157,7 +157,11 @@ queue_rows AS (
   LEFT JOIN latest_interviews i ON i.campaign_id = cd.campaign_id AND i.doctor_id = cd.doctor_id
   LEFT JOIN ${table('campaign_topics')} t ON t.topic_id = i.topic_id
   LEFT JOIN latest_articles a ON a.campaign_id = cd.campaign_id AND a.doctor_id = cd.doctor_id
+  -- Articles on WordPress stay in the queue until the team marks them live (pushed through Headless Hostman).
   WHERE COALESCE(a.status, i.status, cd.status) != 'PUBLISHED'
+    OR (a.published_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 90 DAY)
+      AND NOT EXISTS (SELECT 1 FROM ${table('workflow_events')} e
+        WHERE e.entity_type = 'article' AND e.entity_id = a.article_id AND e.event_type = 'article.marked_live'))
 ),
 event_rows AS (
   SELECT event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id,
@@ -404,10 +408,13 @@ function accessManagement(viewer: AccessClaims, env: AdminEnv): Record<string, u
   };
 }
 
+// Actions the dashboard may send to the audited n8n command workflow (24).
+const ADMIN_ACTIONS = ['approve_for_doctor', 'approve_for_marketing', 'mark_live_on_website', 'launch_campaign', 'archive_campaign', 'restore_campaign'] as const;
+
 function capabilities(viewer: AccessClaims, env: AdminEnv): Record<string, unknown> {
   const canAct = Boolean(viewer.email && actionEmails(env).includes(viewer.email) && env.ADMIN_COMMAND_SECRET && env.ADMIN_COMMAND_PATH);
   return { readOnly: !canAct, actionsEnabled: canAct, actionApiVersion: 'v1', role: canAct ? 'administrator' : 'viewer',
-    enabledActions: canAct ? ['approve_for_doctor', 'launch_campaign', 'archive_campaign', 'restore_campaign'] : [] };
+    enabledActions: canAct ? [...ADMIN_ACTIONS] : [] };
 }
 
 function unavailable(error: unknown): Response {
@@ -526,7 +533,7 @@ export async function handleAdminCommand(request: Request, env: Env): Promise<Re
   try { body = await request.json(); } catch { return Response.json({ error: 'INVALID_REQUEST', message: 'A JSON command body is required.' }, { status: 400 }); }
   if (!body || typeof body !== 'object') return Response.json({ error: 'INVALID_REQUEST', message: 'A JSON command body is required.' }, { status: 400 });
   const command = body as Record<string, unknown>;
-  if (!['approve_for_doctor', 'launch_campaign', 'archive_campaign', 'restore_campaign'].includes(String(command.action))) return Response.json({ error: 'INVALID_ACTION', message: 'This administrative action is not supported.' }, { status: 400 });
+  if (!(ADMIN_ACTIONS as readonly string[]).includes(String(command.action))) return Response.json({ error: 'INVALID_ACTION', message: 'This administrative action is not supported.' }, { status: 400 });
   const idempotencyKey = request.headers.get('Idempotency-Key');
   if (!idempotencyKey || idempotencyKey.length > 100) return Response.json({ error: 'IDEMPOTENCY_KEY_REQUIRED', message: 'A valid idempotency key is required.' }, { status: 400 });
   try {

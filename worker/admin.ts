@@ -132,6 +132,13 @@ campaign_rows AS (
   GROUP BY c.campaign_id, c.campaign_name, c.campaign_month, c.status, c.require_marketing_approval, c.preview_only,
     c.created_at, c.launched_at, c.invitation_send_at
 ),
+-- Latest archive/restore decision per work item (campaign + doctor), recorded by the admin command workflow.
+work_item_archive AS (
+  SELECT entity_id, event_type, JSON_VALUE(payload, '$.reason') AS reason, JSON_VALUE(payload, '$.do_not_use') AS do_not_use, event_timestamp
+  FROM ${table('workflow_events')}
+  WHERE entity_type = 'work_item' AND event_type IN ('work_item.archived', 'work_item.restored')
+  QUALIFY ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY event_timestamp DESC) = 1
+),
 queue_rows AS (
   SELECT CONCAT(cd.campaign_id, ':', cd.doctor_id) AS work_item_id,
     cd.campaign_id, c.campaign_name, cd.doctor_id, d.doctor_name, d.credentials,
@@ -144,6 +151,9 @@ queue_rows AS (
       AND ap.approval_type = 'MARKETING_REVIEW' AND ap.status = 'AUTO_APPROVED') AS marketing_auto_approved,
     EXISTS(SELECT 1 FROM ${table('approvals')} ap WHERE ap.article_id = a.article_id
       AND ap.approval_type = 'DOCTOR_REVIEW' AND ap.status = 'AUTO_APPROVED') AS doctor_auto_approved,
+    COALESCE(wa.event_type = 'work_item.archived', FALSE) AS archived,
+    IF(wa.event_type = 'work_item.archived', wa.reason, NULL) AS archive_reason,
+    COALESCE(wa.event_type = 'work_item.archived' AND wa.do_not_use = 'true', FALSE) AS do_not_use,
     GREATEST(
       COALESCE(a.published_at, TIMESTAMP '1970-01-01'),
       COALESCE(a.marketing_approved_at, TIMESTAMP '1970-01-01'),
@@ -162,6 +172,7 @@ queue_rows AS (
   LEFT JOIN latest_interviews i ON i.campaign_id = cd.campaign_id AND i.doctor_id = cd.doctor_id
   LEFT JOIN ${table('campaign_topics')} t ON t.topic_id = i.topic_id
   LEFT JOIN latest_articles a ON a.campaign_id = cd.campaign_id AND a.doctor_id = cd.doctor_id
+  LEFT JOIN work_item_archive wa ON wa.entity_id = CONCAT(cd.campaign_id, ':', cd.doctor_id)
   -- Articles on WordPress stay in the queue until the team marks them live (pushed through Headless Hostman).
   WHERE COALESCE(a.status, i.status, cd.status) != 'PUBLISHED'
     OR (a.published_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 90 DAY)
@@ -221,7 +232,7 @@ SELECT TO_JSON_STRING(STRUCT(
   ) AS summary,
   ARRAY(SELECT AS STRUCT * FROM campaign_rows
     ORDER BY COALESCE(first_invitation_sent_at, invitation_send_at, launched_at, created_at) DESC LIMIT 250) AS campaigns,
-  ARRAY(SELECT AS STRUCT * FROM queue_rows ORDER BY CASE urgency WHEN 'error' THEN 0 WHEN 'attention' THEN 1 ELSE 2 END, updated_at ASC LIMIT 250) AS work_queue,
+  ARRAY(SELECT AS STRUCT * FROM queue_rows ORDER BY archived, CASE urgency WHEN 'error' THEN 0 WHEN 'attention' THEN 1 ELSE 2 END, updated_at ASC LIMIT 1500) AS work_queue,
   ARRAY(SELECT AS STRUCT * FROM event_rows ORDER BY event_timestamp DESC LIMIT 150) AS recent_events,
   ARRAY(SELECT AS STRUCT * FROM communication_failures ORDER BY sent_at DESC LIMIT 50) AS communication_failures
 )) AS payload;`;
@@ -378,7 +389,7 @@ SELECT TO_JSON_STRING(STRUCT(
   ARRAY(SELECT AS STRUCT communication_id, communication_type, channel, recipient, status, sent_at, delivered_at
     FROM ${table('communications')} WHERE campaign_id = @campaign_id AND doctor_id = @doctor_id ORDER BY sent_at DESC LIMIT 50) AS communications,
   ARRAY(SELECT AS STRUCT event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id, TO_JSON_STRING(payload) payload
-    FROM ${table('workflow_events')} WHERE entity_id IN (@campaign_id, @doctor_id, COALESCE((SELECT interview_id FROM item LIMIT 1), ''), COALESCE((SELECT article_id FROM item LIMIT 1), ''))
+    FROM ${table('workflow_events')} WHERE entity_id IN (@campaign_id, @doctor_id, CONCAT(@campaign_id, ':', @doctor_id), COALESCE((SELECT interview_id FROM item LIMIT 1), ''), COALESCE((SELECT article_id FROM item LIMIT 1), ''))
     ORDER BY event_timestamp DESC LIMIT 100) AS events
 )) AS payload FROM item LIMIT 1;`;
 }
@@ -414,7 +425,7 @@ function accessManagement(viewer: AccessClaims, env: AdminEnv): Record<string, u
 }
 
 // Actions the dashboard may send to the audited n8n command workflow (24).
-const ADMIN_ACTIONS = ['approve_for_doctor', 'approve_for_marketing', 'request_marketing_changes', 'mark_live_on_website', 'launch_campaign', 'archive_campaign', 'restore_campaign'] as const;
+const ADMIN_ACTIONS = ['approve_for_doctor', 'approve_for_marketing', 'request_marketing_changes', 'mark_live_on_website', 'archive_work_item', 'restore_work_item', 'launch_campaign', 'archive_campaign', 'restore_campaign'] as const;
 
 function capabilities(viewer: AccessClaims, env: AdminEnv): Record<string, unknown> {
   const canAct = Boolean(viewer.email && actionEmails(env).includes(viewer.email) && env.ADMIN_COMMAND_SECRET && env.ADMIN_COMMAND_PATH);

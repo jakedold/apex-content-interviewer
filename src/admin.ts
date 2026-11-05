@@ -70,6 +70,9 @@ type WorkItem = {
   require_marketing_approval?: boolean;
   marketing_auto_approved?: boolean;
   doctor_auto_approved?: boolean;
+  archived?: boolean;
+  archive_reason?: string | null;
+  do_not_use?: boolean;
 };
 
 type WorkflowEvent = {
@@ -205,10 +208,12 @@ if (!appElement) throw new Error('App container not found.');
 const app = appElement;
 
 let adminData: AdminResponse | null = null;
-let queueFilter = 'all';
+let queueFilter = 'active';
+let queueCampaign = 'all';
+let queuePage = 0;
 let queueSearch = '';
-// Work items selected in the queue to move to their next step together.
-const selectedForNextStep = new Set<string>();
+// Work items selected in the queue for a bulk action (next step, archive, do not use, restore).
+const selectedWorkItems = new Set<string>();
 let campaignArchiveFilter: 'active' | 'archived' = 'active';
 let campaignSort: 'month_desc' | 'month_asc' | 'name_asc' = 'month_desc';
 
@@ -341,20 +346,54 @@ function renderSummary(data: AdminResponse): string {
     </section>`;
 }
 
-function filteredQueue(): WorkItem[] {
-  const items = adminData?.overview.work_queue ?? [];
-  const needle = queueSearch.trim().toLowerCase();
-  return items.filter((item) => {
-    const matchesFilter = queueFilter === 'all' || (queueFilter === 'ready' ? isReadyToPush(item) : item.urgency === queueFilter);
-    const haystack = [item.doctor_name, item.practice_name, item.topic_title, item.campaign_name, item.status]
-      .filter(Boolean).join(' ').toLowerCase();
-    return matchesFilter && (!needle || haystack.includes(needle));
-  });
-}
-
 // An article that is on WordPress and waiting for the team to push it live through Headless Hostman.
 function isReadyToPush(item: WorkItem): boolean {
-  return item.status === 'PUBLISHED' && Boolean(item.article_id);
+  return item.status === 'PUBLISHED' && Boolean(item.article_id) && !item.archived;
+}
+
+type QueueStage = 'invited' | 'interview' | 'drafting' | 'doctor_review' | 'marketing_review' | 'sending' | 'ready_to_push' | 'errors';
+
+// Where a work item sits in the Apex process, from its current status. Every status maps to one stage.
+function queueStage(item: WorkItem): QueueStage {
+  const status = String(item.status || '').toUpperCase();
+  if (item.urgency === 'error' || /(FAILED|ERROR|UNAVAILABLE)/.test(status)) return 'errors';
+  if (status === 'PUBLISHED') return 'ready_to_push';
+  if (/^(MARKETING_APPROVED|PUBLISHING)$/.test(status)) return 'sending';
+  if (/^(DOCTOR_APPROVED|DOCTOR_AUTO_APPROVED|MARKETING_REVIEW|MARKETING_CHANGES_REQUESTED)$/.test(status)) return 'marketing_review';
+  if (item.article_id || /(DOCTOR_REVIEW|DOCTOR_CHANGES|REVISION|ARTICLE_DRAFTED)/.test(status)) return 'doctor_review';
+  if (/COMPLETED/.test(status)) return 'drafting';
+  if (/(STARTED|IN_PROGRESS)/.test(status)) return 'interview';
+  return 'invited';
+}
+
+const QUEUE_FILTERS: Array<[string, string, (item: WorkItem) => boolean]> = [
+  ['active', 'Active', (item) => !item.archived],
+  ['invited', 'Invited', (item) => !item.archived && queueStage(item) === 'invited'],
+  ['interview', 'Interview started', (item) => !item.archived && queueStage(item) === 'interview'],
+  ['drafting', 'Drafting', (item) => !item.archived && queueStage(item) === 'drafting'],
+  ['doctor_review', 'Doctor review', (item) => !item.archived && queueStage(item) === 'doctor_review'],
+  ['marketing_review', 'Marketing review', (item) => !item.archived && queueStage(item) === 'marketing_review'],
+  ['sending', 'Sending to WordPress', (item) => !item.archived && queueStage(item) === 'sending'],
+  ['ready', 'Ready to push', (item) => isReadyToPush(item)],
+  ['errors', 'Errors', (item) => !item.archived && queueStage(item) === 'errors'],
+  ['archived', 'Archived', (item) => Boolean(item.archived)],
+  ['all', 'All', () => true],
+];
+const QUEUE_PAGE_SIZE = 50;
+
+function campaignScopedQueue(): WorkItem[] {
+  const items = adminData?.overview.work_queue ?? [];
+  return queueCampaign === 'all' ? items : items.filter((item) => item.campaign_id === queueCampaign);
+}
+
+function filteredQueue(): WorkItem[] {
+  const matches = (QUEUE_FILTERS.find(([key]) => key === queueFilter) ?? QUEUE_FILTERS[0])[2];
+  const needle = queueSearch.trim().toLowerCase();
+  return campaignScopedQueue().filter((item) => {
+    const haystack = [item.doctor_name, item.practice_name, item.topic_title, item.campaign_name, item.status]
+      .filter(Boolean).join(' ').toLowerCase();
+    return matches(item) && (!needle || haystack.includes(needle));
+  });
 }
 
 type QueueStep = 'approve_for_doctor' | 'approve_for_marketing' | 'mark_live_on_website';
@@ -364,15 +403,22 @@ const queueStepLabels: Record<QueueStep, { verb: string; done: string }> = {
   mark_live_on_website: { verb: 'mark as published', done: 'marked as published' },
 };
 
+function canAct(action: string): boolean {
+  return Boolean(adminData?.capabilities.enabledActions.includes(action));
+}
+
 // The next step a work item can be moved to from the queue, if the viewer is allowed to take it.
 function queueNextStep(item: WorkItem): QueueStep | null {
-  const allowed = adminData?.capabilities.enabledActions ?? [];
   let step: QueueStep | null = null;
-  if (!item.article_id || !item.current_version) step = null;
+  if (item.archived || !item.article_id || !item.current_version) step = null;
   else if (item.status === 'DOCTOR_REVIEW_PENDING') step = 'approve_for_doctor';
   else if (item.require_marketing_approval && /^(DOCTOR_APPROVED|DOCTOR_AUTO_APPROVED|MARKETING_REVIEW)$/.test(item.status)) step = 'approve_for_marketing';
   else if (isReadyToPush(item)) step = 'mark_live_on_website';
-  return step && allowed.includes(step) ? step : null;
+  return step && canAct(step) ? step : null;
+}
+
+function canSelect(item: WorkItem): boolean {
+  return Boolean(queueNextStep(item)) || canAct(item.archived ? 'restore_work_item' : 'archive_work_item');
 }
 
 function autoApprovalFlag(item: { marketing_auto_approved?: boolean; doctor_auto_approved?: boolean }): string {
@@ -381,155 +427,209 @@ function autoApprovalFlag(item: { marketing_auto_approved?: boolean; doctor_auto
   return `<span class="admin-flag" title="Approved automatically because nobody responded in time. Give it extra attention before pushing live.">Auto-approved (${escapeHtml(who.join(' and '))}) · check carefully</span>`;
 }
 
+function archiveFlag(item: WorkItem): string {
+  if (!item.archived) return '';
+  const label = item.do_not_use ? 'Do not use' : 'Archived';
+  return `<span class="admin-flag admin-flag-muted"${item.archive_reason ? ` title="${escapeHtml(item.archive_reason)}"` : ''}>${label}${item.archive_reason ? `: ${escapeHtml(item.archive_reason.slice(0, 60))}` : ''}</span>`;
+}
+
 function workItemRow(item: WorkItem): string {
   const doctor = [item.doctor_name, item.credentials].filter(Boolean).join(', ');
   const step = queueNextStep(item);
   return `
-    <tr data-work-item="${escapeHtml(item.work_item_id)}">
-      <td class="admin-select-cell">${step ? `<input type="checkbox" data-step-select="${escapeHtml(item.work_item_id)}" aria-label="Select ${escapeHtml(doctor)} to ${escapeHtml(queueStepLabels[step].verb)}" ${selectedForNextStep.has(item.work_item_id) ? 'checked' : ''} />` : ''}</td>
+    <tr data-work-item="${escapeHtml(item.work_item_id)}" class="${item.archived ? 'is-archived' : ''}">
+      <td class="admin-select-cell">${canSelect(item) ? `<input type="checkbox" data-item-select="${escapeHtml(item.work_item_id)}" aria-label="Select ${escapeHtml(doctor)}" ${selectedWorkItems.has(item.work_item_id) ? 'checked' : ''} />` : ''}</td>
       <td><strong>${escapeHtml(doctor)}</strong><small>${escapeHtml(item.practice_name || 'Practice not assigned')}</small></td>
       <td><strong>${escapeHtml(item.topic_title)}</strong><small>${escapeHtml(item.campaign_name)}</small></td>
-      <td>${statusPill(isReadyToPush(item) ? 'READY_TO_PUSH' : item.status)}${autoApprovalFlag(item)}${step ? `<small class="admin-next-step">Next: ${escapeHtml(queueStepLabels[step].verb)}</small>` : ''}</td>
+      <td>${statusPill(isReadyToPush(item) ? 'READY_TO_PUSH' : item.status)}${archiveFlag(item)}${autoApprovalFlag(item)}${step ? `<small class="admin-next-step">Next: ${escapeHtml(queueStepLabels[step].verb)}</small>` : ''}</td>
       <td><time datetime="${escapeHtml(item.updated_at)}">${escapeHtml(formatDate(item.updated_at, true))}</time></td>
       <td><button class="admin-text-button" type="button" data-view-item="${escapeHtml(item.work_item_id)}">View</button></td>
     </tr>`;
+}
+
+function renderQueueFilters(): void {
+  const group = document.querySelector<HTMLElement>('#admin-queue-filters');
+  if (!group) return;
+  const scoped = campaignScopedQueue();
+  group.innerHTML = QUEUE_FILTERS.map(([key, label, matches]) =>
+    `<button class="admin-filter ${key === queueFilter ? 'is-active' : ''}" type="button" data-queue-filter="${key}">${label} <span>${scoped.filter(matches).length}</span></button>`).join('');
+  for (const button of group.querySelectorAll<HTMLButtonElement>('[data-queue-filter]')) {
+    button.addEventListener('click', () => {
+      queueFilter = button.dataset.queueFilter ?? 'active';
+      queuePage = 0;
+      renderQueueRows();
+    });
+  }
 }
 
 function renderQueueRows(): void {
   const body = document.querySelector<HTMLTableSectionElement>('#admin-queue-body');
   const count = document.querySelector<HTMLElement>('#admin-queue-count');
   if (!body || !count) return;
+  renderQueueFilters();
   const items = filteredQueue();
+  const pages = Math.max(1, Math.ceil(items.length / QUEUE_PAGE_SIZE));
+  queuePage = Math.min(queuePage, pages - 1);
+  const pageItems = items.slice(queuePage * QUEUE_PAGE_SIZE, (queuePage + 1) * QUEUE_PAGE_SIZE);
   count.textContent = `${items.length} item${items.length === 1 ? '' : 's'}`;
-  body.innerHTML = items.length
-    ? items.map(workItemRow).join('')
+  body.innerHTML = pageItems.length
+    ? pageItems.map(workItemRow).join('')
     : '<tr><td colspan="6"><div class="admin-empty">No work items match this view.</div></td></tr>';
+  const pager = document.querySelector<HTMLElement>('#admin-queue-pager');
+  if (pager) {
+    pager.hidden = items.length <= QUEUE_PAGE_SIZE;
+    pager.innerHTML = `<span>Showing ${items.length ? queuePage * QUEUE_PAGE_SIZE + 1 : 0}–${queuePage * QUEUE_PAGE_SIZE + pageItems.length} of ${items.length}</span>
+      <button class="admin-text-button" type="button" data-queue-page="-1" ${queuePage === 0 ? 'disabled' : ''}>Previous</button>
+      <button class="admin-text-button" type="button" data-queue-page="1" ${queuePage >= pages - 1 ? 'disabled' : ''}>Next</button>`;
+    for (const button of pager.querySelectorAll<HTMLButtonElement>('[data-queue-page]')) {
+      button.addEventListener('click', () => { queuePage += Number(button.dataset.queuePage); renderQueueRows(); });
+    }
+  }
   for (const button of document.querySelectorAll<HTMLButtonElement>('[data-view-item]')) {
     button.addEventListener('click', () => openWorkItem(button.dataset.viewItem ?? ''));
   }
-  for (const checkbox of document.querySelectorAll<HTMLInputElement>('[data-step-select]')) {
+  for (const checkbox of document.querySelectorAll<HTMLInputElement>('[data-item-select]')) {
     checkbox.addEventListener('change', () => {
-      const id = checkbox.dataset.stepSelect ?? '';
-      if (checkbox.checked) selectedForNextStep.add(id); else selectedForNextStep.delete(id);
-      updateBulkStepBar();
+      const id = checkbox.dataset.itemSelect ?? '';
+      if (checkbox.checked) selectedWorkItems.add(id); else selectedWorkItems.delete(id);
+      updateBulkBar();
     });
   }
-  const selectAll = document.querySelector<HTMLInputElement>('#admin-step-select-all');
+  const selectAll = document.querySelector<HTMLInputElement>('#admin-item-select-all');
   if (selectAll) {
-    const shown = items.filter((item) => queueNextStep(item));
+    const shown = pageItems.filter(canSelect);
     selectAll.disabled = !shown.length;
-    selectAll.checked = shown.length > 0 && shown.every((item) => selectedForNextStep.has(item.work_item_id));
+    selectAll.checked = shown.length > 0 && shown.every((item) => selectedWorkItems.has(item.work_item_id));
     selectAll.onchange = () => {
       for (const item of shown) {
-        if (selectAll.checked) selectedForNextStep.add(item.work_item_id); else selectedForNextStep.delete(item.work_item_id);
+        if (selectAll.checked) selectedWorkItems.add(item.work_item_id); else selectedWorkItems.delete(item.work_item_id);
       }
       renderQueueRows();
     };
   }
-  updateBulkStepBar();
+  updateBulkBar();
 }
 
-function selectedQueueItems(): Array<{ item: WorkItem; step: QueueStep }> {
-  return (adminData?.overview.work_queue ?? [])
-    .filter((item) => selectedForNextStep.has(item.work_item_id))
-    .map((item) => ({ item, step: queueNextStep(item) }))
-    .filter((entry): entry is { item: WorkItem; step: QueueStep } => Boolean(entry.step));
+function selectedQueueItems(): WorkItem[] {
+  return (adminData?.overview.work_queue ?? []).filter((item) => selectedWorkItems.has(item.work_item_id) && canSelect(item));
 }
 
-function updateBulkStepBar(): void {
+type BulkAction = 'next' | 'archive' | 'do_not_use' | 'restore';
+
+// Which selected items each bulk button would act on.
+function bulkTargets(action: BulkAction, selected = selectedQueueItems()): WorkItem[] {
+  if (action === 'next') return selected.filter((item) => queueNextStep(item));
+  if (action === 'archive') return canAct('archive_work_item') ? selected.filter((item) => !item.archived) : [];
+  if (action === 'do_not_use') return canAct('archive_work_item') ? selected.filter((item) => !item.do_not_use) : [];
+  return canAct('restore_work_item') ? selected.filter((item) => item.archived) : [];
+}
+
+function updateBulkBar(): void {
   const bar = document.querySelector<HTMLFormElement>('#admin-bulk-step');
   if (!bar) return;
-  // Drop selections that no longer have a next step (for example after a refresh).
   const selected = selectedQueueItems();
-  const keep = new Set(selected.map(({ item }) => item.work_item_id));
-  for (const id of [...selectedForNextStep]) if (!keep.has(id)) selectedForNextStep.delete(id);
+  const keep = new Set(selected.map((item) => item.work_item_id));
+  for (const id of [...selectedWorkItems]) if (!keep.has(id)) selectedWorkItems.delete(id);
   bar.hidden = selected.length === 0;
   const counts = new Map<QueueStep, number>();
-  for (const { step } of selected) counts.set(step, (counts.get(step) ?? 0) + 1);
+  for (const item of selected) {
+    const step = queueNextStep(item);
+    if (step) counts.set(step, (counts.get(step) ?? 0) + 1);
+  }
   const label = bar.querySelector<HTMLElement>('[data-bulk-count]');
-  if (label) label.textContent = `${selected.length} selected: ` + [...counts].map(([step, number]) => `${number} to ${queueStepLabels[step].verb}`).join(' · ');
-  // A reason is required when any approval is included; a note is optional when only marking as published.
-  const needsReason = selected.some(({ step }) => step !== 'mark_live_on_website');
-  const reason = bar.querySelector<HTMLTextAreaElement>('textarea[name="reason"]');
-  if (reason) {
-    reason.required = needsReason;
-    reason.minLength = needsReason ? 12 : 0;
-    reason.placeholder = needsReason
-      ? 'Reason for the approvals, e.g. fast-tracking after marketing reviewed these in the dashboard…'
-      : 'Note (optional), e.g. pushed in Headless Hostman on…';
+  if (label) {
+    label.textContent = `${selected.length} selected` + (counts.size ? ' · next steps: ' + [...counts].map(([step, number]) => `${number} to ${queueStepLabels[step].verb}`).join(' · ') : '');
+  }
+  for (const button of bar.querySelectorAll<HTMLButtonElement>('button[data-bulk-action]')) {
+    const targets = bulkTargets(button.dataset.bulkAction as BulkAction, selected);
+    button.hidden = targets.length === 0;
+    const base = button.dataset.label ?? '';
+    button.textContent = `${base} (${targets.length})`;
   }
 }
 
 async function submitBulkStep(event: SubmitEvent): Promise<void> {
   event.preventDefault();
   const form = event.currentTarget as HTMLFormElement;
+  const action = ((event.submitter as HTMLButtonElement | null)?.dataset.bulkAction ?? 'next') as BulkAction;
   const message = form.querySelector<HTMLElement>('#admin-bulk-step-message');
-  const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+  const confirmed = form.querySelector<HTMLInputElement>('input[name="confirmation"]')?.checked;
   const reason = String(new FormData(form).get('reason') ?? '').trim();
-  const selected = selectedQueueItems();
-  if (!selected.length) return;
-  if (submit) submit.disabled = true;
+  const targets = bulkTargets(action);
+  if (!targets.length) return;
+  if (!confirmed) { if (message) message.textContent = 'Tick the confirmation box first.'; return; }
+  if (action === 'next' && targets.some((item) => queueNextStep(item) !== 'mark_live_on_website') && reason.length < 12) {
+    if (message) message.textContent = 'Add a reason (at least 12 characters) for the approvals.'; return;
+  }
+  if (action === 'do_not_use' && reason.length < 4) { if (message) message.textContent = 'Add a short reason for "Do not use".'; return; }
+  const buttons = [...form.querySelectorAll<HTMLButtonElement>('button[data-bulk-action]')];
+  buttons.forEach((button) => { button.disabled = true; });
   const failures: string[] = [];
   let done = 0;
   // One audited command per article, sent one at a time so each gets its own record and result.
-  for (const { item, step } of selected) {
-    if (message) message.textContent = `Working on ${done + failures.length + 1} of ${selected.length}…`;
+  for (const item of targets) {
+    if (message) message.textContent = `Working on ${done + failures.length + 1} of ${targets.length}…`;
+    const step = queueNextStep(item);
+    const command = action === 'next'
+      ? { action: step, article_id: item.article_id, expected_status: item.status, expected_version: item.current_version }
+      : { action: action === 'restore' ? 'restore_work_item' : 'archive_work_item', do_not_use: action === 'do_not_use' };
     try {
-      await postAdminCommand({ action: step, article_id: item.article_id, campaign_id: item.campaign_id, doctor_id: item.doctor_id,
-        expected_status: item.status, expected_version: item.current_version, reason });
+      await postAdminCommand({ ...command, campaign_id: item.campaign_id, doctor_id: item.doctor_id, reason });
       done += 1;
-      selectedForNextStep.delete(item.work_item_id);
+      selectedWorkItems.delete(item.work_item_id);
     } catch (error) {
-      const text = friendlyCommandError(error);
-      failures.push(`${[item.doctor_name, item.credentials].filter(Boolean).join(', ')} (${queueStepLabels[step].verb}): ${text}`);
+      failures.push(`${[item.doctor_name, item.credentials].filter(Boolean).join(', ')}: ${friendlyCommandError(error)}`);
     }
   }
   if (!failures.length) {
-    if (message) message.textContent = `Moved ${done} article${done === 1 ? '' : 's'} to the next step.`;
+    if (message) message.textContent = `Done for ${done} article${done === 1 ? '' : 's'}.`;
     await initializeAdmin();
     return;
   }
-  if (message) message.textContent = `Moved ${done} of ${selected.length}. Not moved: ${failures.join(' · ')}`;
-  if (submit) submit.disabled = false;
+  if (message) message.textContent = `Done for ${done} of ${targets.length}. Not done: ${failures.join(' · ')}`;
+  buttons.forEach((button) => { button.disabled = false; });
   if (done) renderQueueRows();
 }
 
 function renderQueue(data: AdminResponse): string {
-  const counts = data.overview.work_queue.reduce<Record<string, number>>((result, item) => {
-    result[item.urgency] = (result[item.urgency] ?? 0) + 1;
-    return result;
-  }, {});
+  const campaigns = [...new Map(data.overview.work_queue.map((item) => [item.campaign_id, item.campaign_name])).entries()]
+    .sort((a, b) => a[1].localeCompare(b[1]));
   return `
     <section class="admin-panel" id="work-queue">
       <div class="admin-panel-heading">
         <div><span class="admin-kicker">Needs visibility</span><h2>Work queue</h2></div>
         <span class="admin-count" id="admin-queue-count"></span>
       </div>
-      <div class="admin-toolbar">
-        <div class="admin-filter-group" role="group" aria-label="Filter work queue">
-          ${[
-            ['all', 'All', data.overview.work_queue.length],
-            ['error', 'Errors', counts.error ?? 0],
-            ['attention', 'Review', counts.attention ?? 0],
-            ['active', 'In progress', counts.active ?? 0],
-            ['ready', 'Ready to push', data.overview.work_queue.filter(isReadyToPush).length],
-          ].map(([value, label, count]) => `<button class="admin-filter ${value === queueFilter ? 'is-active' : ''}" type="button" data-queue-filter="${value}">${label} <span>${count}</span></button>`).join('')}
+      <div class="admin-toolbar admin-queue-toolbar">
+        <div class="admin-filter-group" id="admin-queue-filters" role="group" aria-label="Filter work queue by stage"></div>
+        <div class="admin-queue-scope">
+          <label class="admin-select"><span class="sr-only">Campaign</span><select id="admin-queue-campaign">
+            <option value="all">All campaigns</option>
+            ${campaigns.map(([id, name]) => `<option value="${escapeHtml(id)}" ${id === queueCampaign ? 'selected' : ''}>${escapeHtml(name)}</option>`).join('')}
+          </select></label>
+          <label class="admin-search"><span class="sr-only">Search work queue</span><input id="admin-queue-search" type="search" placeholder="Search doctor, practice, topic…" value="${escapeHtml(queueSearch)}" /></label>
         </div>
-        <label class="admin-search"><span class="sr-only">Search work queue</span><input id="admin-queue-search" type="search" placeholder="Search doctor, practice, topic…" value="${escapeHtml(queueSearch)}" /></label>
       </div>
-      <form class="admin-bulk-publish" id="admin-bulk-step" hidden>
+      <form class="admin-bulk-publish" id="admin-bulk-step" hidden novalidate>
         <strong data-bulk-count></strong>
-        <label class="admin-bulk-note"><span class="sr-only">Reason or note</span><textarea name="reason" rows="2" maxlength="2000"></textarea></label>
-        <label class="admin-confirm-check"><input name="confirmation" type="checkbox" required /> I confirm each selected article can move to the next step listed for it.</label>
-        <button class="admin-primary-button" type="submit">Move selected to next step</button>
+        <label class="admin-bulk-note"><span class="sr-only">Reason or note</span><textarea name="reason" rows="2" maxlength="2000" placeholder="Reason or note. Required for approvals and for “Do not use”; optional for marking published or archiving."></textarea></label>
+        <label class="admin-confirm-check"><input name="confirmation" type="checkbox" /> I confirm the action for the selected articles.</label>
+        <div class="admin-bulk-actions">
+          <button class="admin-primary-button" type="submit" data-bulk-action="next" data-label="Move to next step">Move to next step</button>
+          <button class="admin-secondary-button" type="submit" data-bulk-action="archive" data-label="Archive" title="Hides the item from active views. Automation continues.">Archive</button>
+          <button class="admin-secondary-button" type="submit" data-bulk-action="do_not_use" data-label="Do not use" title="Stops all automation for the article (reviews, auto-approval, WordPress) and archives it.">Do not use</button>
+          <button class="admin-secondary-button" type="submit" data-bulk-action="restore" data-label="Restore">Restore</button>
+        </div>
+        <p class="admin-bulk-help">Archive only hides an item. “Do not use” also stops every automatic step for that article, so it is never auto-approved or sent to WordPress. Both can be undone with Restore.</p>
         <p class="admin-form-message" id="admin-bulk-step-message" role="status"></p>
       </form>
       <div class="admin-table-wrap">
         <table class="admin-table">
-          <thead><tr><th class="admin-select-cell"><input type="checkbox" id="admin-step-select-all" aria-label="Select all shown articles that can move to a next step" /></th><th>Doctor</th><th>Topic and campaign</th><th>Status</th><th>Last movement</th><th><span class="sr-only">Details</span></th></tr></thead>
+          <thead><tr><th class="admin-select-cell"><input type="checkbox" id="admin-item-select-all" aria-label="Select all items on this page" /></th><th>Doctor</th><th>Topic and campaign</th><th>Status</th><th>Last movement</th><th><span class="sr-only">Details</span></th></tr></thead>
           <tbody id="admin-queue-body"></tbody>
         </table>
       </div>
+      <div class="admin-queue-pager" id="admin-queue-pager" hidden></div>
     </section>`;
 }
 
@@ -1271,16 +1371,15 @@ function renderDashboard(data: AdminResponse): void {
   const campaignForm = document.querySelector<HTMLFormElement>('#admin-campaign-form');
   campaignForm?.addEventListener('submit', (event) => void submitCampaign(event));
   if (campaignForm) bindCampaignTopicFields(campaignForm);
-  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-queue-filter]')) {
-    button.addEventListener('click', () => {
-      queueFilter = button.dataset.queueFilter ?? 'all';
-      document.querySelectorAll('[data-queue-filter]').forEach((candidate) => candidate.classList.toggle('is-active', candidate === button));
-      renderQueueRows();
-    });
-  }
+  document.getElementById('admin-queue-campaign')?.addEventListener('change', (event) => {
+    queueCampaign = (event.currentTarget as unknown as { value: string }).value;
+    queuePage = 0;
+    renderQueueRows();
+  });
   document.querySelector<HTMLFormElement>('#admin-bulk-step')?.addEventListener('submit', (event) => void submitBulkStep(event));
   document.querySelector<HTMLInputElement>('#admin-queue-search')?.addEventListener('input', (event) => {
     queueSearch = (event.currentTarget as HTMLInputElement).value;
+    queuePage = 0;
     renderQueueRows();
   });
   renderQueueRows();
@@ -1465,6 +1564,65 @@ function changeRequestForm(detail: WorkItemDetail, enabledActions: string[]): st
     </form>`;
 }
 
+// Latest archive/restore decision for this doctor's work item in this campaign.
+function workItemArchiveState(detail: WorkItemDetail): { archived: boolean; doNotUse: boolean; reason: string } {
+  const latest = detail.events
+    .filter((event) => event.entity_type === 'work_item' && (event.event_type === 'work_item.archived' || event.event_type === 'work_item.restored'))
+    .sort((a, b) => String(b.event_timestamp).localeCompare(String(a.event_timestamp)))[0];
+  if (!latest || latest.event_type !== 'work_item.archived') return { archived: false, doNotUse: false, reason: '' };
+  let payload: { do_not_use?: string; reason?: string } = {};
+  try { payload = JSON.parse(String((latest as WorkflowEvent & { payload?: string }).payload ?? '{}')); } catch { payload = {}; }
+  return { archived: true, doNotUse: payload.do_not_use === 'true', reason: String(payload.reason ?? '') };
+}
+
+function archivePanel(detail: WorkItemDetail, enabledActions: string[]): string {
+  const state = workItemArchiveState(detail);
+  const canArchive = enabledActions.includes('archive_work_item');
+  const canRestore = enabledActions.includes('restore_work_item');
+  if (state.archived) {
+    return `
+      <form id="admin-archive-form" class="admin-archive-panel">
+        <strong>${state.doNotUse ? 'Marked “Do not use”' : 'Archived'}</strong>
+        <p>${state.reason ? `Reason: ${escapeHtml(state.reason)}. ` : ''}${state.doNotUse ? 'All automatic steps are stopped for this article.' : 'Hidden from active views; automation continues.'}</p>
+        ${canRestore ? `<button class="admin-secondary-button" type="submit" data-archive-action="restore">Restore${state.doNotUse ? ' and return the article to its previous status' : ''}</button>` : ''}
+        <p class="admin-form-message" id="archive-form-message" role="status"></p>
+      </form>`;
+  }
+  if (!canArchive) return '';
+  return `
+    <form id="admin-archive-form" class="admin-archive-panel">
+      <strong>Archive or stop this article</strong>
+      <p><b>Archive</b> only hides it from active views (for example, a test). <b>Do not use</b> also stops every automatic step, so it is never auto-approved or sent to WordPress. Both can be undone with Restore.</p>
+      <label>Reason (required for “Do not use”)<textarea name="reason" rows="2" maxlength="2000" placeholder="Test article / Doctor asked not to publish / Doctor wants to redo the interview…"></textarea></label>
+      <div class="admin-bulk-actions">
+        <button class="admin-secondary-button" type="submit" data-archive-action="archive">Archive</button>
+        <button class="admin-secondary-button" type="submit" data-archive-action="do_not_use">Do not use</button>
+      </div>
+      <p class="admin-form-message" id="archive-form-message" role="status"></p>
+    </form>`;
+}
+
+async function submitArchive(event: SubmitEvent, detail: WorkItemDetail): Promise<void> {
+  event.preventDefault();
+  const form = event.currentTarget as HTMLFormElement;
+  const choice = (event.submitter as HTMLButtonElement | null)?.dataset.archiveAction ?? 'archive';
+  const message = form.querySelector<HTMLElement>('#archive-form-message');
+  const reason = String(new FormData(form).get('reason') ?? '').trim();
+  if (choice === 'do_not_use' && reason.length < 4) { if (message) message.textContent = 'Add a short reason for “Do not use”.'; return; }
+  const buttons = [...form.querySelectorAll<HTMLButtonElement>('button')];
+  buttons.forEach((button) => { button.disabled = true; });
+  if (message) message.textContent = 'Saving…';
+  try {
+    await postAdminCommand({ action: choice === 'restore' ? 'restore_work_item' : 'archive_work_item', do_not_use: choice === 'do_not_use',
+      campaign_id: detail.item.campaign_id, doctor_id: detail.item.doctor_id, reason });
+    if (message) message.textContent = choice === 'restore' ? 'Restored.' : 'Saved.';
+    await initializeAdmin();
+  } catch (error) {
+    if (message) message.textContent = friendlyCommandError(error);
+    buttons.forEach((button) => { button.disabled = false; });
+  }
+}
+
 function nextStepPanel(detail: WorkItemDetail, enabledActions: string[]): string {
   const { action, message } = nextStepAction(detail, enabledActions);
   if (!action) {
@@ -1580,7 +1738,8 @@ function renderWorkItemDetail(response: WorkItemDetailResponse): void {
       <p class="admin-version-note">A sent status records the workflow’s send step; it does not confirm inbox placement.</p>
       <ol class="admin-event-list admin-event-list-compact">${detail.communications.length ? detail.communications.map(detailCommunicationRow).join('') : '<li class="admin-empty">No communication records are available for this work item.</li>'}</ol>
     </section>
-    ${nextStepPanel(detail, response.capabilities.enabledActions)}`;
+    ${nextStepPanel(detail, response.capabilities.enabledActions)}
+    ${archivePanel(detail, response.capabilities.enabledActions)}`;
 
   const iframe = content.querySelector<HTMLIFrameElement>('.admin-article-preview');
   if (iframe && article.articleHtml) iframe.srcdoc = article.articleHtml;
@@ -1592,6 +1751,7 @@ function renderWorkItemDetail(response: WorkItemDetailResponse): void {
   }
   content.querySelector<HTMLFormElement>('#admin-next-step-form')?.addEventListener('submit', (event) => void submitNextStep(event, detail, response.capabilities.enabledActions));
   content.querySelector<HTMLFormElement>('#admin-change-form')?.addEventListener('submit', (event) => void submitChangeRequest(event, detail));
+  content.querySelector<HTMLFormElement>('#admin-archive-form')?.addEventListener('submit', (event) => void submitArchive(event, detail));
 }
 
 async function openWorkItem(id: string): Promise<void> {

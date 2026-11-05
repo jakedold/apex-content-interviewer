@@ -20,7 +20,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const body = $json.body || {};\nconst required = (name) => { const value = String(body[name] ?? '').trim(); if (!value) throw new Error('Missing ' + name); return value; };\nconst action = required('action');\nconst actorEmail = required('actor_email').toLowerCase();\nif (!/^[^\\s@]+@apexdp\\.com$/i.test(actorEmail)) throw new Error('Administrator identity must be an Apex Workspace account.');\nconst idempotencyKey = required('idempotency_key');\nif (!/^[A-Za-z0-9_-]{16,100}$/.test(idempotencyKey)) throw new Error('Invalid idempotency key.');\n\nif (action === 'approve_for_doctor') {\n  const reason = required('reason');\n  if (reason.length < 12 || reason.length > 2000) throw new Error('Approval evidence must be 12–2000 characters.');\n  const expectedVersion = Number(body.expected_version);\n  if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw new Error('A valid expected article version is required.');\n  return [{ json: { action, actor_email: actorEmail, idempotency_key: idempotencyKey, article_id: required('article_id'), campaign_id: required('campaign_id'), doctor_id: required('doctor_id'), expected_status: required('expected_status'), expected_version: expectedVersion, reason } }];\n}\n\nif (action === 'approve_for_marketing') {\n  const reason = required('reason');\n  if (reason.length < 12 || reason.length > 2000) throw new Error('Marketing approval evidence must be 12–2000 characters.');\n  const expectedVersion = Number(body.expected_version);\n  if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw new Error('A valid expected article version is required.');\n  const expectedStatus = required('expected_status');\n  if (!['DOCTOR_APPROVED', 'DOCTOR_AUTO_APPROVED', 'MARKETING_REVIEW'].includes(expectedStatus)) throw new Error('The article is not waiting for marketing approval.');\n  return [{ json: { action, actor_email: actorEmail, idempotency_key: idempotencyKey, article_id: required('article_id'), campaign_id: required('campaign_id'), doctor_id: required('doctor_id'), expected_status: expectedStatus, expected_version: expectedVersion, reason } }];\n}\n\nif (action === 'request_marketing_changes') {\n  // A marketing change request made from the dashboard: the AI writes a new version, which returns to marketing review.\n  const reason = required('reason');\n  if (reason.length < 12 || reason.length > 4000) throw new Error('Describe the change in 12–4000 characters.');\n  const expectedVersion = Number(body.expected_version);\n  if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw new Error('A valid expected article version is required.');\n  const expectedStatus = required('expected_status');\n  if (!['DOCTOR_APPROVED', 'DOCTOR_AUTO_APPROVED', 'MARKETING_REVIEW'].includes(expectedStatus)) throw new Error('Changes can be requested here only while the article is waiting for marketing.');\n  return [{ json: { action, actor_email: actorEmail, idempotency_key: idempotencyKey, article_id: required('article_id'), campaign_id: required('campaign_id'), doctor_id: required('doctor_id'), expected_status: expectedStatus, expected_version: expectedVersion, reason } }];\n}\n\nif (action === 'mark_live_on_website') {\n  // Records that the team pushed a WordPress article live through Headless Hostman. Article status is not changed.\n  const note = String(body.reason ?? '').trim();\n  if (note.length > 2000) throw new Error('The note must be 2000 characters or fewer.');\n  if (required('expected_status') !== 'PUBLISHED') throw new Error('Only an article that is on WordPress can be marked live.');\n  return [{ json: { action, actor_email: actorEmail, idempotency_key: idempotencyKey, article_id: required('article_id'), campaign_id: required('campaign_id'), doctor_id: required('doctor_id'), note } }];\n}\n\nif (action === 'archive_campaign' || action === 'restore_campaign') {\n  return [{ json: { action, actor_email: actorEmail, idempotency_key: idempotencyKey, campaign_id: required('campaign_id'), archive: action === 'archive_campaign' ? 'true' : 'false' } }];\n}\n\nif (action === 'launch_campaign') {\n  const audience = required('audience');\n  if (!['Linked doctors', 'Presentation preview'].includes(audience)) throw new Error('Unsupported campaign audience.');\n\n  const interviewDeadline = String(body.interview_deadline ?? '').trim();\n  if (interviewDeadline) {\n    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(interviewDeadline)) throw new Error('Interview deadline must use YYYY-MM-DD.');\n    const parsedDeadline = new Date(interviewDeadline + 'T00:00:00Z');\n    if (!Number.isFinite(parsedDeadline.getTime()) || parsedDeadline.toISOString().slice(0, 10) !== interviewDeadline) throw new Error('Interview deadline is not a valid calendar date.');\n  }\n  const trainingResourceUrl = String(body.training_resource_url ?? '').trim();\n  if (trainingResourceUrl) {\n    let parsedTrainingUrl;\n    try { parsedTrainingUrl = new URL(trainingResourceUrl); } catch { throw new Error('Training resource URL is invalid.'); }\n    if (parsedTrainingUrl.protocol !== 'https:' || !parsedTrainingUrl.hostname) throw new Error('Training resource URL must use HTTPS.');\n    if (parsedTrainingUrl.username || parsedTrainingUrl.password) throw new Error('Training resource URL cannot contain embedded credentials.');\n  }\n  if (body.send_doctor_review_reminders !== undefined && typeof body.send_doctor_review_reminders !== 'boolean') {\n    throw new Error('Doctor review reminder setting must be true or false.');\n  }\n  const sendDoctorReviewReminders = body.send_doctor_review_reminders !== false;\n\n  const topics = Array.isArray(body.topics) ? body.topics.map((topic, index) => {\n    const number = index + 1;\n    const title = String(topic?.title || '').trim();\n    const sourceUrl = String(topic?.featured_image_source_url || '').trim();\n    const altText = String(topic?.featured_image_alt_text || '').trim();\n    const publishDate = String(topic?.wordpress_publish_date || '').trim();\n    if (!title) throw new Error('Topic ' + number + ' title is required.');\n    if (!sourceUrl.startsWith('https://apexparent.hostmanpowered.com/wp-content/uploads/')) throw new Error('Topic ' + number + ' featured image must use the direct Apex Parent Media Library file URL.');\n    if (altText.length < 8) throw new Error('Topic ' + number + ' needs useful featured image alt text.');\n    if (publishDate && !/^\\d{4}-\\d{2}-\\d{2}$/.test(publishDate)) throw new Error('Topic ' + number + ' WordPress publish date must use YYYY-MM-DD.');\n    const wordpressSlug = String(topic?.wordpress_slug || '').trim().toLowerCase();\n    if (wordpressSlug && (wordpressSlug.length > 100 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(wordpressSlug))) throw new Error('Topic ' + number + ' WordPress URL slug can use only lowercase letters, numbers, and single hyphens between words.');\n    return { title, featured_image_source_url: sourceUrl, featured_image_alt_text: altText, wordpress_publish_date: publishDate || null, wordpress_slug: wordpressSlug || null };\n  }) : [];\n  if (topics.length !== 3 || new Set(topics.map((topic) => topic.title.toLowerCase())).size !== 3) {\n    throw new Error('Exactly three distinct topics with complete image records are required.');\n  }\n  const chosenSlugs = topics.map((topic) => topic.wordpress_slug).filter(Boolean);\n  // One monthly theme gives all three topics the same slug; otherwise each chosen slug must be different.\n  const sharedThemeSlug = chosenSlugs.length === topics.length && new Set(chosenSlugs).size === 1;\n  if (!sharedThemeSlug && new Set(chosenSlugs).size !== chosenSlugs.length) throw new Error('Each topic needs a different WordPress URL slug, or all three topics must share one slug.');\n\n  const doctorIds = Array.isArray(body.doctor_ids) ? [...new Set(body.doctor_ids.map((id) => String(id).trim()).filter(Boolean))] : [];\n  if (!doctorIds.length || doctorIds.length > 200) throw new Error('Campaigns require 1–200 linked doctors.');\n\n  const sendMode = required('send_mode');\n  if (!['now', 'in_10', 'scheduled'].includes(sendMode)) throw new Error('Unsupported send mode.');\n  const scheduledSendLocal = String(body.scheduled_send_local ?? '').trim();\n  const scheduledSendTimezone = String(body.scheduled_send_timezone ?? '').trim();\n  if (sendMode === 'scheduled') {\n    if (!/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$/.test(scheduledSendLocal)) throw new Error('Scheduled send local time must use YYYY-MM-DDTHH:MM.');\n    if (!/^[A-Za-z_]+\\/[A-Za-z0-9_+\\-\\/]+$/.test(scheduledSendTimezone)) throw new Error('Scheduled send timezone must be a valid IANA-style timezone.');\n  }\n\n  const campaignName = required('campaign_name');\n  const month = required('campaign_month');\n  if (!/^\\d{4}-\\d{2}$/.test(month)) throw new Error('Campaign month must use YYYY-MM.');\n  const slug = campaignName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 48);\n  if (!slug) throw new Error('Campaign name must contain letters or numbers.');\n  const campaignId = 'campaign_' + month.replace('-', '') + '_' + slug;\n\n  return [{ json: {\n    action,\n    audience,\n    actor_email: actorEmail,\n    idempotency_key: idempotencyKey,\n    campaign_id: campaignId,\n    campaign_name: campaignName,\n    campaign_month: month + '-01',\n    send_mode: sendMode,\n    scheduled_send_local: scheduledSendLocal,\n    scheduled_send_timezone: scheduledSendTimezone,\n    interview_deadline: interviewDeadline,\n    training_resource_url: trainingResourceUrl,\n    send_doctor_review_reminders: sendDoctorReviewReminders,\n    topics_json: JSON.stringify(topics),\n    doctor_ids_json: JSON.stringify(doctorIds),\n  } }];\n}\n\nthrow new Error('Unsupported administrative action.');"
+        "jsCode": "const body = $json.body || {};\nconst required = (name) => { const value = String(body[name] ?? '').trim(); if (!value) throw new Error('Missing ' + name); return value; };\nconst action = required('action');\nconst actorEmail = required('actor_email').toLowerCase();\nif (!/^[^\\s@]+@apexdp\\.com$/i.test(actorEmail)) throw new Error('Administrator identity must be an Apex Workspace account.');\nconst idempotencyKey = required('idempotency_key');\nif (!/^[A-Za-z0-9_-]{16,100}$/.test(idempotencyKey)) throw new Error('Invalid idempotency key.');\n\nif (action === 'approve_for_doctor') {\n  const reason = required('reason');\n  if (reason.length < 12 || reason.length > 2000) throw new Error('Approval evidence must be 12–2000 characters.');\n  const expectedVersion = Number(body.expected_version);\n  if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw new Error('A valid expected article version is required.');\n  return [{ json: { action, actor_email: actorEmail, idempotency_key: idempotencyKey, article_id: required('article_id'), campaign_id: required('campaign_id'), doctor_id: required('doctor_id'), expected_status: required('expected_status'), expected_version: expectedVersion, reason } }];\n}\n\nif (action === 'approve_for_marketing') {\n  const reason = required('reason');\n  if (reason.length < 12 || reason.length > 2000) throw new Error('Marketing approval evidence must be 12–2000 characters.');\n  const expectedVersion = Number(body.expected_version);\n  if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw new Error('A valid expected article version is required.');\n  const expectedStatus = required('expected_status');\n  if (!['DOCTOR_APPROVED', 'DOCTOR_AUTO_APPROVED', 'MARKETING_REVIEW'].includes(expectedStatus)) throw new Error('The article is not waiting for marketing approval.');\n  return [{ json: { action, actor_email: actorEmail, idempotency_key: idempotencyKey, article_id: required('article_id'), campaign_id: required('campaign_id'), doctor_id: required('doctor_id'), expected_status: expectedStatus, expected_version: expectedVersion, reason } }];\n}\n\nif (action === 'archive_work_item' || action === 'restore_work_item') {\n  // Hides a doctor's work item from the dashboard (archive) or brings it back (restore). \"Do not use\" also\n  // moves the article to DO_NOT_USE so no workflow (review, auto-approval, WordPress) picks it up again.\n  const doNotUse = action === 'archive_work_item' && body.do_not_use === true;\n  const reason = String(body.reason ?? '').trim();\n  if (reason.length > 2000) throw new Error('The note must be 2000 characters or fewer.');\n  if (doNotUse && reason.length < 4) throw new Error('Add a short reason for marking this article \"Do not use\".');\n  return [{ json: { action, actor_email: actorEmail, idempotency_key: idempotencyKey, campaign_id: required('campaign_id'), doctor_id: required('doctor_id'), archive: action === 'archive_work_item' ? 'true' : 'false', do_not_use: doNotUse ? 'true' : 'false', reason } }];\n}\n\nif (action === 'request_marketing_changes') {\n  // A marketing change request made from the dashboard: the AI writes a new version, which returns to marketing review.\n  const reason = required('reason');\n  if (reason.length < 12 || reason.length > 4000) throw new Error('Describe the change in 12–4000 characters.');\n  const expectedVersion = Number(body.expected_version);\n  if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw new Error('A valid expected article version is required.');\n  const expectedStatus = required('expected_status');\n  if (!['DOCTOR_APPROVED', 'DOCTOR_AUTO_APPROVED', 'MARKETING_REVIEW'].includes(expectedStatus)) throw new Error('Changes can be requested here only while the article is waiting for marketing.');\n  return [{ json: { action, actor_email: actorEmail, idempotency_key: idempotencyKey, article_id: required('article_id'), campaign_id: required('campaign_id'), doctor_id: required('doctor_id'), expected_status: expectedStatus, expected_version: expectedVersion, reason } }];\n}\n\nif (action === 'mark_live_on_website') {\n  // Records that the team pushed a WordPress article live through Headless Hostman. Article status is not changed.\n  const note = String(body.reason ?? '').trim();\n  if (note.length > 2000) throw new Error('The note must be 2000 characters or fewer.');\n  if (required('expected_status') !== 'PUBLISHED') throw new Error('Only an article that is on WordPress can be marked live.');\n  return [{ json: { action, actor_email: actorEmail, idempotency_key: idempotencyKey, article_id: required('article_id'), campaign_id: required('campaign_id'), doctor_id: required('doctor_id'), note } }];\n}\n\nif (action === 'archive_campaign' || action === 'restore_campaign') {\n  return [{ json: { action, actor_email: actorEmail, idempotency_key: idempotencyKey, campaign_id: required('campaign_id'), archive: action === 'archive_campaign' ? 'true' : 'false' } }];\n}\n\nif (action === 'launch_campaign') {\n  const audience = required('audience');\n  if (!['Linked doctors', 'Presentation preview'].includes(audience)) throw new Error('Unsupported campaign audience.');\n\n  const interviewDeadline = String(body.interview_deadline ?? '').trim();\n  if (interviewDeadline) {\n    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(interviewDeadline)) throw new Error('Interview deadline must use YYYY-MM-DD.');\n    const parsedDeadline = new Date(interviewDeadline + 'T00:00:00Z');\n    if (!Number.isFinite(parsedDeadline.getTime()) || parsedDeadline.toISOString().slice(0, 10) !== interviewDeadline) throw new Error('Interview deadline is not a valid calendar date.');\n  }\n  const trainingResourceUrl = String(body.training_resource_url ?? '').trim();\n  if (trainingResourceUrl) {\n    let parsedTrainingUrl;\n    try { parsedTrainingUrl = new URL(trainingResourceUrl); } catch { throw new Error('Training resource URL is invalid.'); }\n    if (parsedTrainingUrl.protocol !== 'https:' || !parsedTrainingUrl.hostname) throw new Error('Training resource URL must use HTTPS.');\n    if (parsedTrainingUrl.username || parsedTrainingUrl.password) throw new Error('Training resource URL cannot contain embedded credentials.');\n  }\n  if (body.send_doctor_review_reminders !== undefined && typeof body.send_doctor_review_reminders !== 'boolean') {\n    throw new Error('Doctor review reminder setting must be true or false.');\n  }\n  const sendDoctorReviewReminders = body.send_doctor_review_reminders !== false;\n\n  const topics = Array.isArray(body.topics) ? body.topics.map((topic, index) => {\n    const number = index + 1;\n    const title = String(topic?.title || '').trim();\n    const sourceUrl = String(topic?.featured_image_source_url || '').trim();\n    const altText = String(topic?.featured_image_alt_text || '').trim();\n    const publishDate = String(topic?.wordpress_publish_date || '').trim();\n    if (!title) throw new Error('Topic ' + number + ' title is required.');\n    if (!sourceUrl.startsWith('https://apexparent.hostmanpowered.com/wp-content/uploads/')) throw new Error('Topic ' + number + ' featured image must use the direct Apex Parent Media Library file URL.');\n    if (altText.length < 8) throw new Error('Topic ' + number + ' needs useful featured image alt text.');\n    if (publishDate && !/^\\d{4}-\\d{2}-\\d{2}$/.test(publishDate)) throw new Error('Topic ' + number + ' WordPress publish date must use YYYY-MM-DD.');\n    const wordpressSlug = String(topic?.wordpress_slug || '').trim().toLowerCase();\n    if (wordpressSlug && (wordpressSlug.length > 100 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(wordpressSlug))) throw new Error('Topic ' + number + ' WordPress URL slug can use only lowercase letters, numbers, and single hyphens between words.');\n    return { title, featured_image_source_url: sourceUrl, featured_image_alt_text: altText, wordpress_publish_date: publishDate || null, wordpress_slug: wordpressSlug || null };\n  }) : [];\n  if (topics.length !== 3 || new Set(topics.map((topic) => topic.title.toLowerCase())).size !== 3) {\n    throw new Error('Exactly three distinct topics with complete image records are required.');\n  }\n  const chosenSlugs = topics.map((topic) => topic.wordpress_slug).filter(Boolean);\n  // One monthly theme gives all three topics the same slug; otherwise each chosen slug must be different.\n  const sharedThemeSlug = chosenSlugs.length === topics.length && new Set(chosenSlugs).size === 1;\n  if (!sharedThemeSlug && new Set(chosenSlugs).size !== chosenSlugs.length) throw new Error('Each topic needs a different WordPress URL slug, or all three topics must share one slug.');\n\n  const doctorIds = Array.isArray(body.doctor_ids) ? [...new Set(body.doctor_ids.map((id) => String(id).trim()).filter(Boolean))] : [];\n  if (!doctorIds.length || doctorIds.length > 200) throw new Error('Campaigns require 1–200 linked doctors.');\n\n  const sendMode = required('send_mode');\n  if (!['now', 'in_10', 'scheduled'].includes(sendMode)) throw new Error('Unsupported send mode.');\n  const scheduledSendLocal = String(body.scheduled_send_local ?? '').trim();\n  const scheduledSendTimezone = String(body.scheduled_send_timezone ?? '').trim();\n  if (sendMode === 'scheduled') {\n    if (!/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$/.test(scheduledSendLocal)) throw new Error('Scheduled send local time must use YYYY-MM-DDTHH:MM.');\n    if (!/^[A-Za-z_]+\\/[A-Za-z0-9_+\\-\\/]+$/.test(scheduledSendTimezone)) throw new Error('Scheduled send timezone must be a valid IANA-style timezone.');\n  }\n\n  const campaignName = required('campaign_name');\n  const month = required('campaign_month');\n  if (!/^\\d{4}-\\d{2}$/.test(month)) throw new Error('Campaign month must use YYYY-MM.');\n  const slug = campaignName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 48);\n  if (!slug) throw new Error('Campaign name must contain letters or numbers.');\n  const campaignId = 'campaign_' + month.replace('-', '') + '_' + slug;\n\n  return [{ json: {\n    action,\n    audience,\n    actor_email: actorEmail,\n    idempotency_key: idempotencyKey,\n    campaign_id: campaignId,\n    campaign_name: campaignName,\n    campaign_month: month + '-01',\n    send_mode: sendMode,\n    scheduled_send_local: scheduledSendLocal,\n    scheduled_send_timezone: scheduledSendTimezone,\n    interview_deadline: interviewDeadline,\n    training_resource_url: trainingResourceUrl,\n    send_doctor_review_reminders: sendDoctorReviewReminders,\n    topics_json: JSON.stringify(topics),\n    doctor_ids_json: JSON.stringify(doctorIds),\n  } }];\n}\n\nthrow new Error('Unsupported administrative action.');"
       },
       "id": "8b95c9a4-1e89-47c2-8b6f-84b6980bdcc2",
       "name": "Validate and Normalize Command",
@@ -204,6 +204,54 @@
               },
               "renameOutput": true,
               "outputKey": "marketing_changes"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "archive_work_item",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "6dd60b8f-364f-4af8-9558-8056a38a3ab0"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "archive_work_item"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "restore_work_item",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "fe920d9c-e6d6-41e6-9d6e-2d24780b0f6c"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "restore_work_item"
             }
           ]
         },
@@ -816,6 +864,74 @@
         664,
         1264
       ]
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "value": "apex-marketing-n8n",
+          "mode": "id"
+        },
+        "sqlQuery": "CREATE TABLE IF NOT EXISTS `apex-marketing-n8n.automated_article_creation.admin_commands` (\n  idempotency_key STRING NOT NULL, action STRING NOT NULL, actor_email STRING NOT NULL,\n  entity_id STRING NOT NULL, requested_at TIMESTAMP NOT NULL, completed_at TIMESTAMP, payload JSON\n);\nASSERT NOT EXISTS (SELECT 1 FROM `apex-marketing-n8n.automated_article_creation.admin_commands` WHERE idempotency_key = @idempotency_key) AS 'This command was already processed.';\nASSERT (SELECT COUNT(*) FROM `apex-marketing-n8n.automated_article_creation.campaign_doctors` WHERE campaign_id = @campaign_id AND doctor_id = @doctor_id) = 1 AS 'This doctor is not part of the campaign.';\n-- Latest article for this doctor in this campaign, and the \"Do not use\" archive to undo (if restoring one).\nCREATE TEMP TABLE target AS\nSELECT a.article_id, a.status,\n  (SELECT JSON_VALUE(e.payload, '$.prior_status') FROM `apex-marketing-n8n.automated_article_creation.workflow_events` e\n    WHERE e.entity_type = 'work_item' AND e.entity_id = CONCAT(@campaign_id, ':', @doctor_id)\n      AND e.event_type = 'work_item.archived' AND JSON_VALUE(e.payload, '$.do_not_use') = 'true'\n    ORDER BY e.event_timestamp DESC LIMIT 1) AS prior_status\nFROM (SELECT 1) seed\nLEFT JOIN (\n  SELECT article_id, status FROM `apex-marketing-n8n.automated_article_creation.articles`\n  WHERE campaign_id = @campaign_id AND doctor_id = @doctor_id\n  QUALIFY ROW_NUMBER() OVER (ORDER BY created_at DESC, article_id DESC) = 1\n) a ON TRUE;\nBEGIN TRANSACTION;\n-- \"Do not use\": stop every workflow by moving the article out of the statuses they act on, and close open review links.\nUPDATE `apex-marketing-n8n.automated_article_creation.articles` SET status = 'DO_NOT_USE'\nWHERE @do_not_use = 'true' AND article_id = (SELECT article_id FROM target) AND status != 'DO_NOT_USE';\nUPDATE `apex-marketing-n8n.automated_article_creation.article_review_links` SET status = 'EXPIRED', responded_at = CURRENT_TIMESTAMP()\nWHERE @do_not_use = 'true' AND article_id = (SELECT article_id FROM target) AND status IN ('READY', 'OPENED');\nUPDATE `apex-marketing-n8n.automated_article_creation.marketing_review_links` SET status = 'EXPIRED', responded_at = CURRENT_TIMESTAMP()\nWHERE @do_not_use = 'true' AND article_id = (SELECT article_id FROM target) AND status IN ('READY', 'OPENED');\n-- Restoring a \"Do not use\" item puts the article back in the status it had before.\nUPDATE `apex-marketing-n8n.automated_article_creation.articles` SET status = (SELECT prior_status FROM target)\nWHERE @archive = 'false' AND article_id = (SELECT article_id FROM target) AND status = 'DO_NOT_USE'\n  AND (SELECT prior_status FROM target) IS NOT NULL;\nINSERT INTO `apex-marketing-n8n.automated_article_creation.workflow_events`\n(event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id, payload)\nSELECT GENERATE_UUID(), 'work_item', CONCAT(@campaign_id, ':', @doctor_id),\n  IF(@archive = 'true', 'work_item.archived', 'work_item.restored'), CURRENT_TIMESTAMP(), 'admin_dashboard', NULL,\n  TO_JSON(STRUCT(@actor_email AS actor_email, @reason AS reason, @do_not_use AS do_not_use,\n    t.article_id AS article_id, t.status AS prior_status, @idempotency_key AS idempotency_key))\nFROM target t;\nINSERT INTO `apex-marketing-n8n.automated_article_creation.admin_commands`\n(idempotency_key, action, actor_email, entity_id, requested_at, completed_at, payload)\nVALUES (@idempotency_key, IF(@archive = 'true', 'archive_work_item', 'restore_work_item'), @actor_email, CONCAT(@campaign_id, ':', @doctor_id),\n  CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP(), TO_JSON(STRUCT(@campaign_id AS campaign_id, @doctor_id AS doctor_id, @do_not_use AS do_not_use, @reason AS reason)));\nCOMMIT TRANSACTION;\nSELECT TRUE AS ok, IF(@archive = 'true', IF(@do_not_use = 'true', 'DO_NOT_USE', 'ARCHIVED'), 'RESTORED') AS status, CONCAT(@campaign_id, ':', @doctor_id) AS work_item_id;",
+        "options": {
+          "location": "US",
+          "queryParameters": {
+            "namedParameters": [
+              {
+                "name": "idempotency_key",
+                "value": "={{ $json.idempotency_key }}"
+              },
+              {
+                "name": "campaign_id",
+                "value": "={{ $json.campaign_id }}"
+              },
+              {
+                "name": "doctor_id",
+                "value": "={{ $json.doctor_id }}"
+              },
+              {
+                "name": "archive",
+                "value": "={{ $json.archive }}"
+              },
+              {
+                "name": "do_not_use",
+                "value": "={{ $json.do_not_use }}"
+              },
+              {
+                "name": "reason",
+                "value": "={{ $json.reason }}"
+              },
+              {
+                "name": "actor_email",
+                "value": "={{ $json.actor_email }}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "6ee4c465-001b-4990-ab2d-57d28a1988f4",
+      "name": "Archive or Restore Work Item",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [
+        224,
+        1504
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, action: $('Validate and Normalize Command').first().json.action, status: $json.status, work_item_id: $json.work_item_id } }}",
+        "options": {}
+      },
+      "id": "bb5e8a54-cb55-400e-b720-87293e1cd134",
+      "name": "Return Work Item Archive Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        664,
+        1504
+      ]
     }
   ],
   "pinData": {},
@@ -889,6 +1005,20 @@
         [
           {
             "node": "Record Marketing Change Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Archive or Restore Work Item",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Archive or Restore Work Item",
             "type": "main",
             "index": 0
           }
@@ -1002,6 +1132,17 @@
         [
           {
             "node": "Return Change Request Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Archive or Restore Work Item": {
+      "main": [
+        [
+          {
+            "node": "Return Work Item Archive Result",
             "type": "main",
             "index": 0
           }

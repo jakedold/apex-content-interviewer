@@ -174,17 +174,19 @@ test('router records "live on website" only for an article on WordPress, once, w
 test('several articles can be moved to their next step at once, one audited command each', () => {
   assert.match(client, /\['ready', 'Ready to push'/);
   assert.match(client, /function queueNextStep\(item: WorkItem\): QueueStep \| null/);
+  assert.match(client, /item\.archived \|\| !item\.article_id/);
   assert.match(client, /item\.status === 'DOCTOR_REVIEW_PENDING'\) step = 'approve_for_doctor'/);
   assert.match(client, /\(DOCTOR_APPROVED\|DOCTOR_AUTO_APPROVED\|MARKETING_REVIEW\)\$\/\.test\(item\.status\)\) step = 'approve_for_marketing'/);
   assert.match(client, /isReadyToPush\(item\)\) step = 'mark_live_on_website'/);
-  assert.match(client, /data-step-select=/);
-  assert.match(client, /id="admin-step-select-all"/);
-  assert.match(client, /Move selected to next step/);
+  assert.match(client, /data-item-select=/);
+  assert.match(client, /id="admin-item-select-all"/);
+  assert.match(client, /data-bulk-action="next" data-label="Move to next step"/);
   const bulk = client.match(/async function submitBulkStep[\s\S]*?\n}\n/)[0];
-  assert.match(bulk, /for \(const \{ item, step \} of selected\) \{[\s\S]*?await postAdminCommand\(\{ action: step,[\s\S]*?expected_version: item\.current_version/);
-  assert.match(bulk, /Not moved:/);
+  assert.match(bulk, /for \(const item of targets\) \{[\s\S]*?await postAdminCommand\(\{ \.\.\.command,/);
+  assert.match(bulk, /action: step, article_id: item\.article_id, expected_status: item\.status, expected_version: item\.current_version/);
+  assert.match(bulk, /Not done:/);
   const queue = admin.match(/queue_rows AS \([\s\S]*?\n\),/)[0];
-  for (const field of ['a.current_version', 'c.require_marketing_approval', 'AS marketing_auto_approved', 'AS doctor_auto_approved']) assert.ok(queue.includes(field), field);
+  for (const field of ['a.current_version', 'c.require_marketing_approval', 'AS marketing_auto_approved', 'AS doctor_auto_approved', 'AS archived', 'AS do_not_use']) assert.ok(queue.includes(field), field);
 });
 
 test('auto-approved articles are flagged for extra attention in the queue and the article view', () => {
@@ -235,4 +237,42 @@ test('marketing reviews nobody answers are auto-approved after 24 hours, within 
   assert.ok(workflow.nodes.every((node) => !node.credentials));
   const invitation = JSON.parse(read('n8n/18-send-marketing-review-invitation.json'));
   assert.match(invitation.nodes.find((node) => node.name === 'Prepare Marketing Review Email').parameters.jsCode, /within 24 hours, the article is approved automatically/);
+});
+
+test('the work queue has a filter for every stage, defaults to active items, and pages long lists', () => {
+  const filters = client.match(/const QUEUE_FILTERS[\s\S]*?\n\];/)[0];
+  const keys = [...filters.matchAll(/\['([a-z_]+)', '([^']+)'/g)].map((match) => match[2]);
+  assert.deepEqual(keys, ['Active', 'Invited', 'Interview started', 'Drafting', 'Doctor review', 'Marketing review', 'Sending to WordPress', 'Ready to push', 'Errors', 'Archived', 'All']);
+  assert.match(client, /let queueFilter = 'active';/);
+  assert.match(filters, /\['active', 'Active', \(item\) => !item\.archived\]/);
+  assert.match(client, /const QUEUE_PAGE_SIZE = 50;/);
+  assert.match(client, /id="admin-queue-campaign"/);
+  assert.match(admin, /LIMIT 1500\) AS work_queue/);
+  // Every stage the queue can report has a filter button.
+  const stages = [...client.match(/type QueueStage = ([^;]+);/)[1].matchAll(/'([a-z_]+)'/g)].map((match) => match[1]);
+  for (const stage of stages) assert.ok(filters.includes(`queueStage(item) === '${stage}'`) || (stage === 'ready_to_push' && filters.includes('isReadyToPush(item)')), stage);
+});
+
+test('work items can be archived, marked "Do not use", and restored through the audited command route', () => {
+  for (const action of ['archive_work_item', 'restore_work_item']) assert.match(admin, new RegExp("ADMIN_ACTIONS = \\[[^\\]]*'" + action + "'"));
+  assert.match(admin, /entity_type = 'work_item' AND event_type IN \('work_item\.archived', 'work_item\.restored'\)/);
+  assert.match(admin, /CONCAT\(@campaign_id, ':', @doctor_id\), COALESCE/);
+  assert.match(client, /data-bulk-action="do_not_use"/);
+  assert.match(client, /data-archive-action="restore"/);
+  const source = router.nodes.find((node) => node.name === 'Validate and Normalize Command').parameters.jsCode;
+  const run = (body) => new Function('$json', source)({ body: { actor_email: 'admin@apexdp.com', idempotency_key: 'abcdefghijklmnop1234', campaign_id: 'campaign_1', doctor_id: 'doctor_1', ...body } });
+  assert.equal(run({ action: 'archive_work_item' })[0].json.do_not_use, 'false');
+  assert.equal(run({ action: 'archive_work_item', do_not_use: true, reason: 'Test article' })[0].json.do_not_use, 'true');
+  assert.throws(() => run({ action: 'archive_work_item', do_not_use: true }), /short reason/);
+  assert.equal(run({ action: 'restore_work_item', do_not_use: true })[0].json.archive, 'false');
+  const rules = router.nodes.find((node) => node.name === 'Route Narrow Command').parameters.rules.values;
+  for (const action of ['archive_work_item', 'restore_work_item']) {
+    const index = rules.findIndex((rule) => rule.conditions.conditions[0].rightValue === action);
+    assert.equal(router.connections['Route Narrow Command'].main[index][0].node, 'Archive or Restore Work Item');
+  }
+  const query = router.nodes.find((node) => node.name === 'Archive or Restore Work Item').parameters.sqlQuery;
+  assert.match(query, /SET status = 'DO_NOT_USE'\s+WHERE @do_not_use = 'true'/);
+  assert.match(query, /SET status = \(SELECT prior_status FROM target\)\s+WHERE @archive = 'false'/);
+  assert.match(query, /'work_item\.archived', 'work_item\.restored'/);
+  assert.match(query, /marketing_review_links` SET status = 'EXPIRED'/);
 });

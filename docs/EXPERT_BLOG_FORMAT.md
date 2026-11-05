@@ -4,11 +4,23 @@ This is the standard layout that the WordPress publisher (`n8n/15-publish-approv
 
 ## What the publisher builds
 
-1. **Title banner.** A full-width dark band (`#231f20`) with the featured image cropped to a circle on the left. On the right are the title (white, bold), the byline ("By Dr. Name, DDS", white, bold) and the date. The date is the campaign topic's WordPress publish date, or the existing post's date when a post is updated, or today. The theme's own post title is hidden so the title appears only once.
-2. **Featured answer box.** FAQ 1 appears at the top of the article column: light gray background, burgundy (`#ad0052`) line across the top, the question as a heading with an underline rule, then the direct answer.
-3. **Left sidebar.** An "FAQ" box with FAQs 2 to 4 as collapsible questions. The doctor bio card sits directly under it, 24px lower. The card stacks a round photo with a burgundy border, "About Dr. Name", the bio, and full-width **View full bio** (black) and **Book appointment** (burgundy) buttons.
-4. **Article body.** Links use the burgundy accent and open in a new tab. Lists have space before the next paragraph. Nothing sits between the article and the footer.
+1. **Title banner.** A full-width band in the site's Secondary color with the featured image cropped to a circle on the left. On the right are the title (white, bold), the byline ("By Dr. Name, DDS", white, bold) and the date. The date is the campaign topic's WordPress publish date, or the existing post's date when a post is updated, or today. The theme's own post title is hidden so the title appears only once.
+2. **Featured answer box.** FAQ 1 appears at the top of the article column: light gray background, a line in the site's Primary color across the top, the question as a heading with an underline rule, then the direct answer.
+3. **Left sidebar.** An "FAQ" box with FAQs 2 to 4 as collapsible questions. The doctor bio card sits directly under it, 24px lower. The card stacks a round photo with a border in the Primary color, "About Dr. Name", the bio, and full-width **View full bio** (Text color) and **Book appointment** (Primary color) buttons.
+4. **Article body.** Links use the Primary color and open in a new tab. Lists have space before the next paragraph. Nothing sits between the article and the footer.
 5. **Smaller screens.** Below 1100px wide, the sidebar moves under the article so readers reach the article first. On phones, the banner stacks the image above the title.
+
+## Site colors
+
+Colors come from each practice site's Elementor Global Colors (**Edit with Elementor → Site Settings → Global Colors**), so each blog matches its own site without any per-practice setup:
+
+| Blog element | Elementor global color |
+| --- | --- |
+| Title banner, rule under the featured question and the FAQ heading | Secondary |
+| Featured answer top line, links, bio photo border, **Book appointment** button | Primary |
+| **View full bio** button | Text |
+
+The light gray boxes stay `#e9e9ec`. If a site has no Elementor global colors, the original colors from Brenna's mockup are used (`#231f20` banner, `#ad0052` accent). To change a blog's colors, change the site's global colors; existing posts pick up the change the next time the page loads.
 
 ## What the article writer produces
 

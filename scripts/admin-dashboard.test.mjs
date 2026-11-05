@@ -374,3 +374,36 @@ test('every database step in the admin router retries a brief BigQuery conflict'
     assert.ok(node.maxTries >= 3, node.name);
   }
 });
+
+test('"Re-send to WordPress" updates the existing post through the audited route and returns the article to Ready to Push', () => {
+  assert.match(admin, /ADMIN_ACTIONS = \[[^\]]*'republish_to_wordpress'/);
+  assert.match(client, /action: 'republish_to_wordpress'/);
+  assert.match(client, /id="admin-resend-form"/);
+  // A "marked live" record only counts if it came after the latest re-send, in the dashboard, the queue, and the router.
+  assert.match(client, /event\.event_type === 'article\.marked_live' && eventTime\(event\) > latestResend/);
+  assert.match(admin, /event_type = 'article\.marked_live'[\s\S]*?'article\.resent_to_wordpress'/);
+  assert.match(router.nodes.find((node) => node.name === 'Record Live on Website').parameters.sqlQuery, /'article\.resent_to_wordpress'/);
+
+  const source = router.nodes.find((node) => node.name === 'Validate and Normalize Command').parameters.jsCode;
+  const run = (body) => new Function('$json', source)({ body: { actor_email: 'admin@apexdp.com', idempotency_key: 'abcdefghijklmnop1234', ...body } });
+  const command = { action: 'republish_to_wordpress', article_id: 'article_1', campaign_id: 'campaign_1', doctor_id: 'doctor_1' };
+  assert.equal(run({ ...command, expected_status: 'PUBLISHED', reason: 'New photo' })[0].json.note, 'New photo');
+  assert.throws(() => run({ ...command, expected_status: 'MARKETING_REVIEW' }), /already on WordPress/);
+
+  const rules = router.nodes.find((node) => node.name === 'Route Narrow Command').parameters.rules.values;
+  const index = rules.findIndex((rule) => rule.conditions.conditions[0].rightValue === 'republish_to_wordpress');
+  assert.ok(index >= 0);
+  assert.equal(router.connections['Route Narrow Command'].main[index][0].node, 'Record WordPress Re-send');
+  const query = router.nodes.find((node) => node.name === 'Record WordPress Re-send').parameters.sqlQuery;
+  assert.match(query, /status = 'PUBLISHED'/);
+  assert.match(query, /NULLIF\(TRIM\(external_post_id\), ''\) IS NOT NULL/);
+  assert.doesNotMatch(query, /''[A-Za-z]/, 'BigQuery messages must not use doubled-quote apostrophes');
+  // Reply first, then start the publisher without waiting, with republishing allowed.
+  assert.equal(router.connections['Record WordPress Re-send'].main[0][0].node, 'Return WordPress Re-send Result');
+  assert.equal(router.connections['Return WordPress Re-send Result'].main[0][0].node, 'Re-send Article to WordPress');
+  const start = router.nodes.find((node) => node.name === 'Re-send Article to WordPress');
+  assert.equal(start.parameters.workflowId.value, 'kGd2YSJ2MVJwRld0');
+  assert.equal(start.parameters.workflowInputs.value.allow_republish, true);
+  assert.equal(start.parameters.options.waitForSubWorkflow, false);
+  assert.equal(router.nodes.find((node) => node.name === 'Record WordPress Re-send').retryOnFail, true);
+});

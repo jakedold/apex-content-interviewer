@@ -188,3 +188,13 @@ test('the blog uses the practice site\'s own Elementor global colors, with the s
   assert.match(content, /aac-author-bio-profile"[^>]*background-color:var\(--e-global-color-text, #231f20\)/);
   assert.doesNotMatch(content.replace(/var\(--e-global-color-[a-z]+, #[0-9a-f]{6}\)/gi, ''), /#ad0052|#231f20/i, 'no fixed practice colors outside a fallback');
 });
+
+test('an older article whose FAQ uses collapsible <details> items still gets the answer box and sidebar questions', () => {
+  const details = faqList.map(([question, answer]) => '<details><summary><strong>' + question + '</strong></summary><p>' + answer + '</p></details>').join('');
+  const content = publishLayout('<h2>Frequently Asked Questions</h2>' + details);
+  const main = content.match(/<div class="aac-article-main"[\s\S]*?(?=<aside)/)?.[0] || '';
+  assert.match(main, /^<div class="aac-article-main"[^>]*><section class="aac-featured-answer"[^>]*><h2[^>]*>Why do my gums bleed when I brush\?<\/h2>/);
+  assert.equal((content.match(/<details class="aac-faq-item"/g) || []).length, 3);
+  assert.match(main, /Closing call to action at https:\/\/public-dental\.test/, 'the closing call to action after the FAQ stays in the article');
+  assert.doesNotMatch(main, /Frequently Asked Questions/);
+});

@@ -235,7 +235,8 @@
             }
           }
         }
-      }
+      },
+      "executeOnce": true
     },
     {
       "id": "keep-doctor-profiles-together",

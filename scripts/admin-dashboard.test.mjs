@@ -331,3 +331,9 @@ test('items that sit too long at one step are flagged as stalled and get their o
   assert.match(client, /\['stalled', 'Stalled', \(item\) => Boolean\(stalledReason\(item\)\)\]/);
   assert.match(client, /\$\{stalledFlag\(item\)\}/);
 });
+
+test('the census sync reads Doctor Profiles once, however many Test User rows there are', () => {
+  const sync = JSON.parse(read('n8n/25-sync-doctor-census.json'));
+  assert.deepEqual(sync.connections['Read test users'].main[0].map((c) => c.node), ['Read doctor profiles']);
+  assert.equal(sync.nodes.find((node) => node.name === 'Read doctor profiles').executeOnce, true);
+});

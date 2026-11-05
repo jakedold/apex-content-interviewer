@@ -110,7 +110,7 @@ const faqMarkup = (items) => items.map(([question, answer]) => '<h3>' + question
 test('the dark title banner shows the title, byline, and date with a round featured image', () => {
   const content = publishLayout('<section class="aac-article-faq"><h2>Frequently Asked Questions</h2>' + faqMarkup(faqList) + '</section>');
   const hero = content.match(/<div class="aac-article-hero"[\s\S]*?<\/div><\/div><\/div>/)?.[0] || '';
-  assert.match(hero, /background-color:#231f20/);
+  assert.match(hero, /background-color:var\(--e-global-color-secondary, #231f20\)/);
   assert.match(hero, /<h1 class="aac-article-title"[^>]*>Why Do My Gums Bleed When I Brush My Teeth\?<\/h1>/);
   assert.match(hero, /class="aac-article-byline"[^>]*>By Dr\. Test, DDS</);
   assert.match(hero, /class="aac-article-date"[^>]*>October 16, 2026</);
@@ -178,4 +178,13 @@ test('a re-send updates the article\'s existing WordPress post, never a new one,
   assert.equal(renamed.existing_post_id, '55');
   assert.match(renamed.wordpress_publish_url, /\/posts\/55$/);
   assert.equal('slug' in renamed.wordpress_body, false, 'keeps whatever web address the post has in WordPress');
+});
+
+test('the blog uses the practice site\'s own Elementor global colors, with the standard colors only as a fallback', () => {
+  const content = publishLayout('<section class="aac-article-faq"><h2>Frequently Asked Questions</h2>' + faqMarkup(faqList) + '</section>', {
+    photo_source_url: 'https://public-dental.test/doctor.jpg', profile_url: 'https://public-dental.test/about' });
+  assert.match(content, /class="aac-featured-answer"[^>]*border-top:3px solid var\(--e-global-color-primary, #ad0052\)/);
+  assert.match(content, /aac-author-bio-book"[^>]*background-color:var\(--e-global-color-primary, #ad0052\)/);
+  assert.match(content, /aac-author-bio-profile"[^>]*background-color:var\(--e-global-color-text, #231f20\)/);
+  assert.doesNotMatch(content.replace(/var\(--e-global-color-[a-z]+, #[0-9a-f]{6}\)/gi, ''), /#ad0052|#231f20/i, 'no fixed practice colors outside a fallback');
 });

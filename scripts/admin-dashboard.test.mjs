@@ -317,7 +317,7 @@ test('a completed interview with no draft can have its draft written from the da
   const index = rules.findIndex((rule) => rule.conditions.conditions[0].rightValue === 'generate_article');
   assert.equal(router.connections['Route Narrow Command'].main[index][0].node, 'Check and Record Draft Request');
   const query = router.nodes.find((node) => node.name === 'Check and Record Draft Request').parameters.sqlQuery;
-  for (const message of ['already has an article draft', 'under 100 words', 'preview-only campaign', 'not fully set up for WordPress publishing']) assert.ok(query.includes(message), message);
+  for (const message of ['already has an article draft', 'under 100 words', 'preview-only campaign', 'not fully set up for WordPress publishing', 'doctor profile is incomplete', 'Doctor Profiles tab']) assert.ok(query.includes(message), message);
   assert.match(query, /REGEXP_EXTRACT_ALL\(TRIM\(transcript\), r'\\S\+'\)\) >= 100/);
   const start = router.nodes.find((node) => node.name === 'Start Article Draft');
   assert.equal(start.parameters.workflowId.cachedResultName, 'AAC - 06 - Generate Article');

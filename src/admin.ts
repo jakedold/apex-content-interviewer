@@ -1560,7 +1560,7 @@ function nextStepAction(detail: WorkItemDetail, enabledActions: string[]): { act
     return offer({
       action: 'generate_article',
       title: 'Write the article draft now',
-      description: 'The draft is normally written automatically within a few minutes of the interview. If that attempt failed, nothing retries it, so use this to start it again. It checks first that a draft can be written (transcript long enough, practice set up for WordPress) and tells you if not. Writing the draft takes several minutes; refresh the dashboard afterward.',
+      description: 'The draft is normally written automatically within a few minutes of the interview. If that attempt failed, nothing retries it, so use this to start it again. It checks first that a draft can be written (transcript long enough, practice set up for WordPress, doctor profile complete with credentials and a short bio) and tells you if not. Writing the draft takes several minutes; refresh the dashboard afterward.',
       reasonLabel: 'Note (optional)',
       reasonPlaceholder: 'Retrying the draft for this interview…',
       confirmation: 'I confirm the article draft should be written for this interview.',

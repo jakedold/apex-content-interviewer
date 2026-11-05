@@ -870,14 +870,14 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
-        444,
+        664,
         1264
       ]
     },
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { ok: true, action: 'request_marketing_changes', status: 'MARKETING_CHANGES_REQUESTED', article_id: $('Record Marketing Change Request').first().json.article_id } }}",
+        "responseBody": "={{ { ok: true, action: 'request_marketing_changes', status: 'MARKETING_CHANGES_REQUESTED', article_id: $json.article_id } }}",
         "options": {}
       },
       "id": "8dcc6232-8c01-4880-af64-f54c4ac74490",
@@ -885,7 +885,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.4,
       "position": [
-        664,
+        444,
         1264
       ]
     },
@@ -1039,14 +1039,14 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
-        444,
+        664,
         1744
       ]
     },
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { ok: true, action: 'generate_article', status: 'DRAFT_REQUESTED', interview_id: $('Check and Record Draft Request').first().json.interview_id } }}",
+        "responseBody": "={{ { ok: true, action: 'generate_article', status: 'DRAFT_REQUESTED', interview_id: $json.interview_id } }}",
         "options": {}
       },
       "id": "6439e225-5b18-4894-a63d-fc86c9ec2f15",
@@ -1054,7 +1054,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.4,
       "position": [
-        664,
+        444,
         1744
       ]
     }
@@ -1252,17 +1252,6 @@
       "main": [
         [
           {
-            "node": "Start Marketing Revision",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Start Marketing Revision": {
-      "main": [
-        [
-          {
             "node": "Return Change Request Result",
             "type": "main",
             "index": 0
@@ -1285,6 +1274,17 @@
       "main": [
         [
           {
+            "node": "Return Draft Request Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Return Draft Request Result": {
+      "main": [
+        [
+          {
             "node": "Start Article Draft",
             "type": "main",
             "index": 0
@@ -1292,11 +1292,11 @@
         ]
       ]
     },
-    "Start Article Draft": {
+    "Return Change Request Result": {
       "main": [
         [
           {
-            "node": "Return Draft Request Result",
+            "node": "Start Marketing Revision",
             "type": "main",
             "index": 0
           }

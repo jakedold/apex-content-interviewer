@@ -217,7 +217,8 @@ test('marketing can request changes from the dashboard; the AI revision starts w
   const start = router.nodes.find((node) => node.name === 'Start Marketing Revision');
   assert.equal(start.parameters.workflowId.cachedResultName, 'AAC - 20 - Revise Article from Marketing Feedback');
   assert.equal(start.parameters.options.waitForSubWorkflow, false);
-  assert.equal(router.connections['Start Marketing Revision'].main[0][0].node, 'Return Change Request Result');
+  assert.equal(router.connections['Record Marketing Change Request'].main[0][0].node, 'Return Change Request Result');
+  assert.equal(router.connections['Return Change Request Result'].main[0][0].node, 'Start Marketing Revision');
 });
 
 test('marketing reviews nobody answers are auto-approved after 24 hours, within safety limits, then sent to WordPress', () => {
@@ -336,4 +337,13 @@ test('the census sync reads Doctor Profiles once, however many Test User rows th
   const sync = JSON.parse(read('n8n/25-sync-doctor-census.json'));
   assert.deepEqual(sync.connections['Read test users'].main[0].map((c) => c.node), ['Read doctor profiles']);
   assert.equal(sync.nodes.find((node) => node.name === 'Read doctor profiles').executeOnce, true);
+});
+
+test('the router answers the dashboard before starting a long-running draft or revision', () => {
+  for (const [record, reply, start] of [['Check and Record Draft Request', 'Return Draft Request Result', 'Start Article Draft'], ['Record Marketing Change Request', 'Return Change Request Result', 'Start Marketing Revision']]) {
+    assert.deepEqual(router.connections[record].main[0].map((c) => c.node), [reply]);
+    assert.deepEqual(router.connections[reply].main[0].map((c) => c.node), [start]);
+    assert.equal(router.connections[start], undefined);
+  }
+  assert.match(router.nodes.find((node) => node.name === 'Return Draft Request Result').parameters.responseBody, /interview_id: \$json\.interview_id/);
 });

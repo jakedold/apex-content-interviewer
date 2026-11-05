@@ -578,7 +578,7 @@ export async function handleAdminCommand(request: Request, env: Env): Promise<Re
       console.error(JSON.stringify({ event: 'admin_command_empty_response', viewer: viewer.email, action: command.action, status: response.status }));
       return Response.json({
         error: 'N8N_EMPTY_RESPONSE',
-        message: 'The n8n command workflow returned an empty response. The campaign was not confirmed; check the workflow execution before retrying.',
+        message: 'The n8n command workflow returned an empty response, so the result is not confirmed. Check the workflow 24 execution in n8n before retrying.',
       }, { status: 502, headers: { 'Cache-Control': 'no-store' } });
     }
     return new Response(raw, { status: response.status, statusText: response.statusText,

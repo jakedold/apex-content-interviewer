@@ -139,6 +139,18 @@ work_item_archive AS (
   WHERE entity_type = 'work_item' AND event_type IN ('work_item.archived', 'work_item.restored')
   QUALIFY ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY event_timestamp DESC) = 1
 ),
+-- Articles currently live on the website: marked live after their latest re-send to WordPress (a re-sent page
+-- must be pushed live again). Built here, not as a correlated subquery, because BigQuery rejects those.
+live_articles AS (
+  SELECT e.entity_id
+  FROM ${table('workflow_events')} e
+  LEFT JOIN (SELECT entity_id, MAX(event_timestamp) AS resent_at FROM ${table('workflow_events')}
+    WHERE entity_type = 'article' AND event_type = 'article.resent_to_wordpress' GROUP BY entity_id) r
+    ON r.entity_id = e.entity_id
+  WHERE e.entity_type = 'article' AND e.event_type = 'article.marked_live' AND e.entity_id IS NOT NULL
+    AND e.event_timestamp > COALESCE(r.resent_at, TIMESTAMP '1970-01-01')
+  GROUP BY e.entity_id
+),
 queue_rows AS (
   SELECT CONCAT(cd.campaign_id, ':', cd.doctor_id) AS work_item_id,
     cd.campaign_id, c.campaign_name, cd.doctor_id, d.doctor_name, d.credentials,
@@ -177,11 +189,7 @@ queue_rows AS (
   -- Articles on WordPress stay in the queue until the team marks them live (pushed through Headless Hostman).
   WHERE COALESCE(a.status, i.status, cd.status) != 'PUBLISHED'
     OR (a.published_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 90 DAY)
-      AND NOT EXISTS (SELECT 1 FROM ${table('workflow_events')} e
-        WHERE e.entity_type = 'article' AND e.entity_id = a.article_id AND e.event_type = 'article.marked_live'
-          -- A re-send to WordPress means the updated page must be pushed live again.
-          AND e.event_timestamp > COALESCE((SELECT MAX(r.event_timestamp) FROM ${table('workflow_events')} r
-            WHERE r.entity_type = 'article' AND r.entity_id = a.article_id AND r.event_type = 'article.resent_to_wordpress'), TIMESTAMP '1970-01-01')))
+      AND a.article_id NOT IN (SELECT entity_id FROM live_articles))
 ),
 event_rows AS (
   SELECT event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id,

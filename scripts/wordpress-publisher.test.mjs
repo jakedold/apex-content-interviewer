@@ -166,3 +166,16 @@ test('the article writers are told to produce the 4-item FAQ block the publisher
     assert.match(source, /exactly 4/);
   }
 });
+
+test('a re-send updates the article\'s existing WordPress post, never a new one, even if its slug changed in WordPress', () => {
+  const context = { ...prepare(row(verifiedConfig))[0].json, prior_wordpress_post_id: '55' };
+  const choose = (posts) => new Function('$input', '$', chooseSource)({ all: () => posts.map((json) => ({ json })) }, () => ({ first: () => ({ json: context }) }))[0].json;
+  const found = choose([{ id: 55, slug: 'test-article', date: '2026-09-01T12:00:00' }]);
+  assert.equal(found.existing_post_id, '55');
+  assert.match(found.wordpress_publish_url, /\/posts\/55$/);
+  assert.equal(found.wordpress_body.slug, 'test-article');
+  const renamed = choose([]);
+  assert.equal(renamed.existing_post_id, '55');
+  assert.match(renamed.wordpress_publish_url, /\/posts\/55$/);
+  assert.equal('slug' in renamed.wordpress_body, false, 'keeps whatever web address the post has in WordPress');
+});

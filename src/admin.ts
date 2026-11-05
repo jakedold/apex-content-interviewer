@@ -1459,7 +1459,13 @@ function articleMilestones(detail: WorkItemDetail) {
     item.published_url ||
     articleStatus === 'PUBLISHED',
   );
-  const liveEvent = detail.events.find((event) => event.event_type === 'article.marked_live');
+  // A re-send to WordPress updates the editing site, so the article must be pushed live again: only a
+  // "marked live" record made after the latest re-send counts.
+  const eventTime = (event: WorkflowEvent) => Date.parse(String(event.event_timestamp).replace(' UTC', 'Z').replace(' ', 'T')) || 0;
+  const latestResend = Math.max(0, ...detail.events.filter((event) => event.event_type === 'article.resent_to_wordpress').map(eventTime));
+  const liveEvent = detail.events
+    .filter((event) => event.event_type === 'article.marked_live' && eventTime(event) > latestResend)
+    .sort((a, b) => eventTime(b) - eventTime(a))[0];
   // Approved automatically because nobody responded in time; flagged for extra attention.
   const doctorAutoApproved = articleStatus === 'DOCTOR_AUTO_APPROVED'
     || detail.approvals.some((approval) => approval.approval_type === 'DOCTOR_REVIEW' && approval.status === 'AUTO_APPROVED')
@@ -1600,6 +1606,44 @@ function changeRequestForm(detail: WorkItemDetail, enabledActions: string[]): st
       <button class="admin-secondary-button" type="submit">Send change request</button>
       <p class="admin-form-message" id="change-form-message" role="status"></p>
     </form>`;
+}
+
+// For an article already on WordPress: send it again to update the same WordPress post in place (same web address,
+// no duplicate), for example after a layout, color, or doctor profile change. The re-sent article returns to
+// "Ready to Push" so the team pushes the updated page live again.
+function resendPanel(detail: WorkItemDetail, enabledActions: string[]): string {
+  const item = detail.item;
+  const m = articleMilestones(detail);
+  if (!enabledActions.includes('republish_to_wordpress') || !item.article_id || !m.onWordPress || m.articleStatus !== 'PUBLISHED') return '';
+  return `
+    <form id="admin-resend-form" class="admin-archive-panel">
+      <strong>Re-send to WordPress</strong>
+      <p>Updates the existing WordPress post for this article with the current page layout, site colors, and doctor profile (photo, bio, and links). It keeps the same post and web address, so no duplicate is created, and it sends the same approved article text. ${m.liveOnWebsite ? 'Because this article was already published, it moves back to “Ready to Push” so your team can push the updated page live again in Headless Hostman.' : 'It stays at “Ready to Push”.'}</p>
+      <label>Note (optional)<textarea name="reason" rows="2" maxlength="2000" placeholder="Re-sending after the doctor photo was updated…"></textarea></label>
+      <label class="admin-confirm-check"><input name="confirmation" type="checkbox" required /> I confirm the existing WordPress post for this article should be updated.</label>
+      <button class="admin-secondary-button" type="submit">Re-send to WordPress</button>
+      <p class="admin-form-message" id="resend-form-message" role="status"></p>
+    </form>`;
+}
+
+async function submitResend(event: SubmitEvent, detail: WorkItemDetail): Promise<void> {
+  event.preventDefault();
+  const item = detail.item;
+  const form = event.currentTarget as HTMLFormElement;
+  const message = form.querySelector<HTMLElement>('#resend-form-message');
+  const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+  const reason = String(new FormData(form).get('reason') ?? '').trim();
+  if (submit) submit.disabled = true;
+  if (message) message.textContent = 'Starting the re-send…';
+  try {
+    await postAdminCommand({ action: 'republish_to_wordpress', article_id: item.article_id, campaign_id: item.campaign_id, doctor_id: item.doctor_id,
+      expected_status: 'PUBLISHED', reason });
+    if (message) message.textContent = 'Re-send started. The WordPress post is usually updated within a minute; refresh the page on WordPress to check it.';
+    await initializeAdmin();
+  } catch (error) {
+    if (message) message.textContent = friendlyCommandError(error);
+    if (submit) submit.disabled = false;
+  }
 }
 
 // Latest archive/restore decision for this doctor's work item in this campaign.
@@ -1777,6 +1821,7 @@ function renderWorkItemDetail(response: WorkItemDetailResponse): void {
       <ol class="admin-event-list admin-event-list-compact">${detail.communications.length ? detail.communications.map(detailCommunicationRow).join('') : '<li class="admin-empty">No communication records are available for this work item.</li>'}</ol>
     </section>
     ${nextStepPanel(detail, response.capabilities.enabledActions)}
+    ${resendPanel(detail, response.capabilities.enabledActions)}
     ${archivePanel(detail, response.capabilities.enabledActions)}`;
 
   const iframe = content.querySelector<HTMLIFrameElement>('.admin-article-preview');
@@ -1789,6 +1834,7 @@ function renderWorkItemDetail(response: WorkItemDetailResponse): void {
   }
   content.querySelector<HTMLFormElement>('#admin-next-step-form')?.addEventListener('submit', (event) => void submitNextStep(event, detail, response.capabilities.enabledActions));
   content.querySelector<HTMLFormElement>('#admin-change-form')?.addEventListener('submit', (event) => void submitChangeRequest(event, detail));
+  content.querySelector<HTMLFormElement>('#admin-resend-form')?.addEventListener('submit', (event) => void submitResend(event, detail));
   content.querySelector<HTMLFormElement>('#admin-archive-form')?.addEventListener('submit', (event) => void submitArchive(event, detail));
 }
 

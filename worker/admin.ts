@@ -178,7 +178,10 @@ queue_rows AS (
   WHERE COALESCE(a.status, i.status, cd.status) != 'PUBLISHED'
     OR (a.published_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 90 DAY)
       AND NOT EXISTS (SELECT 1 FROM ${table('workflow_events')} e
-        WHERE e.entity_type = 'article' AND e.entity_id = a.article_id AND e.event_type = 'article.marked_live'))
+        WHERE e.entity_type = 'article' AND e.entity_id = a.article_id AND e.event_type = 'article.marked_live'
+          -- A re-send to WordPress means the updated page must be pushed live again.
+          AND e.event_timestamp > COALESCE((SELECT MAX(r.event_timestamp) FROM ${table('workflow_events')} r
+            WHERE r.entity_type = 'article' AND r.entity_id = a.article_id AND r.event_type = 'article.resent_to_wordpress'), TIMESTAMP '1970-01-01')))
 ),
 event_rows AS (
   SELECT event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id,
@@ -426,7 +429,7 @@ function accessManagement(viewer: AccessClaims, env: AdminEnv): Record<string, u
 }
 
 // Actions the dashboard may send to the audited n8n command workflow (24).
-const ADMIN_ACTIONS = ['approve_for_doctor', 'approve_for_marketing', 'request_marketing_changes', 'mark_live_on_website', 'archive_work_item', 'restore_work_item', 'generate_article', 'launch_campaign', 'archive_campaign', 'restore_campaign'] as const;
+const ADMIN_ACTIONS = ['approve_for_doctor', 'approve_for_marketing', 'request_marketing_changes', 'mark_live_on_website', 'republish_to_wordpress', 'archive_work_item', 'restore_work_item', 'generate_article', 'launch_campaign', 'archive_campaign', 'restore_campaign'] as const;
 
 function capabilities(viewer: AccessClaims, env: AdminEnv): Record<string, unknown> {
   const canAct = Boolean(viewer.email && actionEmails(env).includes(viewer.email) && env.ADMIN_COMMAND_SECRET && env.ADMIN_COMMAND_PATH);

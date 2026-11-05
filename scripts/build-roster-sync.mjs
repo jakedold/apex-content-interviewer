@@ -21,6 +21,8 @@ const readProfiles = sourceNode('Read test users');
 readProfiles.id = 'read-doctor-profiles';
 readProfiles.name = 'Read doctor profiles';
 readProfiles.position = [3120, 0];
+// Run once: the Test User read before it returns one item per test user, which would otherwise repeat every profile.
+readProfiles.executeOnce = true;
 readProfiles.parameters.sheetName.value = 'Doctor Profiles';
 readProfiles.parameters.options.dataLocationOnSheet.values.range = 'A1:K500';
 nodes.push(readProfiles);

@@ -143,6 +143,7 @@ queue_rows AS (
   SELECT CONCAT(cd.campaign_id, ':', cd.doctor_id) AS work_item_id,
     cd.campaign_id, c.campaign_name, cd.doctor_id, d.doctor_name, d.credentials,
     p.practice_name, COALESCE(a.article_id, '') AS article_id,
+    COALESCE(i.interview_id, '') AS interview_id,
     COALESCE(t.topic_title, 'Topic not selected') AS topic_title,
     COALESCE(a.status, i.status, cd.status) AS status,
     COALESCE(a.published_url, '') AS published_url,
@@ -425,7 +426,7 @@ function accessManagement(viewer: AccessClaims, env: AdminEnv): Record<string, u
 }
 
 // Actions the dashboard may send to the audited n8n command workflow (24).
-const ADMIN_ACTIONS = ['approve_for_doctor', 'approve_for_marketing', 'request_marketing_changes', 'mark_live_on_website', 'archive_work_item', 'restore_work_item', 'launch_campaign', 'archive_campaign', 'restore_campaign'] as const;
+const ADMIN_ACTIONS = ['approve_for_doctor', 'approve_for_marketing', 'request_marketing_changes', 'mark_live_on_website', 'archive_work_item', 'restore_work_item', 'generate_article', 'launch_campaign', 'archive_campaign', 'restore_campaign'] as const;
 
 function capabilities(viewer: AccessClaims, env: AdminEnv): Record<string, unknown> {
   const canAct = Boolean(viewer.email && actionEmails(env).includes(viewer.email) && env.ADMIN_COMMAND_SECRET && env.ADMIN_COMMAND_PATH);

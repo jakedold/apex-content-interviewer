@@ -738,3 +738,5 @@
 .admin-archive-panel p { margin: 0; color: #5f6b70; font-size: 12px; line-height: 1.5; }
 .admin-archive-panel label { display: grid; gap: 6px; color: #4d5a60; font-size: 12px; font-weight: 700; }
 .admin-archive-panel textarea { width: 100%; box-sizing: border-box; border: 1px solid #cfd9e1; border-radius: 7px; padding: 9px 11px; font: inherit; font-size: 12px; }
+
+.admin-flag-stalled { color: #8a2c0d; background: #fde4d6; }

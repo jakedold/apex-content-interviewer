@@ -73,6 +73,7 @@ type WorkItem = {
   archived?: boolean;
   archive_reason?: string | null;
   do_not_use?: boolean;
+  interview_id?: string;
 };
 
 type WorkflowEvent = {
@@ -376,10 +377,26 @@ const QUEUE_FILTERS: Array<[string, string, (item: WorkItem) => boolean]> = [
   ['sending', 'Sending to WordPress', (item) => !item.archived && queueStage(item) === 'sending'],
   ['ready', 'Ready to push', (item) => isReadyToPush(item)],
   ['errors', 'Errors', (item) => !item.archived && queueStage(item) === 'errors'],
+  ['stalled', 'Stalled', (item) => Boolean(stalledReason(item))],
   ['archived', 'Archived', (item) => Boolean(item.archived)],
   ['all', 'All', () => true],
 ];
 const QUEUE_PAGE_SIZE = 50;
+
+// An item that has sat at one step longer than expected, so it does not get stuck silently.
+function stalledReason(item: WorkItem): string {
+  if (item.archived || !item.updated_at) return '';
+  const hours = (Date.now() - new Date(item.updated_at).getTime()) / 3_600_000;
+  if (!Number.isFinite(hours)) return '';
+  const stage = queueStage(item);
+  const status = String(item.status || '').toUpperCase();
+  if (stage === 'drafting' && hours > 1) return 'no draft after 1 hour';
+  if (/(CHANGES_REQUESTED|REVISION)/.test(status) && hours > 2) return 'rewrite not finished after 2 hours';
+  if (stage === 'doctor_review' && hours > 24 * 6) return 'in doctor review over 6 days';
+  if (stage === 'marketing_review' && hours > 48) return 'waiting for marketing over 2 days';
+  if (stage === 'sending' && hours > 2) return 'not on WordPress after 2 hours';
+  return '';
+}
 
 function campaignScopedQueue(): WorkItem[] {
   const items = adminData?.overview.work_queue ?? [];
@@ -396,8 +413,9 @@ function filteredQueue(): WorkItem[] {
   });
 }
 
-type QueueStep = 'approve_for_doctor' | 'approve_for_marketing' | 'mark_live_on_website';
+type QueueStep = 'generate_article' | 'approve_for_doctor' | 'approve_for_marketing' | 'mark_live_on_website';
 const queueStepLabels: Record<QueueStep, { verb: string; done: string }> = {
+  generate_article: { verb: 'write the article draft', done: 'draft started' },
   approve_for_doctor: { verb: 'approve on the doctor’s behalf', done: 'approved for the doctor' },
   approve_for_marketing: { verb: 'approve and send to WordPress', done: 'approved and sent to WordPress' },
   mark_live_on_website: { verb: 'mark as published', done: 'marked as published' },
@@ -410,7 +428,9 @@ function canAct(action: string): boolean {
 // The next step a work item can be moved to from the queue, if the viewer is allowed to take it.
 function queueNextStep(item: WorkItem): QueueStep | null {
   let step: QueueStep | null = null;
-  if (item.archived || !item.article_id || !item.current_version) step = null;
+  if (item.archived) step = null;
+  else if (!item.article_id && item.interview_id && queueStage(item) === 'drafting') step = 'generate_article';
+  else if (!item.article_id || !item.current_version) step = null;
   else if (item.status === 'DOCTOR_REVIEW_PENDING') step = 'approve_for_doctor';
   else if (item.require_marketing_approval && /^(DOCTOR_APPROVED|DOCTOR_AUTO_APPROVED|MARKETING_REVIEW)$/.test(item.status)) step = 'approve_for_marketing';
   else if (isReadyToPush(item)) step = 'mark_live_on_website';
@@ -427,6 +447,11 @@ function autoApprovalFlag(item: { marketing_auto_approved?: boolean; doctor_auto
   return `<span class="admin-flag" title="Approved automatically because nobody responded in time. Give it extra attention before pushing live.">Auto-approved (${escapeHtml(who.join(' and '))}) · check carefully</span>`;
 }
 
+function stalledFlag(item: WorkItem): string {
+  const reason = stalledReason(item);
+  return reason ? `<span class="admin-flag admin-flag-stalled" title="This item has not moved for a while. Open it to see what it is waiting for.">Stalled: ${escapeHtml(reason)}</span>` : '';
+}
+
 function archiveFlag(item: WorkItem): string {
   if (!item.archived) return '';
   const label = item.do_not_use ? 'Do not use' : 'Archived';
@@ -441,7 +466,7 @@ function workItemRow(item: WorkItem): string {
       <td class="admin-select-cell">${canSelect(item) ? `<input type="checkbox" data-item-select="${escapeHtml(item.work_item_id)}" aria-label="Select ${escapeHtml(doctor)}" ${selectedWorkItems.has(item.work_item_id) ? 'checked' : ''} />` : ''}</td>
       <td><strong>${escapeHtml(doctor)}</strong><small>${escapeHtml(item.practice_name || 'Practice not assigned')}</small></td>
       <td><strong>${escapeHtml(item.topic_title)}</strong><small>${escapeHtml(item.campaign_name)}</small></td>
-      <td>${statusPill(isReadyToPush(item) ? 'READY_TO_PUSH' : item.status)}${archiveFlag(item)}${autoApprovalFlag(item)}${step ? `<small class="admin-next-step">Next: ${escapeHtml(queueStepLabels[step].verb)}</small>` : ''}</td>
+      <td>${statusPill(isReadyToPush(item) ? 'READY_TO_PUSH' : item.status)}${archiveFlag(item)}${stalledFlag(item)}${autoApprovalFlag(item)}${step ? `<small class="admin-next-step">Next: ${escapeHtml(queueStepLabels[step].verb)}</small>` : ''}</td>
       <td><time datetime="${escapeHtml(item.updated_at)}">${escapeHtml(formatDate(item.updated_at, true))}</time></td>
       <td><button class="admin-text-button" type="button" data-view-item="${escapeHtml(item.work_item_id)}">View</button></td>
     </tr>`;
@@ -558,7 +583,7 @@ async function submitBulkStep(event: SubmitEvent): Promise<void> {
   const targets = bulkTargets(action);
   if (!targets.length) return;
   if (!confirmed) { if (message) message.textContent = 'Tick the confirmation box first.'; return; }
-  if (action === 'next' && targets.some((item) => queueNextStep(item) !== 'mark_live_on_website') && reason.length < 12) {
+  if (action === 'next' && targets.some((item) => /^approve_for_/.test(queueNextStep(item) ?? '')) && reason.length < 12) {
     if (message) message.textContent = 'Add a reason (at least 12 characters) for the approvals.'; return;
   }
   if (action === 'do_not_use' && reason.length < 4) { if (message) message.textContent = 'Add a short reason for "Do not use".'; return; }
@@ -571,7 +596,9 @@ async function submitBulkStep(event: SubmitEvent): Promise<void> {
     if (message) message.textContent = `Working on ${done + failures.length + 1} of ${targets.length}…`;
     const step = queueNextStep(item);
     const command = action === 'next'
-      ? { action: step, article_id: item.article_id, expected_status: item.status, expected_version: item.current_version }
+      ? step === 'generate_article'
+        ? { action: step, interview_id: item.interview_id }
+        : { action: step, article_id: item.article_id, expected_status: item.status, expected_version: item.current_version }
       : { action: action === 'restore' ? 'restore_work_item' : 'archive_work_item', do_not_use: action === 'do_not_use' };
     try {
       await postAdminCommand({ ...command, campaign_id: item.campaign_id, doctor_id: item.doctor_id, reason });
@@ -1465,7 +1492,8 @@ function stageVisual(detail: WorkItemDetail): string {
 }
 
 type NextStepAction = {
-  action: 'approve_for_doctor' | 'approve_for_marketing' | 'mark_live_on_website';
+  action: 'generate_article' | 'approve_for_doctor' | 'approve_for_marketing' | 'mark_live_on_website';
+  reasonRequired?: boolean;
   title: string;
   description: string;
   reasonLabel: string;
@@ -1528,8 +1556,18 @@ function nextStepAction(detail: WorkItemDetail, enabledActions: string[]): { act
       success: 'Approval recorded. The article is moving to marketing review.',
     });
   }
-  if (m.interviewCompleted && !m.articleDrafted) {
-    return { action: null, message: 'The article is drafted automatically after the interview, usually within a few minutes. There is nothing to approve yet. If no draft appears within an hour, the drafting step may have stopped; ask Jake to check the article generation workflow.' };
+  if (m.interviewCompleted && !m.articleDrafted && item.interview_id) {
+    return offer({
+      action: 'generate_article',
+      title: 'Write the article draft now',
+      description: 'The draft is normally written automatically within a few minutes of the interview. If that attempt failed, nothing retries it, so use this to start it again. It checks first that a draft can be written (transcript long enough, practice set up for WordPress) and tells you if not. Writing the draft takes several minutes; refresh the dashboard afterward.',
+      reasonLabel: 'Note (optional)',
+      reasonPlaceholder: 'Retrying the draft for this interview…',
+      confirmation: 'I confirm the article draft should be written for this interview.',
+      button: 'Write the draft now',
+      pending: 'Checking and starting the draft…',
+      success: 'Draft started. It usually takes a few minutes; refresh the dashboard to see it.',
+    });
   }
   if (!m.interviewCompleted) {
     return { action: null, message: 'Waiting for the doctor to complete the interview. There is nothing to approve yet.' };
@@ -1633,7 +1671,7 @@ function nextStepPanel(detail: WorkItemDetail, enabledActions: string[]): string
       <strong>Push to the next step: ${escapeHtml(action.title)}</strong>
       <p>${escapeHtml(action.description)}</p>
       <form id="admin-next-step-form" data-action="${escapeHtml(action.action)}">
-        <label>${escapeHtml(action.reasonLabel)}<textarea name="reason" ${action.action === 'mark_live_on_website' ? '' : 'required minlength="12"'} rows="3" placeholder="${escapeHtml(action.reasonPlaceholder)}"></textarea></label>
+        <label>${escapeHtml(action.reasonLabel)}<textarea name="reason" ${/^approve_for_/.test(action.action) ? 'required minlength="12"' : ''} rows="3" placeholder="${escapeHtml(action.reasonPlaceholder)}"></textarea></label>
         <label class="admin-confirm-check"><input name="confirmation" type="checkbox" required /> ${escapeHtml(action.confirmation)}</label>
         <button class="admin-primary-button" type="submit">${escapeHtml(action.button)}</button>
         <p class="admin-form-message" id="next-step-form-message" role="status"></p>
@@ -1834,8 +1872,10 @@ async function submitNextStep(event: SubmitEvent, detail: WorkItemDetail, enable
   if (submit) submit.disabled = true;
   if (message) message.textContent = action.pending;
   try {
-    await postAdminCommand({ action: action.action, article_id: item.article_id, campaign_id: item.campaign_id, doctor_id: item.doctor_id,
-      expected_status: item.article_status, expected_version: item.current_version, reason: String(data.get('reason') ?? '').trim() });
+    await postAdminCommand(action.action === 'generate_article'
+      ? { action: action.action, interview_id: item.interview_id, campaign_id: item.campaign_id, doctor_id: item.doctor_id, reason: String(data.get('reason') ?? '').trim() }
+      : { action: action.action, article_id: item.article_id, campaign_id: item.campaign_id, doctor_id: item.doctor_id,
+        expected_status: item.article_status, expected_version: item.current_version, reason: String(data.get('reason') ?? '').trim() });
     if (message) message.textContent = action.success;
     await initializeAdmin();
   } catch (error) {

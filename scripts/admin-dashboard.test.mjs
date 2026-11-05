@@ -138,7 +138,7 @@ test('"Push to the next step" offers the manual step for each stage through the 
   assert.match(client, /action: 'mark_live_on_website'/);
   assert.match(client, /Approve and send to WordPress/);
   assert.match(client, /button: 'Mark as published'/);
-  assert.match(client, /postAdminCommand\(\{ action: action\.action/);
+  assert.match(client, /: \{ action: action\.action, article_id: item\.article_id, campaign_id: item\.campaign_id/);
   for (const action of ['approve_for_doctor', 'approve_for_marketing', 'mark_live_on_website']) {
     assert.match(admin, new RegExp("ADMIN_ACTIONS = \\[[^\\]]*'" + action + "'"));
   }
@@ -174,7 +174,7 @@ test('router records "live on website" only for an article on WordPress, once, w
 test('several articles can be moved to their next step at once, one audited command each', () => {
   assert.match(client, /\['ready', 'Ready to push'/);
   assert.match(client, /function queueNextStep\(item: WorkItem\): QueueStep \| null/);
-  assert.match(client, /item\.archived \|\| !item\.article_id/);
+  assert.match(client, /if \(item\.archived\) step = null;/);
   assert.match(client, /item\.status === 'DOCTOR_REVIEW_PENDING'\) step = 'approve_for_doctor'/);
   assert.match(client, /\(DOCTOR_APPROVED\|DOCTOR_AUTO_APPROVED\|MARKETING_REVIEW\)\$\/\.test\(item\.status\)\) step = 'approve_for_marketing'/);
   assert.match(client, /isReadyToPush\(item\)\) step = 'mark_live_on_website'/);
@@ -242,7 +242,7 @@ test('marketing reviews nobody answers are auto-approved after 24 hours, within 
 test('the work queue has a filter for every stage, defaults to active items, and pages long lists', () => {
   const filters = client.match(/const QUEUE_FILTERS[\s\S]*?\n\];/)[0];
   const keys = [...filters.matchAll(/\['([a-z_]+)', '([^']+)'/g)].map((match) => match[2]);
-  assert.deepEqual(keys, ['Active', 'Invited', 'Interview started', 'Drafting', 'Doctor review', 'Marketing review', 'Sending to WordPress', 'Ready to push', 'Errors', 'Archived', 'All']);
+  assert.deepEqual(keys, ['Active', 'Invited', 'Interview started', 'Drafting', 'Doctor review', 'Marketing review', 'Sending to WordPress', 'Ready to push', 'Errors', 'Stalled', 'Archived', 'All']);
   assert.match(client, /let queueFilter = 'active';/);
   assert.match(filters, /\['active', 'Active', \(item\) => !item\.archived\]/);
   assert.match(client, /const QUEUE_PAGE_SIZE = 50;/);
@@ -301,4 +301,33 @@ test('the internal marketing review email uses the branded "simple letter" desig
   assert.throws(() => run({ review_url: 'javascript:alert(1)' }), /malformed/);
   assert.ok(fs.existsSync(new URL('../public/brand/email-mark.png', import.meta.url)));
   assert.ok(fs.existsSync(new URL('../public/brand/email-logo.png', import.meta.url)));
+});
+
+test('a completed interview with no draft can have its draft written from the dashboard, after eligibility checks', () => {
+  assert.match(admin, /ADMIN_ACTIONS = \[[^\]]*'generate_article'/);
+  assert.match(admin, /COALESCE\(i\.interview_id, ''\) AS interview_id/);
+  assert.match(client, /action: 'generate_article',/);
+  assert.match(client, /Write the draft now/);
+  assert.match(client, /queueStage\(item\) === 'drafting'\) step = 'generate_article'/);
+  const source = router.nodes.find((node) => node.name === 'Validate and Normalize Command').parameters.jsCode;
+  const run = (body) => new Function('$json', source)({ body: { actor_email: 'admin@apexdp.com', idempotency_key: 'abcdefghijklmnop1234', action: 'generate_article', campaign_id: 'campaign_1', doctor_id: 'doctor_1', ...body } });
+  assert.equal(run({ interview_id: 'interview_1' })[0].json.interview_id, 'interview_1');
+  assert.throws(() => run({}), /Missing interview_id/);
+  const rules = router.nodes.find((node) => node.name === 'Route Narrow Command').parameters.rules.values;
+  const index = rules.findIndex((rule) => rule.conditions.conditions[0].rightValue === 'generate_article');
+  assert.equal(router.connections['Route Narrow Command'].main[index][0].node, 'Check and Record Draft Request');
+  const query = router.nodes.find((node) => node.name === 'Check and Record Draft Request').parameters.sqlQuery;
+  for (const message of ['already has an article draft', 'under 100 words', 'preview-only campaign', 'not fully set up for WordPress publishing']) assert.ok(query.includes(message), message);
+  assert.match(query, /REGEXP_EXTRACT_ALL\(TRIM\(transcript\), r'\\S\+'\)\) >= 100/);
+  const start = router.nodes.find((node) => node.name === 'Start Article Draft');
+  assert.equal(start.parameters.workflowId.cachedResultName, 'AAC - 06 - Generate Article');
+  assert.equal(start.parameters.workflowInputs.value.interview_id, '={{ $json.interview_id }}');
+  assert.equal(start.parameters.options.waitForSubWorkflow, false);
+});
+
+test('items that sit too long at one step are flagged as stalled and get their own filter', () => {
+  const stalled = client.match(/function stalledReason[\s\S]*?\n}\n/)[0];
+  for (const reason of ['no draft after 1 hour', 'rewrite not finished after 2 hours', 'in doctor review over 6 days', 'waiting for marketing over 2 days', 'not on WordPress after 2 hours']) assert.ok(stalled.includes(reason), reason);
+  assert.match(client, /\['stalled', 'Stalled', \(item\) => Boolean\(stalledReason\(item\)\)\]/);
+  assert.match(client, /\$\{stalledFlag\(item\)\}/);
 });

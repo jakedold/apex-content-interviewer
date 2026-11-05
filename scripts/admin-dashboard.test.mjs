@@ -347,3 +347,12 @@ test('the router answers the dashboard before starting a long-running draft or r
   }
   assert.match(router.nodes.find((node) => node.name === 'Return Draft Request Result').parameters.responseBody, /interview_id: \$json\.interview_id/);
 });
+
+test('router SQL never escapes apostrophes by doubling them (BigQuery rejects that syntax)', () => {
+  for (const file of ['n8n/24-admin-command-router.json', 'n8n/21-auto-approve-expired-marketing-reviews.json', 'n8n/18-send-marketing-review-invitation.json']) {
+    for (const node of JSON.parse(read(file)).nodes) {
+      const query = node.parameters?.sqlQuery;
+      if (query) assert.doesNotMatch(query, /[A-Za-z]''[A-Za-z]/, `${file}: ${node.name}`);
+    }
+  }
+});

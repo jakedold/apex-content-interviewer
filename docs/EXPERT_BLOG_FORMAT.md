@@ -30,7 +30,7 @@ The generation and revision prompts in `prompts/` require:
 - exactly 4 FAQs at the end, wrapped in `<section class="aac-article-faq">` with `<h3>` questions and `<p>` answers, FAQ 1 being the most important question answered in 2 to 4 sentences;
 - the practice name field in the opening and the closing call to action, and `[hh_short name="practice_city_and_state"]` once where natural; no website fields in the H1.
 
-Articles written before this format that have an "FAQ" or "Frequently Asked Questions" H2 followed by H3 questions are formatted the same way.
+Articles written before this format are formatted the same way when they have an "FAQ" or "Frequently Asked Questions" H2 followed by H3 questions or by collapsible `<details><summary>` questions. Re-sending such an article from the dashboard applies this layout without changing its approved wording.
 
 ## Automated local SEO review
 

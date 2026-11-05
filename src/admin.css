@@ -720,3 +720,21 @@
 .admin-change-form > strong { color: #064c78; }
 .admin-change-form p { margin: 0; }
 .admin-secondary-button { justify-self: start; border: 1px solid #064c78 !important; border-radius: 6px; padding: 10px 14px; color: #064c78 !important; background: #ffffff !important; font-weight: 700; cursor: pointer; }
+
+.admin-queue-toolbar { flex-wrap: wrap; gap: 14px; }
+.admin-queue-toolbar .admin-filter-group { flex-wrap: wrap; }
+.admin-queue-scope { display: flex; flex-wrap: wrap; gap: 10px; margin-left: auto; }
+.admin-select select { height: 100%; min-height: 38px; border: 1px solid #cfd9e1; border-radius: 7px; padding: 8px 10px; color: #30302f; background: #ffffff; font: inherit; font-size: 13px; }
+.admin-bulk-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.admin-bulk-actions .admin-primary-button { width: auto; }
+.admin-bulk-help { flex-basis: 100%; margin: 0; color: #5f6b70; font-size: 11.5px; }
+.admin-flag-muted { color: #4d5a60; background: #e7ecef; }
+.admin-table tr.is-archived td { color: #8b959a; background: #fafbfc; }
+.admin-queue-pager { display: flex; align-items: center; justify-content: flex-end; gap: 14px; padding: 14px 26px; color: #5f6b70; font-size: 12px; }
+.admin-queue-pager[hidden] { display: none; }
+.admin-queue-pager button:disabled { color: #b8c1c6; cursor: default; }
+.admin-archive-panel { display: grid; gap: 10px; margin-top: 18px; padding: 16px 18px; border: 1px solid #dde4e8; border-radius: 8px; background: #fafbfc; }
+.admin-archive-panel > strong { color: #4d5a60; }
+.admin-archive-panel p { margin: 0; color: #5f6b70; font-size: 12px; line-height: 1.5; }
+.admin-archive-panel label { display: grid; gap: 6px; color: #4d5a60; font-size: 12px; font-weight: 700; }
+.admin-archive-panel textarea { width: 100%; box-sizing: border-box; border: 1px solid #cfd9e1; border-radius: 7px; padding: 9px 11px; font: inherit; font-size: 12px; }

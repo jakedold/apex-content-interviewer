@@ -192,3 +192,10 @@ boundary.
 - **Work queue multi-select:** tick articles and use **Move selected to next step**. Each article gets the step shown under its status, sent as its own audited command. The **Ready to push** filter lists articles on WordPress waiting for the team to push them live through Headless Hostman.
 - **Marketing auto-approval (workflow 21):** a marketing review nobody answers within 24 hours is approved automatically and sent to WordPress. Only reviews requested in the last 7 days are included, at most 25 per run. Auto-approved articles (doctor or marketing) are flagged "Auto-approved · check carefully" in the queue and in the article view, so the team gives them extra attention before pushing live.
 - Actions handled by workflow 24 (`mark_live_on_website`, `request_marketing_changes`) and the marketing auto-approval (workflow 21) only work after the updated workflows are imported and activated in n8n.
+
+## Work queue views, archive, and "Do not use"
+
+- **Filters:** Active (default: everything not archived), Invited, Interview started, Drafting, Doctor review, Marketing review, Sending to WordPress, Ready to push, Errors, Archived, All. Every status maps to exactly one stage, and counts follow the campaign picker.
+- **Large campaigns:** a campaign picker, search, and 50 items per page. The overview returns up to 1,500 work items.
+- **Archive** hides a work item (campaign + doctor) from active views, for example a test; automation continues. **Do not use** also moves the article to `DO_NOT_USE` and expires open review links, so no workflow (reminders, auto-approval, WordPress) acts on it. It is then archived. **Restore** undoes either, returning a "Do not use" article to its previous status.
+- Archive state is recorded as `work_item.archived` / `work_item.restored` events (entity type `work_item`, id `campaign_id:doctor_id`) by the `archive_work_item` / `restore_work_item` branch of workflow 24, so it works only after that workflow is imported in n8n.

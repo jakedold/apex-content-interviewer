@@ -236,7 +236,7 @@ test('marketing reviews nobody answers are auto-approved after 24 hours, within 
   assert.deepEqual(workflow.connections['Auto-Approve Expired Marketing Reviews'].main[0].map((c) => c.node), ['Send Auto-Approved Article to WordPress']);
   assert.ok(workflow.nodes.every((node) => !node.credentials));
   const invitation = JSON.parse(read('n8n/18-send-marketing-review-invitation.json'));
-  assert.match(invitation.nodes.find((node) => node.name === 'Prepare Marketing Review Email').parameters.jsCode, /within 24 hours, the article is approved automatically/);
+  assert.match(invitation.nodes.find((node) => node.name === 'Prepare Marketing Review Email').parameters.jsCode, /the article is approved automatically and sent to WordPress \(not the live site\)/);
 });
 
 test('the work queue has a filter for every stage, defaults to active items, and pages long lists', () => {
@@ -275,4 +275,30 @@ test('work items can be archived, marked "Do not use", and restored through the 
   assert.match(query, /SET status = \(SELECT prior_status FROM target\)\s+WHERE @archive = 'false'/);
   assert.match(query, /'work_item\.archived', 'work_item\.restored'/);
   assert.match(query, /marketing_review_links` SET status = 'EXPIRED'/);
+});
+
+test('the internal marketing review email uses the branded "simple letter" design with doctor, practice, and auto-approval time', () => {
+  const workflow = JSON.parse(read('n8n/18-send-marketing-review-invitation.json'));
+  const node = (name) => workflow.nodes.find((entry) => entry.name === name);
+  const query = node('Prepare Fresh Marketing Review Link').parameters.sqlQuery;
+  assert.match(query, /p\.practice_name/);
+  assert.match(query, /TIMESTAMP_ADD\(COALESCE\(requested_at, CURRENT_TIMESTAMP\(\)\), INTERVAL 24 HOUR\) AS auto_approve_at/);
+  const gmail = node('Email Marketing Reviewer').parameters;
+  assert.equal(gmail.emailType, 'html');
+  assert.equal(gmail.message, '={{ $json.message_html }}');
+  const run = (extra = {}) => new Function('$json', node('Prepare Marketing Review Email').parameters.jsCode)({
+    article_id: 'a1', campaign_id: 'c1', doctor_email: 'x@apexdp.com', current_version: 2, article_title: 'Gums & <Teeth>',
+    doctor_name: 'Dr. Test', credentials: 'DDS', practice_name: 'Test Dental', auto_approve_at: '2026-11-06T21:15:00Z',
+    review_url: 'https://apex-content-interviewer.jdold.workers.dev/marketing-review/abc123', ...extra }).json;
+  const email = run();
+  assert.equal(email.recipient, 'ndorsey@apexdp.com');
+  assert.match(email.message_html, /Gums &amp; &lt;Teeth&gt;/);
+  assert.match(email.message_html, /Dr\. Test, DDS · Test Dental/);
+  assert.match(email.message_html, /href="https:\/\/apex-content-interviewer\.jdold\.workers\.dev\/marketing-review\/abc123"/);
+  assert.match(email.message_html, /Friday, November 6 at 3:15 PM CT/);
+  assert.match(email.message_html, /\/brand\/email-mark\.png/);
+  assert.match(email.message_html, /PRIVATE PRACTICE REIMAGINED/);
+  assert.throws(() => run({ review_url: 'javascript:alert(1)' }), /malformed/);
+  assert.ok(fs.existsSync(new URL('../public/brand/email-mark.png', import.meta.url)));
+  assert.ok(fs.existsSync(new URL('../public/brand/email-logo.png', import.meta.url)));
 });

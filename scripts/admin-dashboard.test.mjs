@@ -367,3 +367,10 @@ test('the census sync also applies Doctor Profiles to doctors outside the census
   assert.match(query, /PARTITION BY LOWER\(TRIM\(JSON_VALUE\(profile, '\$\.email'\)\)\)/);
   assert.doesNotMatch(query, /[A-Za-z]''[A-Za-z]/);
 });
+
+test('every database step in the admin router retries a brief BigQuery conflict', () => {
+  for (const node of router.nodes.filter((entry) => entry.type.endsWith('googleBigQuery'))) {
+    assert.equal(node.retryOnFail, true, node.name);
+    assert.ok(node.maxTries >= 3, node.name);
+  }
+});

@@ -347,7 +347,10 @@
       "position": [
         224,
         304
-      ]
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
     },
     {
       "parameters": {
@@ -465,7 +468,10 @@
       "position": [
         224,
         592
-      ]
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
     },
     {
       "parameters": {
@@ -570,7 +576,8 @@
       ],
       "retryOnFail": true,
       "maxTries": 5,
-      "onError": "continueErrorOutput"
+      "onError": "continueErrorOutput",
+      "waitBetweenTries": 3000
     },
     {
       "parameters": {
@@ -699,7 +706,10 @@
       "position": [
         240,
         736
-      ]
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
     },
     {
       "parameters": {
@@ -763,7 +773,10 @@
       "position": [
         224,
         1024
-      ]
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
     },
     {
       "parameters": {
@@ -835,7 +848,10 @@
       "position": [
         224,
         1264
-      ]
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
     },
     {
       "parameters": {
@@ -940,7 +956,10 @@
       "position": [
         224,
         1504
-      ]
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
     },
     {
       "parameters": {
@@ -1004,7 +1023,10 @@
       "position": [
         224,
         1744
-      ]
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
     },
     {
       "parameters": {

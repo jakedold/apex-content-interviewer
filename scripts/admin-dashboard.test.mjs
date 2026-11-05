@@ -356,3 +356,14 @@ test('router SQL never escapes apostrophes by doubling them (BigQuery rejects th
     }
   }
 });
+
+test('the census sync also applies Doctor Profiles to doctors outside the census, such as test users', () => {
+  const sync = JSON.parse(read('n8n/25-sync-doctor-census.json'));
+  const prepare = sync.nodes.find((node) => node.name === 'Prepare Current Census Roster').parameters.jsCode;
+  assert.match(prepare, /profiles: \[\.\.\.profilesByKey\.entries\(\)\]/);
+  const query = sync.nodes.find((node) => node.name === 'Sync Census to BigQuery').parameters.sqlQuery;
+  assert.match(query, /JSON_QUERY_ARRAY\(roster, '\$\.profiles'\)/);
+  assert.match(query, /WHERE LOWER\(TRIM\(T\.email\)\) = P\.email\s+AND NOT EXISTS \(SELECT 1 FROM source_doctors S WHERE S\.doctor_id = T\.doctor_id\)/);
+  assert.match(query, /PARTITION BY LOWER\(TRIM\(JSON_VALUE\(profile, '\$\.email'\)\)\)/);
+  assert.doesNotMatch(query, /[A-Za-z]''[A-Za-z]/);
+});

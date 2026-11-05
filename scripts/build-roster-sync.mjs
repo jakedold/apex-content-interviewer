@@ -94,6 +94,12 @@ const normalized = {
     doctor_id: 'doctor_census_' + doctor.email.replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''),
     practice_id: 'practice_' + doctor.location_code.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''),
   })),
+  // Every active Doctor Profiles row, so test users and other doctors outside the census also get their profile.
+  profiles: [...profilesByKey.entries()].map(([key, profile]) => ({
+    email: key.split('::')[0],
+    location_code: key.split('::')[1] || '',
+    ...profile,
+  })),
 };
 return [{ json: {
   roster_json: JSON.stringify(normalized),
@@ -202,6 +208,33 @@ VALUES
 UPDATE \`apex-marketing-n8n.automated_article_creation.doctors\` T
 SET active = FALSE, updated_at = CURRENT_TIMESTAMP()
 WHERE STARTS_WITH(T.doctor_id, 'doctor_census_')
+  AND NOT EXISTS (SELECT 1 FROM source_doctors S WHERE S.doctor_id = T.doctor_id);
+
+-- Doctors outside the census (test users such as TEST-1 identities) get their Doctor Profiles row too, matched by
+-- work email. Article drafting needs the name, credentials, and bio for the byline and bio card.
+UPDATE \`apex-marketing-n8n.automated_article_creation.doctors\` T
+SET
+  credentials = COALESCE(P.credentials, T.credentials),
+  author_name = COALESCE(P.author_name, T.author_name),
+  author_bio = COALESCE(P.author_bio, T.author_bio),
+  profile_url = COALESCE(P.profile_url, T.profile_url),
+  photo_source_url = COALESCE(P.photo_source_url, T.photo_source_url),
+  profile_verified_at = COALESCE(P.profile_verified_at, T.profile_verified_at),
+  updated_at = CURRENT_TIMESTAMP()
+FROM (
+  SELECT
+    LOWER(TRIM(JSON_VALUE(profile, '$.email'))) AS email,
+    NULLIF(TRIM(JSON_VALUE(profile, '$.credentials')), '') AS credentials,
+    NULLIF(TRIM(JSON_VALUE(profile, '$.author_name')), '') AS author_name,
+    NULLIF(TRIM(JSON_VALUE(profile, '$.author_bio')), '') AS author_bio,
+    NULLIF(TRIM(JSON_VALUE(profile, '$.profile_url')), '') AS profile_url,
+    NULLIF(TRIM(JSON_VALUE(profile, '$.photo_source_url')), '') AS photo_source_url,
+    SAFE_CAST(NULLIF(TRIM(JSON_VALUE(profile, '$.profile_verified_at')), '') AS DATE) AS profile_verified_at
+  FROM UNNEST(COALESCE(JSON_QUERY_ARRAY(roster, '$.profiles'), [])) profile
+  WHERE NULLIF(TRIM(JSON_VALUE(profile, '$.email')), '') IS NOT NULL
+  QUALIFY ROW_NUMBER() OVER (PARTITION BY LOWER(TRIM(JSON_VALUE(profile, '$.email'))) ORDER BY JSON_VALUE(profile, '$.location_code')) = 1
+) P
+WHERE LOWER(TRIM(T.email)) = P.email
   AND NOT EXISTS (SELECT 1 FROM source_doctors S WHERE S.doctor_id = T.doctor_id);
 
 INSERT INTO \`apex-marketing-n8n.automated_article_creation.workflow_events\`

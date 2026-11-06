@@ -208,6 +208,12 @@ boundary.
   - Colleagues who have not done theirs are told once that there is nothing they need to do, and their interview reminders stop.
   - Held interviews appear under **On hold**. **Write the draft anyway** drafts one on purpose, for example for a mid-month or later article.
   - The shared test practice is exempt.
+- **Pre-launch checks:** before a campaign launches, the builder (through `/api/admin/campaign-checks`) checks:
+  - that each featured image link opens as an image;
+  - that each WordPress slug is not already used by an earlier campaign or a published article;
+  - that no page already exists at `<practice website>/resources/blog/<slug>/` for any selected practice.
+
+  Any problem is listed; clicking launch again launches anyway.
 - **Work queue multi-select:** tick articles and use **Move selected to next step**. Each article gets the step shown under its status, sent as its own audited command. The **Ready to push** filter lists articles on WordPress waiting for the team to push them live through Headless Hostman.
 - **Marketing auto-approval (workflow 21):** a marketing review nobody answers within 24 hours is approved automatically and sent to WordPress. Only reviews requested in the last 7 days are included, at most 25 per run. Auto-approved articles (doctor or marketing) are flagged "Auto-approved · check carefully" in the queue and in the article view, so the team gives them extra attention before pushing live.
 - Actions handled by workflow 24 (`mark_live_on_website`, `request_marketing_changes`) and the marketing auto-approval (workflow 21) only work after the updated workflows are imported and activated in n8n.

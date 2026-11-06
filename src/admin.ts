@@ -2135,6 +2135,27 @@ async function submitCampaign(event: SubmitEvent): Promise<void> {
     const chosenSlugs = topics.map((topic) => topic.wordpress_slug).filter(Boolean);
     if (!sharedTheme && new Set(chosenSlugs).size !== chosenSlugs.length) throw new Error('Each topic needs a different WordPress URL slug.');
 
+    // Pre-launch checks: image links open as images, and slugs are not already in use (earlier campaigns, published
+    // articles, or a live page on a selected practice's site). Warnings need a second click to launch anyway.
+    const checksKey = JSON.stringify({ topics: topics.map((topic) => [topic.featured_image_source_url, topic.wordpress_slug]), doctorIds });
+    if (form.dataset.checkedLaunch !== checksKey) {
+      if (message) message.textContent = 'Checking image links and slugs (this can take up to a minute)…';
+      let warnings: string[] = [];
+      try {
+        const response = await fetch('/api/admin/campaign-checks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ topics, doctor_ids: doctorIds }) });
+        const result = await response.json() as { warnings?: string[]; message?: string };
+        warnings = response.ok ? (result.warnings ?? []) : [`The pre-launch checks could not run (${result.message ?? response.status}).`];
+      } catch {
+        warnings = ['The pre-launch checks could not run.'];
+      }
+      if (warnings.length) {
+        form.dataset.checkedLaunch = checksKey;
+        if (message) message.innerHTML = `<strong>Please review before launching:</strong><ul>${warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join('')}</ul>Fix these and launch again, or click the launch button once more to launch anyway.`;
+        if (submit) submit.disabled = false;
+        return;
+      }
+    }
+
     const result = await postAdminCommand({
       action: 'launch_campaign',
       audience,

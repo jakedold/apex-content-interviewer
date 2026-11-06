@@ -607,3 +607,17 @@ test('one article per practice per campaign: a later doctor\'s interview is held
   assert.match(client, /title: 'Write the draft anyway'/);
   assert.match(client, /if \(status === 'ON_HOLD_PRACTICE_COVERED'\) return 'on_hold';/);
 });
+
+test('before launch, the campaign builder checks image links and slugs and asks before launching anyway', () => {
+  assert.match(worker, /url\.pathname === '\/api\/admin\/campaign-checks'/);
+  assert.match(admin, /export async function handleAdminCampaignChecks/);
+  assert.match(admin, /did not open as an image/);
+  assert.match(admin, /was already used by an earlier campaign/);
+  assert.match(admin, /\/resources\/blog\/\$\{slug\}\//);
+  assert.match(admin, /finalPath\.endsWith\(`\/resources\/blog\/\$\{page\.slug\}`\)/, 'a redirect to the blog list is not a match');
+  assert.match(admin, /could not be checked for an existing page/);
+  assert.match(admin, /!actionEmails\(adminEnv\)\.includes\(viewer\.email\)\) return Response\.json\(\{ error: 'FORBIDDEN'/);
+  assert.match(client, /fetch\('\/api\/admin\/campaign-checks'/);
+  assert.match(client, /click the launch button once more to launch anyway/);
+  assert.match(client, /form\.dataset\.checkedLaunch !== checksKey/);
+});

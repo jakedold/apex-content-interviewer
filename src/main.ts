@@ -1,5 +1,6 @@
 import './style.css';
 import { renderVoicePrompt } from './voicePrompt';
+import { labelShortcodesInDom, SHORTCODE_NOTE } from './shortcodes';
 import {
   RealtimeAgent,
   RealtimeSession,
@@ -162,6 +163,9 @@ function sanitizeArticleHtml(html: string): string {
   while (walker.nextNode()) comments.push(walker.currentNode as Comment);
   for (const comment of comments) comment.remove();
 
+  // Show website fields such as [sc name="practice_name"][/sc] as readable labels.
+  labelShortcodesInDom(document.body, document);
+
   return document.body.innerHTML;
 }
 
@@ -218,7 +222,7 @@ function renderReview(context: ReviewContext, token: string, kind: ReviewKind): 
             : 'Confirm that the final article is ready to publish, or request the specific changes needed before publication.'}</p>`
           : `<p class="review-deadline">Please respond by <strong>${escapeHtml(formatDeadline(context.doctor_review_deadline))}</strong>. If we do not hear from you, the article will automatically move forward as approved.</p>`}
       </header>
-      <article class="article-preview">${articleHtml}</article>
+      <article class="article-preview">${articleHtml.includes('class="shortcode-field"') ? `<p class="shortcode-note">${escapeHtml(SHORTCODE_NOTE)}</p>` : ''}${articleHtml}</article>
       <section class="review-actions" aria-labelledby="review-actions-heading">
         ${marketingAlreadyApproved ? `
         <div>

@@ -1,4 +1,5 @@
 import './admin.css';
+import { labelShortcodesInHtml } from './shortcodes';
 
 type Campaign = {
   campaign_id: string;
@@ -1886,7 +1887,8 @@ function renderWorkItemDetail(response: WorkItemDetailResponse): void {
     ${archivePanel(detail, response.capabilities.enabledActions)}`;
 
   const iframe = content.querySelector<HTMLIFrameElement>('.admin-article-preview');
-  if (iframe && article.articleHtml) iframe.srcdoc = article.articleHtml;
+  // Website fields show as readable labels in the preview, as on the review pages.
+  if (iframe && article.articleHtml) iframe.srcdoc = labelShortcodesInHtml(article.articleHtml);
   for (const tab of content.querySelectorAll<HTMLButtonElement>('[data-detail-tab]')) {
     tab.addEventListener('click', () => {
       content.querySelectorAll('[data-detail-tab]').forEach((candidate) => candidate.classList.toggle('is-active', candidate === tab));

@@ -516,3 +516,16 @@ test('campaign invitations without an interview deadline do not expire', () => {
   assert.match(node('Compose three-topic invitation').parameters.jsCode, /These links do not expire/);
   assert.equal(dispatch.active, true, 'the export keeps the scheduled workflow active');
 });
+
+test('review pages and the dashboard preview show website fields as readable labels', () => {
+  const module = read('src/shortcodes.ts');
+  const pattern = new RegExp(module.match(/SHORTCODE_PATTERN = \/(.+)\/gi;/)[1], 'gi');
+  const sample = 'At [sc name="practice_name"][/sc] in [hh_short name="practice_city_and_state"], call [sc name="practice_phone_number"][/sc].';
+  assert.deepEqual([...sample.matchAll(pattern)].map((match) => match[1]), ['practice_name', 'practice_city_and_state', 'practice_phone_number']);
+  assert.equal(sample.replace(pattern, ''), 'At  in , call .', 'each whole field, including its closing [/sc], is replaced');
+  for (const label of ["practice_name: 'Practice name'", "practice_city_and_state: 'City, State'", "practice_phone_number: 'Phone number'"]) assert.ok(module.includes(label), label);
+  const main = read('src/main.ts');
+  assert.match(main, /labelShortcodesInDom\(document\.body, document\);\n\n  return document\.body\.innerHTML;/);
+  assert.match(main, /class="shortcode-note"/);
+  assert.match(client, /iframe\.srcdoc = labelShortcodesInHtml\(article\.articleHtml\)/);
+});

@@ -374,9 +374,10 @@ function isReadyToPush(item: WorkItem): boolean {
 
 type QueueStage = 'invited' | 'interview' | 'drafting' | 'too_short' | 'doctor_review' | 'marketing_review' | 'sending' | 'ready_to_push' | 'published' | 'errors';
 
-// A completed interview without an article that is under the 100-word minimum for writing one (for example, it got
-// cut off). It cannot move forward; the next step is to resend the interview link.
-const MIN_INTERVIEW_WORDS = 100;
+// A completed interview without an article that is under the 300-word minimum for writing one (a full 8 to 10
+// minute interview is usually 1,000 words or more; under 300 means it got cut off). It cannot move forward; the next
+// step is to resend the interview link.
+const MIN_INTERVIEW_WORDS = 300;
 function isTooShort(item: { article_id?: string | null; interview_id?: string | null; transcript_words?: number | null; status?: string | null }): boolean {
   return !item.article_id && Boolean(item.interview_id) && typeof item.transcript_words === 'number'
     && item.transcript_words < MIN_INTERVIEW_WORDS && /COMPLETED|FAILED/.test(String(item.status || '').toUpperCase());

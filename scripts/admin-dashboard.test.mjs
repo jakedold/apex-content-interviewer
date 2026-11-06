@@ -321,8 +321,8 @@ test('a completed interview with no draft can have its draft written from the da
   const index = rules.findIndex((rule) => rule.conditions.conditions[0].rightValue === 'generate_article');
   assert.equal(router.connections['Route Narrow Command'].main[index][0].node, 'Check and Record Draft Request');
   const query = router.nodes.find((node) => node.name === 'Check and Record Draft Request').parameters.sqlQuery;
-  for (const message of ['already has an article draft', 'under 100 words', 'preview-only campaign', 'not fully set up for WordPress publishing', 'doctor profile is incomplete', 'Doctor Profiles tab']) assert.ok(query.includes(message), message);
-  assert.match(query, /REGEXP_EXTRACT_ALL\(TRIM\(transcript\), r'\\S\+'\)\) >= 100/);
+  for (const message of ['already has an article draft', 'under 300 words', 'preview-only campaign', 'not fully set up for WordPress publishing', 'doctor profile is incomplete', 'Doctor Profiles tab']) assert.ok(query.includes(message), message);
+  assert.match(query, /REGEXP_EXTRACT_ALL\(TRIM\(transcript\), r'\\S\+'\)\) >= 300/);
   const start = router.nodes.find((node) => node.name === 'Start Article Draft');
   assert.equal(start.parameters.workflowId.cachedResultName, 'AAC - 06 - Generate Article');
   assert.equal(start.parameters.workflowInputs.value.interview_id, '={{ $json.interview_id }}');
@@ -539,7 +539,7 @@ test('the dashboard shows rows the latest doctor sync skipped, so they can be fi
 
 test('a cut-off interview is flagged "too short", cannot be drafted, and the resend email can carry a note to the doctor', () => {
   assert.match(admin, /ARRAY_LENGTH\(REGEXP_EXTRACT_ALL\(TRIM\(COALESCE\(i\.transcript, ''\)\), r'\\S\+'\)\)\) AS transcript_words/);
-  assert.match(client, /const MIN_INTERVIEW_WORDS = 100;/);
+  assert.match(client, /const MIN_INTERVIEW_WORDS = 300;/);
   assert.match(client, /if \(isTooShort\(item\)\) return 'too_short';/);
   assert.match(client, /Too short to write an article: resend the interview link/);
   assert.match(client, /if \(detailTooShort\(detail\)\) \{\n    return \{ action: null/, 'no "Write the draft now" for a too-short interview');
@@ -563,6 +563,8 @@ test('marking an article published emails the doctor a link to the live article,
   const compose = router.nodes.find((node) => node.name === 'Compose Article Live Email').parameters.jsCode;
   const email = new Function('$json', compose)({ doctor_id: 'd1', article_id: 'a1', campaign_id: 'c1', doctor_name: 'Dr. Test', practice_name: 'Audubon Dental', article_title: 'Cracked Tooth', live_url: 'https://audubondentalcare.com/resources/blog/cracked-tooth-no-pain/' })[0].json;
   assert.equal(email.communication_type, 'ARTICLE_LIVE');
+  assert.match(email.message_text, /Thank you for sharing your voice and your expertise/);
+  assert.match(email.message_text, /If you have ideas for future topics, just reply to this email/);
   assert.equal(JSON.parse(email.email_json).items[0].url, 'https://audubondentalcare.com/resources/blog/cracked-tooth-no-pain/');
   assert.deepEqual(new Function('$json', compose)({ live_url: '' }), [], 'no email without a valid live link');
   assert.equal(router.nodes.find((node) => node.name === 'Email Article Live').parameters.workflowId.value, 'cZtS9x6kbI46Q2Bi');

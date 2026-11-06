@@ -209,7 +209,7 @@ queue_rows AS (
     cd.campaign_id, c.campaign_name, cd.doctor_id, d.doctor_name, d.credentials,
     p.practice_name, COALESCE(a.article_id, '') AS article_id,
     COALESCE(i.interview_id, '') AS interview_id,
-    -- Interview length; under 100 words is too short to write an article (the same minimum the draft step enforces).
+    -- Interview length; under 300 words is too short to write an article (the same minimum the draft step enforces).
     IF(i.interview_id IS NULL, NULL, ARRAY_LENGTH(REGEXP_EXTRACT_ALL(TRIM(COALESCE(i.transcript, '')), r'\S+'))) AS transcript_words,
     COALESCE(t.topic_title, 'Topic not selected') AS topic_title,
     COALESCE(a.status, i.status, cd.status) AS status,

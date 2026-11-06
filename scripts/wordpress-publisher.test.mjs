@@ -232,3 +232,20 @@ test('"Book appointment" opens the site\'s NexHealth scheduling pop-up when the 
   assert.equal(workflow.connections['Choose WordPress Create or Update'].main[0][0].node, 'Find Scheduling Popup');
   assert.equal(workflow.connections['Find Scheduling Popup'].main[0][0].node, 'Download Featured Image');
 });
+
+test('the article writers follow the FAQ rules: on-topic, plain search terms, brief answers that show the value of a dentist', () => {
+  const generation = JSON.parse(fs.readFileSync(new URL('../n8n/06-generate-article.json', import.meta.url), 'utf8'))
+    .nodes.find((node) => node.name === 'Prepare Article Generation Request').parameters.jsCode;
+  assert.match(generation, /Every question must be about this article's topic/);
+  assert.match(generation, /plain, everyday words and common search terms/);
+  assert.match(generation, /Can my dentist tell if I have sleep apnea\?/);
+  assert.match(generation, /show the value of seeing a dentist/);
+  for (const file of ['10-revise-article-from-doctor-feedback.json', '20-revise-article-from-marketing-feedback.json']) {
+    const source = fs.readFileSync(new URL('../n8n/' + file, import.meta.url), 'utf8');
+    assert.match(source, /plain, everyday words patients would search for/, file);
+    assert.match(source, /show the value of seeing a dentist/, file);
+  }
+  const review = JSON.parse(fs.readFileSync(new URL('../n8n/06-generate-article.json', import.meta.url), 'utf8'))
+    .nodes.find((node) => node.name === 'Prepare Local SEO Review').parameters.jsCode;
+  assert.match(review, /plain, everyday words and common search terms/);
+});

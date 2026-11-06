@@ -34,7 +34,7 @@ HEADING RULES
 
 - H1: you may rewrite it to match how patients search, for example as a natural question. Do NOT put any shortcode in the H1: it becomes the WordPress post title, which does not run shortcodes. Do not type a city name into the H1 either.
 - H2: you may rewrite headings into conversational, question-based language. Add a local reference only when it improves search relevance.
-- FAQ questions: you may rewrite them to match real patient questions, including local phrasing where natural.
+- FAQ questions: you may rewrite them to match real patient questions: plain, everyday words and common search terms (for example "Can my dentist tell if I have sleep apnea?" rather than "Can a dental scan diagnose sleep apnea?"), short and on the article's topic, including local phrasing where natural.
 
 MEDICAL CONTENT PROTECTION (MOST IMPORTANT)
 

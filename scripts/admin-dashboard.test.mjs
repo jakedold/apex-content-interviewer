@@ -147,7 +147,8 @@ test('"Push to the next step" offers the manual step for each stage through the 
 });
 
 test('articles on WordPress stay in the work queue until they are marked live', () => {
-  assert.match(admin, /OR \(a\.published_at >= TIMESTAMP_SUB\(CURRENT_TIMESTAMP\(\), INTERVAL 90 DAY\)\s*AND a\.article_id NOT IN \(SELECT entity_id FROM live_articles\)\)/);
+  assert.match(admin, /OR \(a\.published_at >= TIMESTAMP_SUB\(CURRENT_TIMESTAMP\(\), INTERVAL 90 DAY\) AND la\.entity_id IS NULL\)/);
+  assert.match(admin, /LEFT JOIN live_articles la ON la\.entity_id = a\.article_id/);
   assert.match(admin, /live_articles AS \([\s\S]*?event_type = 'article\.marked_live'[\s\S]*?\),\nqueue_rows AS/);
 });
 
@@ -243,22 +244,23 @@ test('marketing reviews nobody answers are auto-approved after 24 hours, within 
 
 test('the work queue has a filter for every stage, defaults to active items, and pages long lists', () => {
   const filters = client.match(/const QUEUE_FILTERS[\s\S]*?\n\];/)[0];
-  const keys = [...filters.matchAll(/\['([a-z_]+)', '([^']+)'/g)].map((match) => match[2]);
-  assert.deepEqual(keys, ['Active', 'Invited', 'Interview started', 'Drafting', 'Doctor review', 'Marketing review', 'Sending to WordPress', 'Ready to push', 'Errors', 'Stalled', 'Archived', 'All']);
+  const keys = [...filters.matchAll(/^\s*\['([a-z_]+)', '([^']+)'/gm)].map((match) => match[2]);
+  assert.deepEqual(keys, ['Active', 'Awaiting interview', 'Doctor review', 'Marketing review', 'Ready to push', 'Auto-approved', 'Published', 'Needs attention', 'Archived', 'All']);
   assert.match(client, /let queueFilter = 'active';/);
-  assert.match(filters, /\['active', 'Active', \(item\) => !item\.archived\]/);
+  // Active leaves out doctors who have not responded yet and finished (published) items.
+  assert.match(filters, /\['active', 'Active', \(item\) => !item\.archived && !\['invited', 'published'\]\.includes\(queueStage\(item\)\)\]/);
   assert.match(client, /const QUEUE_PAGE_SIZE = 50;/);
   assert.match(client, /id="admin-queue-campaign"/);
   assert.match(admin, /LIMIT 1500\) AS work_queue/);
   // Every stage the queue can report has a filter button.
   const stages = [...client.match(/type QueueStage = ([^;]+);/)[1].matchAll(/'([a-z_]+)'/g)].map((match) => match[1]);
-  for (const stage of stages) assert.ok(filters.includes(`queueStage(item) === '${stage}'`) || (stage === 'ready_to_push' && filters.includes('isReadyToPush(item)')), stage);
+  for (const stage of stages) assert.ok(filters.includes(`'${stage}'`), stage);
 });
 
 test('work items can be archived, marked "Do not use", and restored through the audited command route', () => {
   for (const action of ['archive_work_item', 'restore_work_item']) assert.match(admin, new RegExp("ADMIN_ACTIONS = \\[[^\\]]*'" + action + "'"));
   assert.match(admin, /entity_type = 'work_item' AND event_type IN \('work_item\.archived', 'work_item\.restored'\)/);
-  assert.match(admin, /CONCAT\(@campaign_id, ':', @doctor_id\), COALESCE/);
+  assert.match(admin, /CONCAT\(@campaign_id, ':', @doctor_id\), CONCAT\(@campaign_id, ':', @doctor_id, ':', @interview_id\), COALESCE/);
   assert.match(client, /data-bulk-action="do_not_use"/);
   assert.match(client, /data-archive-action="restore"/);
   const source = router.nodes.find((node) => node.name === 'Validate and Normalize Command').parameters.jsCode;
@@ -330,7 +332,8 @@ test('a completed interview with no draft can have its draft written from the da
 test('items that sit too long at one step are flagged as stalled and get their own filter', () => {
   const stalled = client.match(/function stalledReason[\s\S]*?\n}\n/)[0];
   for (const reason of ['no draft after 1 hour', 'rewrite not finished after 2 hours', 'in doctor review over 6 days', 'waiting for marketing over 2 days', 'not on WordPress after 2 hours']) assert.ok(stalled.includes(reason), reason);
-  assert.match(client, /\['stalled', 'Stalled', \(item\) => Boolean\(stalledReason\(item\)\)\]/);
+  // Errors and stalled items share one "Needs attention" filter.
+  assert.match(client, /\['attention', 'Needs attention', \(item\) => !item\.archived && \(queueStage\(item\) === 'errors' \|\| Boolean\(stalledReason\(item\)\)\)\]/);
   assert.match(client, /\$\{stalledFlag\(item\)\}/);
 });
 
@@ -409,4 +412,44 @@ test('"Re-send to WordPress" updates the existing post through the audited route
   assert.equal(start.parameters.workflowInputs.value.allow_republish, true);
   assert.equal(start.parameters.options.waitForSubWorkflow, false);
   assert.equal(router.nodes.find((node) => node.name === 'Record WordPress Re-send').retryOnFail, true);
+});
+
+test('every interview is its own work item, so a doctor with several interviews in one campaign shows several rows', () => {
+  // Queue, CSV, and detail use one row per interview, with that interview's own article.
+  assert.match(admin, /work_interviews AS \(/);
+  assert.match(admin, /CONCAT\(cd\.campaign_id, ':', cd\.doctor_id, IF\(i\.interview_id IS NULL, '', CONCAT\(':', i\.interview_id\)\)\) AS work_item_id/);
+  assert.equal((admin.match(/LEFT JOIN interview_articles a ON a\.join_key = COALESCE\(i\.interview_id/g) || []).length, 2, 'queue and CSV both join the interview\'s own article');
+  assert.match(admin, /AND \(@interview_id = '' OR a\.interview_id = @interview_id\)/);
+  assert.match(admin, /stringParameter\('interview_id', interviewId\)/);
+  assert.match(worker, /url\.searchParams\.get\('interview_id'\)/);
+  assert.match(client, /\?interview_id=\$\{encodeURIComponent\(item\.interview_id\)\}/);
+  // An abandoned restart of the same topic does not add a duplicate row.
+  assert.match(admin, /WHERE completed_at IS NOT NULL OR has_article OR topic_rank = 1/);
+  // Campaign counts include every article, not just each doctor's latest.
+  assert.match(admin, /campaign_article_counts AS \(/);
+  // Archive decisions apply to one interview; older whole-row decisions still count.
+  assert.match(admin, /queue_archive AS \([\s\S]*?wa\.entity_id = CONCAT\(u\.campaign_id, ':', u\.doctor_id\)[\s\S]*?wa\.entity_id = u\.work_item_id/);
+  assert.match(client, /interview_id: item\.interview_id \|\| ''/);
+  assert.match(client, /interview_id: detail\.item\.interview_id \|\| ''/);
+  assert.doesNotMatch(admin, /COALESCE\(\(SELECT MAX\(/);
+
+  const source = router.nodes.find((node) => node.name === 'Validate and Normalize Command').parameters.jsCode;
+  const run = (body) => new Function('$json', source)({ body: { actor_email: 'admin@apexdp.com', idempotency_key: 'abcdefghijklmnop1234', campaign_id: 'campaign_1', doctor_id: 'doctor_1', ...body } });
+  assert.equal(run({ action: 'archive_work_item', interview_id: 'interview_9' })[0].json.work_item_entity, 'campaign_1:doctor_1:interview_9');
+  assert.equal(run({ action: 'archive_work_item' })[0].json.work_item_entity, 'campaign_1:doctor_1');
+  assert.throws(() => run({ action: 'archive_work_item', interview_id: 'bad id!' }), /Invalid interview/);
+  const node = router.nodes.find((entry) => entry.name === 'Archive or Restore Work Item');
+  assert.match(node.parameters.sqlQuery, /AND \(@interview_id = '' OR interview_id = @interview_id\)/);
+  assert.doesNotMatch(node.parameters.sqlQuery, /CONCAT\(@campaign_id, ':', @doctor_id\)/);
+  const names = node.parameters.options.queryParameters.namedParameters.map((param) => param.name);
+  assert.ok(names.includes('interview_id') && names.includes('work_item_entity'));
+});
+
+test('published articles stay visible for 30 days after they are marked live, and auto-approved items have their own filter', () => {
+  assert.match(admin, /SELECT e\.entity_id, MAX\(e\.event_timestamp\) AS live_at/);
+  assert.match(admin, /la\.entity_id IS NOT NULL AS live_on_website/);
+  assert.match(admin, /OR la\.live_at >= TIMESTAMP_SUB\(CURRENT_TIMESTAMP\(\), INTERVAL 30 DAY\)/);
+  assert.match(client, /if \(status === 'PUBLISHED'\) return item\.live_on_website \? 'published' : 'ready_to_push';/);
+  assert.match(client, /&& !item\.live_on_website;\n\}/, 'a live article is no longer "ready to push"');
+  assert.match(client, /\['auto_approved', 'Auto-approved', \(item\) => !item\.archived && !item\.live_on_website && Boolean\(item\.doctor_auto_approved \|\| item\.marketing_auto_approved\)\]/);
 });

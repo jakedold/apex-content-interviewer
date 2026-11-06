@@ -64,6 +64,8 @@ type WorkItem = {
   topic_title: string;
   status: string;
   published_url: string;
+  // Marked live on the website (pushed through Headless Hostman) in the last 30 days.
+  live_on_website?: boolean;
   updated_at: string | null;
   urgency: 'error' | 'attention' | 'complete' | 'active';
   current_version?: number | null;
@@ -349,16 +351,16 @@ function renderSummary(data: AdminResponse): string {
 
 // An article that is on WordPress and waiting for the team to push it live through Headless Hostman.
 function isReadyToPush(item: WorkItem): boolean {
-  return item.status === 'PUBLISHED' && Boolean(item.article_id) && !item.archived;
+  return item.status === 'PUBLISHED' && Boolean(item.article_id) && !item.archived && !item.live_on_website;
 }
 
-type QueueStage = 'invited' | 'interview' | 'drafting' | 'doctor_review' | 'marketing_review' | 'sending' | 'ready_to_push' | 'errors';
+type QueueStage = 'invited' | 'interview' | 'drafting' | 'doctor_review' | 'marketing_review' | 'sending' | 'ready_to_push' | 'published' | 'errors';
 
 // Where a work item sits in the Apex process, from its current status. Every status maps to one stage.
 function queueStage(item: WorkItem): QueueStage {
   const status = String(item.status || '').toUpperCase();
   if (item.urgency === 'error' || /(FAILED|ERROR|UNAVAILABLE)/.test(status)) return 'errors';
-  if (status === 'PUBLISHED') return 'ready_to_push';
+  if (status === 'PUBLISHED') return item.live_on_website ? 'published' : 'ready_to_push';
   if (/^(MARKETING_APPROVED|PUBLISHING)$/.test(status)) return 'sending';
   if (/^(DOCTOR_APPROVED|DOCTOR_AUTO_APPROVED|MARKETING_REVIEW|MARKETING_CHANGES_REQUESTED)$/.test(status)) return 'marketing_review';
   if (item.article_id || /(DOCTOR_REVIEW|DOCTOR_CHANGES|REVISION|ARTICLE_DRAFTED)/.test(status)) return 'doctor_review';
@@ -367,17 +369,19 @@ function queueStage(item: WorkItem): QueueStage {
   return 'invited';
 }
 
+// Filters follow the stages the team works in. Quick in-between steps (interview in progress, drafting, sending to
+// WordPress) are grouped with the stage around them; if one gets stuck it shows under "Needs attention".
 const QUEUE_FILTERS: Array<[string, string, (item: WorkItem) => boolean]> = [
-  ['active', 'Active', (item) => !item.archived],
-  ['invited', 'Invited', (item) => !item.archived && queueStage(item) === 'invited'],
-  ['interview', 'Interview started', (item) => !item.archived && queueStage(item) === 'interview'],
-  ['drafting', 'Drafting', (item) => !item.archived && queueStage(item) === 'drafting'],
-  ['doctor_review', 'Doctor review', (item) => !item.archived && queueStage(item) === 'doctor_review'],
+  // In progress: leaves out doctors who have not responded to their invitation yet, and finished (published) items.
+  ['active', 'Active', (item) => !item.archived && !['invited', 'published'].includes(queueStage(item))],
+  ['awaiting', 'Awaiting interview', (item) => !item.archived && ['invited', 'interview'].includes(queueStage(item))],
+  ['doctor_review', 'Doctor review', (item) => !item.archived && ['drafting', 'doctor_review'].includes(queueStage(item))],
   ['marketing_review', 'Marketing review', (item) => !item.archived && queueStage(item) === 'marketing_review'],
-  ['sending', 'Sending to WordPress', (item) => !item.archived && queueStage(item) === 'sending'],
-  ['ready', 'Ready to push', (item) => isReadyToPush(item)],
-  ['errors', 'Errors', (item) => !item.archived && queueStage(item) === 'errors'],
-  ['stalled', 'Stalled', (item) => Boolean(stalledReason(item))],
+  ['ready', 'Ready to push', (item) => !item.archived && ['sending', 'ready_to_push'].includes(queueStage(item))],
+  // Approved automatically because nobody responded in time: give these a closer look before they are pushed live.
+  ['auto_approved', 'Auto-approved', (item) => !item.archived && !item.live_on_website && Boolean(item.doctor_auto_approved || item.marketing_auto_approved)],
+  ['published', 'Published', (item) => !item.archived && queueStage(item) === 'published'],
+  ['attention', 'Needs attention', (item) => !item.archived && (queueStage(item) === 'errors' || Boolean(stalledReason(item)))],
   ['archived', 'Archived', (item) => Boolean(item.archived)],
   ['all', 'All', () => true],
 ];
@@ -599,7 +603,7 @@ async function submitBulkStep(event: SubmitEvent): Promise<void> {
       ? step === 'generate_article'
         ? { action: step, interview_id: item.interview_id }
         : { action: step, article_id: item.article_id, expected_status: item.status, expected_version: item.current_version }
-      : { action: action === 'restore' ? 'restore_work_item' : 'archive_work_item', do_not_use: action === 'do_not_use' };
+      : { action: action === 'restore' ? 'restore_work_item' : 'archive_work_item', do_not_use: action === 'do_not_use', interview_id: item.interview_id || '' };
     try {
       await postAdminCommand({ ...command, campaign_id: item.campaign_id, doctor_id: item.doctor_id, reason });
       done += 1;
@@ -1646,10 +1650,14 @@ async function submitResend(event: SubmitEvent, detail: WorkItemDetail): Promise
   }
 }
 
-// Latest archive/restore decision for this doctor's work item in this campaign.
+// Latest archive/restore decision for this work item: this interview's own decision, or one made for the whole
+// doctor row in this campaign (before work items were split per interview), whichever is newer.
 function workItemArchiveState(detail: WorkItemDetail): { archived: boolean; doNotUse: boolean; reason: string } {
+  const doctorRow = `${detail.item.campaign_id}:${detail.item.doctor_id}`;
+  const entities = new Set([doctorRow, detail.item.interview_id ? `${doctorRow}:${detail.item.interview_id}` : doctorRow]);
   const latest = detail.events
-    .filter((event) => event.entity_type === 'work_item' && (event.event_type === 'work_item.archived' || event.event_type === 'work_item.restored'))
+    .filter((event) => event.entity_type === 'work_item' && entities.has(String(event.entity_id))
+      && (event.event_type === 'work_item.archived' || event.event_type === 'work_item.restored'))
     .sort((a, b) => String(b.event_timestamp).localeCompare(String(a.event_timestamp)))[0];
   if (!latest || latest.event_type !== 'work_item.archived') return { archived: false, doNotUse: false, reason: '' };
   let payload: { do_not_use?: string; reason?: string } = {};
@@ -1696,6 +1704,7 @@ async function submitArchive(event: SubmitEvent, detail: WorkItemDetail): Promis
   if (message) message.textContent = 'Saving…';
   try {
     await postAdminCommand({ action: choice === 'restore' ? 'restore_work_item' : 'archive_work_item', do_not_use: choice === 'do_not_use',
+      interview_id: detail.item.interview_id || '',
       campaign_id: detail.item.campaign_id, doctor_id: detail.item.doctor_id, reason });
     if (message) message.textContent = choice === 'restore' ? 'Restored.' : 'Saved.';
     await initializeAdmin();
@@ -1746,7 +1755,9 @@ function detailCommunicationRow(communication: WorkItemDetail['communications'][
 }
 
 async function fetchWorkItemDetail(item: WorkItem): Promise<WorkItemDetailResponse> {
-  const response = await fetch(`/api/admin/work-items/${encodeURIComponent(item.campaign_id)}/${encodeURIComponent(item.doctor_id)}`, { headers: { Accept: 'application/json' } });
+  // A doctor can have several interviews in one campaign; each is its own work item.
+  const interview = item.interview_id ? `?interview_id=${encodeURIComponent(item.interview_id)}` : '';
+  const response = await fetch(`/api/admin/work-items/${encodeURIComponent(item.campaign_id)}/${encodeURIComponent(item.doctor_id)}${interview}`, { headers: { Accept: 'application/json' } });
   const body: unknown = await response.json();
   if (!response.ok) throw new Error(body && typeof body === 'object' && 'message' in body ? String(body.message) : 'The work item could not be loaded.');
   return body as WorkItemDetailResponse;

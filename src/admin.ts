@@ -373,7 +373,7 @@ function isReadyToPush(item: WorkItem): boolean {
   return item.status === 'PUBLISHED' && Boolean(item.article_id) && !item.archived && !item.live_on_website;
 }
 
-type QueueStage = 'invited' | 'interview' | 'drafting' | 'too_short' | 'doctor_review' | 'marketing_review' | 'sending' | 'ready_to_push' | 'published' | 'errors';
+type QueueStage = 'invited' | 'interview' | 'drafting' | 'too_short' | 'on_hold' | 'doctor_review' | 'marketing_review' | 'sending' | 'ready_to_push' | 'published' | 'errors';
 
 // A completed interview without an article that is under the 300-word minimum for writing one (a full 8 to 10
 // minute interview is usually 1,000 words or more; under 300 means it got cut off). It cannot move forward; the next
@@ -389,6 +389,8 @@ function queueStage(item: WorkItem): QueueStage {
   const status = String(item.status || '').toUpperCase();
   if (item.urgency === 'error' || /(FAILED|ERROR|UNAVAILABLE)/.test(status)) return 'errors';
   if (isTooShort(item)) return 'too_short';
+  // Another doctor at the practice already did this campaign's interview; held without a draft (one article per practice).
+  if (status === 'ON_HOLD_PRACTICE_COVERED') return 'on_hold';
   if (status === 'PUBLISHED') return item.live_on_website ? 'published' : 'ready_to_push';
   if (/^(MARKETING_APPROVED|PUBLISHING)$/.test(status)) return 'sending';
   if (/^(DOCTOR_APPROVED|DOCTOR_AUTO_APPROVED|MARKETING_REVIEW|MARKETING_CHANGES_REQUESTED)$/.test(status)) return 'marketing_review';
@@ -402,10 +404,11 @@ function queueStage(item: WorkItem): QueueStage {
 // WordPress) are grouped with the stage around them; if one gets stuck it shows under "Needs attention".
 const QUEUE_FILTERS: Array<[string, string, (item: WorkItem) => boolean]> = [
   // In progress: leaves out doctors who have not responded to their invitation yet, and finished (published) items.
-  ['active', 'Active', (item) => !item.archived && !['invited', 'published'].includes(queueStage(item))],
+  ['active', 'Active', (item) => !item.archived && !['invited', 'published', 'on_hold'].includes(queueStage(item))],
   ['awaiting', 'Awaiting interview', (item) => !item.archived && ['invited', 'interview'].includes(queueStage(item))],
   ['doctor_review', 'Doctor review', (item) => !item.archived && ['drafting', 'doctor_review'].includes(queueStage(item))],
   ['marketing_review', 'Marketing review', (item) => !item.archived && queueStage(item) === 'marketing_review'],
+  ['on_hold', 'On hold', (item) => !item.archived && queueStage(item) === 'on_hold'],
   ['ready', 'Ready to push', (item) => !item.archived && ['sending', 'ready_to_push'].includes(queueStage(item))],
   // Approved automatically because nobody responded in time: give these a closer look before they are pushed live.
   ['auto_approved', 'Auto-approved', (item) => !item.archived && !item.live_on_website && Boolean(item.doctor_auto_approved || item.marketing_auto_approved)],
@@ -462,7 +465,7 @@ function canAct(action: string): boolean {
 function queueNextStep(item: WorkItem): QueueStep | null {
   let step: QueueStep | null = null;
   if (item.archived) step = null;
-  else if (!item.article_id && item.interview_id && queueStage(item) === 'drafting') step = 'generate_article';
+  else if (!item.article_id && item.interview_id && ['drafting', 'on_hold'].includes(queueStage(item))) step = 'generate_article';
   // A too-short interview has no next step here; resend the interview link from the article view.
   else if (!item.article_id || !item.current_version) step = null;
   else if (item.status === 'DOCTOR_REVIEW_PENDING') step = 'approve_for_doctor';
@@ -482,6 +485,7 @@ function autoApprovalFlag(item: { marketing_auto_approved?: boolean; doctor_auto
 }
 
 function stalledFlag(item: WorkItem): string {
+  if (queueStage(item) === 'on_hold') return '<span class="admin-flag" title="Another doctor at this practice already completed this campaign\'s interview. This one is saved without a draft. Open it to write the draft anyway.">On hold: practice already has this campaign\'s article</span>';
   if (isTooShort(item)) return `<span class="admin-flag admin-flag-stalled" title="The interview is under ${MIN_INTERVIEW_WORDS} words, which is too short to write an article. Open it and resend the interview link.">Too short to write an article: resend the interview link</span>`;
   const reason = stalledReason(item);
   return reason ? `<span class="admin-flag admin-flag-stalled" title="This item has not moved for a while. Open it to see what it is waiting for.">Stalled: ${escapeHtml(reason)}</span>` : '';
@@ -1609,6 +1613,19 @@ function nextStepAction(detail: WorkItemDetail, enabledActions: string[]): { act
   }
   if (detailTooShort(detail)) {
     return { action: null, message: `This interview is only ${item.transcript_words ?? 0} words, which is too short to write an article (about ${MIN_INTERVIEW_WORDS} are needed). It may have been cut off. Use “Resend interview link” below to ask the doctor to try again; the message to the doctor is filled in for you.` };
+  }
+  if (item.interview_status === 'ON_HOLD_PRACTICE_COVERED' && !m.articleDrafted && item.interview_id) {
+    return offer({
+      action: 'generate_article',
+      title: 'Write the draft anyway',
+      description: 'Another doctor at this practice already completed this campaign\u2019s interview, so this one was saved without a draft and the doctor was thanked. Write the draft when you want to use it, for example for a mid-month or later article. It then goes to the doctor for review as usual.',
+      reasonLabel: 'Note (optional)',
+      reasonPlaceholder: 'Using this one for the mid-month article…',
+      confirmation: 'I confirm this held interview should be written up as an article.',
+      button: 'Write the draft anyway',
+      pending: 'Starting the draft…',
+      success: 'Draft started. It usually takes a few minutes; refresh the dashboard to see it.',
+    });
   }
   if (m.interviewCompleted && !m.articleDrafted && item.interview_id) {
     return offer({

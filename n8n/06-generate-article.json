@@ -20,7 +20,7 @@
           "value": "apex-marketing-n8n",
           "mode": "id"
         },
-        "sqlQuery": "-- AAC Phase 1E\n-- Initialize article storage if this is the first Phase 1E run.\nCREATE TABLE IF NOT EXISTS `apex-marketing-n8n.automated_article_creation.articles` (\n  article_id STRING NOT NULL,\n  interview_id STRING NOT NULL,\n  doctor_id STRING NOT NULL,\n  practice_id STRING NOT NULL,\n  campaign_id STRING NOT NULL,\n  status STRING NOT NULL,\n  current_version INT64 NOT NULL,\n  created_at TIMESTAMP NOT NULL,\n  doctor_review_deadline TIMESTAMP,\n  doctor_approved_at TIMESTAMP,\n  marketing_approved_at TIMESTAMP,\n  published_at TIMESTAMP,\n  published_url STRING\n);\n\nCREATE TABLE IF NOT EXISTS `apex-marketing-n8n.automated_article_creation.article_versions` (\n  article_id STRING NOT NULL,\n  version_number INT64 NOT NULL,\n  version_type STRING NOT NULL,\n  content STRING NOT NULL,\n  revision_instruction STRING,\n  created_at TIMESTAMP NOT NULL,\n  created_by STRING NOT NULL\n);\n\n-- Load the newest substantive completed interview that does not yet have an article.\nSELECT\n  i.interview_id,\n  i.campaign_id,\n  c.campaign_name,\n  c.campaign_month,\n  COALESCE(c.doctor_review_days, 5) AS doctor_review_days,\n  c.require_marketing_approval,\n  i.doctor_id,\n  d.doctor_name,\n  d.credentials,\n  COALESCE(NULLIF(TRIM(d.author_name), ''), d.doctor_name) AS author_name,\n  d.author_bio,\n  d.profile_url,\n  d.photo_source_url,\n  d.practice_id,\n  p.practice_name,\n  p.website_domain,\n  p.publisher_config_reference,\n  i.topic_id,\n  t.topic_title,\n  t.topic_description,\n  t.interview_guidance,\n  i.transcript,\n  i.completed_at\nFROM `apex-marketing-n8n.automated_article_creation.interviews` i\nJOIN `apex-marketing-n8n.automated_article_creation.doctors` d\n  ON d.doctor_id = i.doctor_id\nJOIN `apex-marketing-n8n.automated_article_creation.practices` p\n  ON p.practice_id = d.practice_id\nJOIN `apex-marketing-n8n.automated_article_creation.campaigns` c\n  ON c.campaign_id = i.campaign_id\nJOIN `apex-marketing-n8n.automated_article_creation.campaign_topics` t\n  ON t.topic_id = i.topic_id\nLEFT JOIN `apex-marketing-n8n.automated_article_creation.articles` a\n  ON a.interview_id = i.interview_id\nWHERE\n  i.status IN ('INTERVIEW_COMPLETED', 'ARTICLE_GENERATION_FAILED')\n  AND i.transcript IS NOT NULL\n  AND ARRAY_LENGTH(REGEXP_EXTRACT_ALL(TRIM(i.transcript), r'\\S+')) >= 300\n  AND a.article_id IS NULL\n  AND i.interview_id = @interview_id\n  AND p.active = TRUE\n  AND UPPER(COALESCE(p.publisher_type, '')) = 'WORDPRESS'\n  AND NULLIF(TRIM(p.website_domain), '') IS NOT NULL\n  AND NULLIF(TRIM(JSON_VALUE(SAFE.PARSE_JSON(p.publisher_config_reference), '$.wordpress_base_url')), '') IS NOT NULL\n  AND NULLIF(TRIM(JSON_VALUE(SAFE.PARSE_JSON(p.publisher_config_reference), '$.credential_name')), '') IS NOT NULL\n  AND (\n    p.practice_id = 'practice_test_001'\n    OR UPPER(COALESCE(JSON_VALUE(SAFE.PARSE_JSON(p.publisher_config_reference), '$.mapping_status'), '')) = 'VERIFIED'\n  )\nORDER BY i.completed_at DESC\nLIMIT 1;",
+        "sqlQuery": "-- AAC Phase 1E\n-- Initialize article storage if this is the first Phase 1E run.\nCREATE TABLE IF NOT EXISTS `apex-marketing-n8n.automated_article_creation.articles` (\n  article_id STRING NOT NULL,\n  interview_id STRING NOT NULL,\n  doctor_id STRING NOT NULL,\n  practice_id STRING NOT NULL,\n  campaign_id STRING NOT NULL,\n  status STRING NOT NULL,\n  current_version INT64 NOT NULL,\n  created_at TIMESTAMP NOT NULL,\n  doctor_review_deadline TIMESTAMP,\n  doctor_approved_at TIMESTAMP,\n  marketing_approved_at TIMESTAMP,\n  published_at TIMESTAMP,\n  published_url STRING\n);\n\nCREATE TABLE IF NOT EXISTS `apex-marketing-n8n.automated_article_creation.article_versions` (\n  article_id STRING NOT NULL,\n  version_number INT64 NOT NULL,\n  version_type STRING NOT NULL,\n  content STRING NOT NULL,\n  revision_instruction STRING,\n  created_at TIMESTAMP NOT NULL,\n  created_by STRING NOT NULL\n);\n\n-- Load the newest substantive completed interview that does not yet have an article.\nSELECT\n  i.interview_id,\n  i.campaign_id,\n  c.campaign_name,\n  c.campaign_month,\n  COALESCE(c.doctor_review_days, 5) AS doctor_review_days,\n  c.require_marketing_approval,\n  i.doctor_id,\n  d.doctor_name,\n  d.credentials,\n  COALESCE(NULLIF(TRIM(d.author_name), ''), d.doctor_name) AS author_name,\n  d.author_bio,\n  d.profile_url,\n  d.photo_source_url,\n  d.practice_id,\n  p.practice_name,\n  p.website_domain,\n  p.publisher_config_reference,\n  i.topic_id,\n  t.topic_title,\n  t.topic_description,\n  t.interview_guidance,\n  i.transcript,\n  i.completed_at,\n  -- One article per practice per campaign: the first doctor at a practice to finish an interview (300+ words) gets\n  -- the article. A later doctor's interview is held (no draft) unless the team chose \"Write the draft anyway\".\n  -- The shared test practice is exempt.\n  IF(@allow_practice_duplicate = 'true' OR p.practice_id = 'practice_test_001', '',\n    COALESCE(first_done.author_name, '')) AS covered_by_doctor_name\nFROM `apex-marketing-n8n.automated_article_creation.interviews` i\nJOIN `apex-marketing-n8n.automated_article_creation.doctors` d\n  ON d.doctor_id = i.doctor_id\nJOIN `apex-marketing-n8n.automated_article_creation.practices` p\n  ON p.practice_id = d.practice_id\nJOIN `apex-marketing-n8n.automated_article_creation.campaigns` c\n  ON c.campaign_id = i.campaign_id\nJOIN `apex-marketing-n8n.automated_article_creation.campaign_topics` t\n  ON t.topic_id = i.topic_id\nLEFT JOIN `apex-marketing-n8n.automated_article_creation.articles` a\n  ON a.interview_id = i.interview_id\nLEFT JOIN (\n  SELECT i2.campaign_id, d2.practice_id, i2.doctor_id, i2.completed_at,\n    COALESCE(NULLIF(TRIM(d2.author_name), ''), CONCAT('Dr. ', d2.doctor_name)) AS author_name\n  FROM `apex-marketing-n8n.automated_article_creation.interviews` i2\n  JOIN `apex-marketing-n8n.automated_article_creation.doctors` d2 ON d2.doctor_id = i2.doctor_id\n  LEFT JOIN `apex-marketing-n8n.automated_article_creation.articles` a2 ON a2.interview_id = i2.interview_id\n  WHERE i2.completed_at IS NOT NULL\n    AND ARRAY_LENGTH(REGEXP_EXTRACT_ALL(TRIM(COALESCE(i2.transcript, '')), r'\\S+')) >= 300\n    AND COALESCE(a2.status, '') != 'DO_NOT_USE'\n    AND COALESCE(i2.status, '') != 'ON_HOLD_PRACTICE_COVERED'\n  QUALIFY ROW_NUMBER() OVER (PARTITION BY i2.campaign_id, d2.practice_id ORDER BY i2.completed_at, i2.interview_id) = 1\n) first_done\n  ON first_done.campaign_id = i.campaign_id AND first_done.practice_id = d.practice_id\n  AND first_done.doctor_id != i.doctor_id AND first_done.completed_at <= i.completed_at\nWHERE\n  (i.status IN ('INTERVIEW_COMPLETED', 'ARTICLE_GENERATION_FAILED')\n    OR (i.status = 'ON_HOLD_PRACTICE_COVERED' AND @allow_practice_duplicate = 'true'))\n  AND i.transcript IS NOT NULL\n  AND ARRAY_LENGTH(REGEXP_EXTRACT_ALL(TRIM(i.transcript), r'\\S+')) >= 300\n  AND a.article_id IS NULL\n  AND i.interview_id = @interview_id\n  AND p.active = TRUE\n  AND UPPER(COALESCE(p.publisher_type, '')) = 'WORDPRESS'\n  AND NULLIF(TRIM(p.website_domain), '') IS NOT NULL\n  AND NULLIF(TRIM(JSON_VALUE(SAFE.PARSE_JSON(p.publisher_config_reference), '$.wordpress_base_url')), '') IS NOT NULL\n  AND NULLIF(TRIM(JSON_VALUE(SAFE.PARSE_JSON(p.publisher_config_reference), '$.credential_name')), '') IS NOT NULL\n  AND (\n    p.practice_id = 'practice_test_001'\n    OR UPPER(COALESCE(JSON_VALUE(SAFE.PARSE_JSON(p.publisher_config_reference), '$.mapping_status'), '')) = 'VERIFIED'\n  )\nORDER BY i.completed_at DESC\nLIMIT 1;",
         "options": {
           "location": "US",
           "queryParameters": {
@@ -28,6 +28,10 @@
               {
                 "name": "interview_id",
                 "value": "={{ $json.interview_id }}"
+              },
+              {
+                "name": "allow_practice_duplicate",
+                "value": "={{ String($json.allow_practice_duplicate) === 'true' ? 'true' : 'false' }}"
               }
             ]
           }
@@ -191,6 +195,9 @@
           "values": [
             {
               "name": "interview_id"
+            },
+            {
+              "name": "allow_practice_duplicate"
             }
           ]
         }
@@ -290,6 +297,310 @@
         940,
         280
       ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "aac-06-practice-covered",
+              "leftValue": "={{ $json.covered_by_doctor_name || '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "aac-06-is-practice-covered",
+      "name": "Is Practice Already Covered?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -420,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "value": "apex-marketing-n8n",
+          "mode": "id"
+        },
+        "sqlQuery": "-- Hold this interview: another doctor at the practice already finished this campaign's interview.\nUPDATE `apex-marketing-n8n.automated_article_creation.interviews` SET status = 'ON_HOLD_PRACTICE_COVERED', updated_at = CURRENT_TIMESTAMP()\nWHERE interview_id = @interview_id AND status IN ('INTERVIEW_COMPLETED', 'ARTICLE_GENERATION_FAILED');\nINSERT INTO `apex-marketing-n8n.automated_article_creation.workflow_events`\n(event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id, payload)\nVALUES (GENERATE_UUID(), 'interview', @interview_id, 'interview.held_practice_covered', CURRENT_TIMESTAMP(), 'n8n', NULL,\n  TO_JSON(STRUCT(@covered_by AS covered_by_doctor_name)));\nSELECT @interview_id AS interview_id, 'ON_HOLD_PRACTICE_COVERED' AS status;",
+        "options": {
+          "location": "US",
+          "queryParameters": {
+            "namedParameters": [
+              {
+                "name": "interview_id",
+                "value": "={{ $json.interview_id }}"
+              },
+              {
+                "name": "covered_by",
+                "value": "={{ $json.covered_by_doctor_name || '' }}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "aac-06-hold-interview",
+      "name": "Hold Interview for Practice",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [
+        -200,
+        -140
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Tactful thank-you to a doctor whose interview is held because a colleague already covered the practice.\nconst row = $('Load Next Completed Interview').first().json;\nconst colleague = String(row.covered_by_doctor_name || 'A colleague');\nconst practice = String(row.practice_name || 'your practice');\nconst thanks = 'Thank you for taking the time to share your expertise in your interview on \"' + row.topic_title + '\".';\nconst covered = colleague + ' at ' + practice + ' already completed this month\\'s interview, so we will feature that article for your practice this time.';\nconst saved = 'We have saved your interview, and we may use it for a future article or email. We look forward to hearing from you on the next topic.';\nreturn [{ json: {\n  doctor_id: row.doctor_id, article_id: '', campaign_id: row.campaign_id, communication_type: 'INTERVIEW_HELD_PRACTICE_COVERED',\n  subject: 'Thank you for your interview',\n  message_text: ['Hello ' + row.doctor_name + ',', '', thanks, '', covered, '', saved, '', 'Apex Dental Partners'].join(String.fromCharCode(10)),\n  action_url: '',\n  email_json: JSON.stringify({ greeting: 'Hello ' + row.doctor_name + ',', intro: [thanks], items: [], after: [covered, saved] }),\n} }];"
+      },
+      "id": "aac-06-compose-held-email",
+      "name": "Compose Held Interview Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        20,
+        -140
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "cZtS9x6kbI46Q2Bi",
+          "mode": "list",
+          "cachedResultName": "AAC - 16 - Send Doctor Message"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "doctor_id": "={{ $json.doctor_id }}",
+            "article_id": "={{ $json.article_id }}",
+            "campaign_id": "={{ $json.campaign_id }}",
+            "communication_type": "={{ $json.communication_type }}",
+            "subject": "={{ $json.subject }}",
+            "message_text": "={{ $json.message_text }}",
+            "action_url": "={{ $json.action_url }}",
+            "email_json": "={{ $json.email_json || '' }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "doctor_id",
+              "displayName": "doctor_id",
+              "type": "string"
+            },
+            {
+              "id": "article_id",
+              "displayName": "article_id",
+              "type": "string"
+            },
+            {
+              "id": "campaign_id",
+              "displayName": "campaign_id",
+              "type": "string"
+            },
+            {
+              "id": "communication_type",
+              "displayName": "communication_type",
+              "type": "string"
+            },
+            {
+              "id": "subject",
+              "displayName": "subject",
+              "type": "string"
+            },
+            {
+              "id": "message_text",
+              "displayName": "message_text",
+              "type": "string"
+            },
+            {
+              "id": "action_url",
+              "displayName": "action_url",
+              "type": "string"
+            },
+            {
+              "id": "email_json",
+              "displayName": "email_json",
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        },
+        "mode": "each"
+      },
+      "id": "aac-06-email-held",
+      "name": "Email Held Interview Thank You",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        -140
+      ]
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "value": "apex-marketing-n8n",
+          "mode": "id"
+        },
+        "sqlQuery": "-- Colleagues at the same practice who were invited to this campaign and have not finished an interview: let them know\n-- there is nothing they need to do this month. Each colleague is told once. The shared test practice is exempt.\nSELECT cd.doctor_id, d.doctor_name, cd.campaign_id, c.campaign_name, @practice_name AS practice_name, @author_name AS covered_by_doctor_name\nFROM `apex-marketing-n8n.automated_article_creation.campaign_doctors` cd\nJOIN `apex-marketing-n8n.automated_article_creation.doctors` d ON d.doctor_id = cd.doctor_id\nJOIN `apex-marketing-n8n.automated_article_creation.campaigns` c ON c.campaign_id = cd.campaign_id\nLEFT JOIN (SELECT DISTINCT campaign_id, doctor_id FROM `apex-marketing-n8n.automated_article_creation.interviews` WHERE completed_at IS NOT NULL) done\n  ON done.campaign_id = cd.campaign_id AND done.doctor_id = cd.doctor_id\nLEFT JOIN (SELECT DISTINCT campaign_id, doctor_id FROM `apex-marketing-n8n.automated_article_creation.communications` WHERE communication_type = 'PRACTICE_COVERED_NOTICE' AND status = 'SENT') told\n  ON told.campaign_id = cd.campaign_id AND told.doctor_id = cd.doctor_id\nWHERE cd.campaign_id = @campaign_id AND d.practice_id = @practice_id AND cd.doctor_id != @doctor_id\n  AND @practice_id != 'practice_test_001'\n  AND cd.invited_at IS NOT NULL AND d.active = TRUE AND NULLIF(TRIM(d.email), '') IS NOT NULL\n  AND done.doctor_id IS NULL AND told.doctor_id IS NULL;",
+        "options": {
+          "location": "US",
+          "queryParameters": {
+            "namedParameters": [
+              {
+                "name": "campaign_id",
+                "value": "={{ $json.campaign_id }}"
+              },
+              {
+                "name": "practice_id",
+                "value": "={{ $json.practice_id }}"
+              },
+              {
+                "name": "doctor_id",
+                "value": "={{ $json.doctor_id }}"
+              },
+              {
+                "name": "practice_name",
+                "value": "={{ $json.practice_name || '' }}"
+              },
+              {
+                "name": "author_name",
+                "value": "={{ $json.author_name || $json.doctor_name || '' }}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "aac-06-find-colleagues",
+      "name": "Find Colleagues to Notify",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [
+        -200,
+        340
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Friendly note to colleagues: the practice's interview for this campaign is done, so nothing is needed from them.\nreturn $input.all().map((item) => item.json).filter((row) => row.doctor_id).map((row) => {\n  const news = 'Good news: ' + row.covered_by_doctor_name + ' already completed this month\\'s article interview for ' + row.practice_name + ', so there is nothing you need to do for ' + row.campaign_name + '.';\n  const next = 'Thank you, and we look forward to hearing from you on a future topic.';\n  return { json: {\n    doctor_id: row.doctor_id, article_id: '', campaign_id: row.campaign_id, communication_type: 'PRACTICE_COVERED_NOTICE',\n    subject: 'Your practice\\'s article interview is complete',\n    message_text: ['Hello ' + row.doctor_name + ',', '', news, '', next, '', 'Apex Dental Partners'].join(String.fromCharCode(10)),\n    action_url: '',\n    email_json: JSON.stringify({ greeting: 'Hello ' + row.doctor_name + ',', intro: [news], items: [], after: [next] }),\n  } };\n});"
+      },
+      "id": "aac-06-compose-colleague-notice",
+      "name": "Compose Colleague Notice",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        20,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "cZtS9x6kbI46Q2Bi",
+          "mode": "list",
+          "cachedResultName": "AAC - 16 - Send Doctor Message"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "doctor_id": "={{ $json.doctor_id }}",
+            "article_id": "={{ $json.article_id }}",
+            "campaign_id": "={{ $json.campaign_id }}",
+            "communication_type": "={{ $json.communication_type }}",
+            "subject": "={{ $json.subject }}",
+            "message_text": "={{ $json.message_text }}",
+            "action_url": "={{ $json.action_url }}",
+            "email_json": "={{ $json.email_json || '' }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "doctor_id",
+              "displayName": "doctor_id",
+              "type": "string"
+            },
+            {
+              "id": "article_id",
+              "displayName": "article_id",
+              "type": "string"
+            },
+            {
+              "id": "campaign_id",
+              "displayName": "campaign_id",
+              "type": "string"
+            },
+            {
+              "id": "communication_type",
+              "displayName": "communication_type",
+              "type": "string"
+            },
+            {
+              "id": "subject",
+              "displayName": "subject",
+              "type": "string"
+            },
+            {
+              "id": "message_text",
+              "displayName": "message_text",
+              "type": "string"
+            },
+            {
+              "id": "action_url",
+              "displayName": "action_url",
+              "type": "string"
+            },
+            {
+              "id": "email_json",
+              "displayName": "email_json",
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        },
+        "mode": "each"
+      },
+      "id": "aac-06-email-colleagues",
+      "name": "Email Colleague Notice",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        340
+      ]
     }
   ],
   "connections": {
@@ -308,7 +619,7 @@
       "main": [
         [
           {
-            "node": "Prepare Article Generation Request",
+            "node": "Is Practice Already Covered?",
             "type": "main",
             "index": 0
           }
@@ -397,6 +708,73 @@
         [
           {
             "node": "Persist Initial Article Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Practice Already Covered?": {
+      "main": [
+        [
+          {
+            "node": "Hold Interview for Practice",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Article Generation Request",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Find Colleagues to Notify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hold Interview for Practice": {
+      "main": [
+        [
+          {
+            "node": "Compose Held Interview Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compose Held Interview Email": {
+      "main": [
+        [
+          {
+            "node": "Email Held Interview Thank You",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Colleagues to Notify": {
+      "main": [
+        [
+          {
+            "node": "Compose Colleague Notice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compose Colleague Notice": {
+      "main": [
+        [
+          {
+            "node": "Email Colleague Notice",
             "type": "main",
             "index": 0
           }

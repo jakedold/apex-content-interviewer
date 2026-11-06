@@ -245,10 +245,10 @@ test('marketing reviews nobody answers are auto-approved after 24 hours, within 
 test('the work queue has a filter for every stage, defaults to active items, and pages long lists', () => {
   const filters = client.match(/const QUEUE_FILTERS[\s\S]*?\n\];/)[0];
   const keys = [...filters.matchAll(/^\s*\['([a-z_]+)', '([^']+)'/gm)].map((match) => match[2]);
-  assert.deepEqual(keys, ['Active', 'Awaiting interview', 'Doctor review', 'Marketing review', 'Ready to push', 'Auto-approved', 'Published', 'Needs attention', 'Archived', 'All']);
+  assert.deepEqual(keys, ['Active', 'Awaiting interview', 'Doctor review', 'Marketing review', 'On hold', 'Ready to push', 'Auto-approved', 'Published', 'Needs attention', 'Archived', 'All']);
   assert.match(client, /let queueFilter = 'active';/);
   // Active leaves out doctors who have not responded yet and finished (published) items.
-  assert.match(filters, /\['active', 'Active', \(item\) => !item\.archived && !\['invited', 'published'\]\.includes\(queueStage\(item\)\)\]/);
+  assert.match(filters, /\['active', 'Active', \(item\) => !item\.archived && !\['invited', 'published', 'on_hold'\]\.includes\(queueStage\(item\)\)\]/);
   assert.match(client, /const QUEUE_PAGE_SIZE = 50;/);
   assert.match(client, /id="admin-queue-campaign"/);
   assert.match(admin, /LIMIT 1500\) AS work_queue/);
@@ -312,7 +312,7 @@ test('a completed interview with no draft can have its draft written from the da
   assert.match(admin, /COALESCE\(i\.interview_id, ''\) AS interview_id/);
   assert.match(client, /action: 'generate_article',/);
   assert.match(client, /Write the draft now/);
-  assert.match(client, /queueStage\(item\) === 'drafting'\) step = 'generate_article'/);
+  assert.match(client, /\['drafting', 'on_hold'\]\.includes\(queueStage\(item\)\)\) step = 'generate_article'/);
   const source = router.nodes.find((node) => node.name === 'Validate and Normalize Command').parameters.jsCode;
   const run = (body) => new Function('$json', source)({ body: { actor_email: 'admin@apexdp.com', idempotency_key: 'abcdefghijklmnop1234', action: 'generate_article', campaign_id: 'campaign_1', doctor_id: 'doctor_1', ...body } });
   assert.equal(run({ interview_id: 'interview_1' })[0].json.interview_id, 'interview_1');
@@ -570,4 +570,40 @@ test('marking an article published emails the doctor a link to the live article,
   assert.equal(router.nodes.find((node) => node.name === 'Email Article Live').parameters.workflowId.value, 'cZtS9x6kbI46Q2Bi');
   assert.match(admin, /'\/resources\/blog\/'[\s\S]*AS live_url/);
   assert.match(client, /<dt>Live article<\/dt>/);
+});
+
+test('one article per practice per campaign: a later doctor\'s interview is held with a thank-you, and colleagues are told', () => {
+  const w6 = JSON.parse(read('n8n/06-generate-article.json'));
+  const n6 = (name) => w6.nodes.find((entry) => entry.name === name);
+  const load = n6('Load Next Completed Interview').parameters;
+  assert.match(load.sqlQuery, /QUALIFY ROW_NUMBER\(\) OVER \(PARTITION BY i2\.campaign_id, d2\.practice_id ORDER BY i2\.completed_at, i2\.interview_id\) = 1/);
+  assert.match(load.sqlQuery, /first_done\.doctor_id != i\.doctor_id/);
+  assert.match(load.sqlQuery, /@allow_practice_duplicate = 'true' OR p\.practice_id = 'practice_test_001'/, 'the shared test practice is exempt');
+  assert.ok(load.options.queryParameters.namedParameters.some((param) => param.name === 'allow_practice_duplicate'));
+  assert.ok(n6('When Executed by Another Workflow').parameters.workflowInputs.values.some((value) => value.name === 'allow_practice_duplicate'));
+  assert.deepEqual(w6.connections['Load Next Completed Interview'].main[0].map((c) => c.node), ['Is Practice Already Covered?']);
+  assert.deepEqual(w6.connections['Is Practice Already Covered?'].main[0].map((c) => c.node), ['Hold Interview for Practice']);
+  assert.deepEqual(w6.connections['Is Practice Already Covered?'].main[1].map((c) => c.node), ['Prepare Article Generation Request', 'Find Colleagues to Notify']);
+  assert.match(n6('Hold Interview for Practice').parameters.sqlQuery, /SET status = 'ON_HOLD_PRACTICE_COVERED'/);
+  const held = new Function('$', n6('Compose Held Interview Email').parameters.jsCode)(() => ({ first: () => ({ json: {
+    doctor_id: 'd2', doctor_name: 'Dr. Second', campaign_id: 'c1', practice_name: 'Audubon Dental', topic_title: 'Cracked teeth', covered_by_doctor_name: 'Dr. First' } }) }))[0].json;
+  assert.equal(held.communication_type, 'INTERVIEW_HELD_PRACTICE_COVERED');
+  assert.match(held.message_text, /Dr\. First at Audubon Dental already completed this month's interview/);
+  assert.match(held.message_text, /We have saved your interview/);
+  const colleagues = n6('Find Colleagues to Notify').parameters.sqlQuery;
+  assert.match(colleagues, /done\.doctor_id IS NULL AND told\.doctor_id IS NULL/, 'only colleagues who have not finished, told once');
+  assert.match(colleagues, /@practice_id != 'practice_test_001'/);
+  const notices = new Function('$input', n6('Compose Colleague Notice').parameters.jsCode)({ all: () => [{ json: { doctor_id: 'd3', doctor_name: 'Dr. Third', campaign_id: 'c1', campaign_name: 'January', practice_name: 'Audubon Dental', covered_by_doctor_name: 'Dr. First' } }] });
+  assert.equal(notices[0].json.communication_type, 'PRACTICE_COVERED_NOTICE');
+  assert.match(notices[0].json.message_text, /there is nothing you need to do for January/);
+  for (const name of ['Email Held Interview Thank You', 'Email Colleague Notice']) assert.equal(n6(name).parameters.mode, 'each');
+  // Reminders also stop once the practice is covered (workflow 26 checks practice_covered).
+  assert.match(read('n8n/26-interview-reminders.json'), /practice_covered/);
+  // "Write the draft anyway" drafts a held interview on purpose.
+  const check = router.nodes.find((node) => node.name === 'Check and Record Draft Request').parameters.sqlQuery;
+  assert.match(check, /'ON_HOLD_PRACTICE_COVERED'\)\) = 1/);
+  assert.match(check, /AS allow_practice_duplicate;/);
+  assert.match(router.nodes.find((node) => node.name === 'Start Article Draft').parameters.workflowInputs.value.allow_practice_duplicate, /allow_practice_duplicate/);
+  assert.match(client, /title: 'Write the draft anyway'/);
+  assert.match(client, /if \(status === 'ON_HOLD_PRACTICE_COVERED'\) return 'on_hold';/);
 });

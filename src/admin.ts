@@ -599,7 +599,7 @@ async function submitBulkStep(event: SubmitEvent): Promise<void> {
       ? step === 'generate_article'
         ? { action: step, interview_id: item.interview_id }
         : { action: step, article_id: item.article_id, expected_status: item.status, expected_version: item.current_version }
-      : { action: action === 'restore' ? 'restore_work_item' : 'archive_work_item', do_not_use: action === 'do_not_use' };
+      : { action: action === 'restore' ? 'restore_work_item' : 'archive_work_item', do_not_use: action === 'do_not_use', interview_id: item.interview_id || '' };
     try {
       await postAdminCommand({ ...command, campaign_id: item.campaign_id, doctor_id: item.doctor_id, reason });
       done += 1;
@@ -1646,10 +1646,14 @@ async function submitResend(event: SubmitEvent, detail: WorkItemDetail): Promise
   }
 }
 
-// Latest archive/restore decision for this doctor's work item in this campaign.
+// Latest archive/restore decision for this work item: this interview's own decision, or one made for the whole
+// doctor row in this campaign (before work items were split per interview), whichever is newer.
 function workItemArchiveState(detail: WorkItemDetail): { archived: boolean; doNotUse: boolean; reason: string } {
+  const doctorRow = `${detail.item.campaign_id}:${detail.item.doctor_id}`;
+  const entities = new Set([doctorRow, detail.item.interview_id ? `${doctorRow}:${detail.item.interview_id}` : doctorRow]);
   const latest = detail.events
-    .filter((event) => event.entity_type === 'work_item' && (event.event_type === 'work_item.archived' || event.event_type === 'work_item.restored'))
+    .filter((event) => event.entity_type === 'work_item' && entities.has(String(event.entity_id))
+      && (event.event_type === 'work_item.archived' || event.event_type === 'work_item.restored'))
     .sort((a, b) => String(b.event_timestamp).localeCompare(String(a.event_timestamp)))[0];
   if (!latest || latest.event_type !== 'work_item.archived') return { archived: false, doNotUse: false, reason: '' };
   let payload: { do_not_use?: string; reason?: string } = {};
@@ -1696,6 +1700,7 @@ async function submitArchive(event: SubmitEvent, detail: WorkItemDetail): Promis
   if (message) message.textContent = 'Saving…';
   try {
     await postAdminCommand({ action: choice === 'restore' ? 'restore_work_item' : 'archive_work_item', do_not_use: choice === 'do_not_use',
+      interview_id: detail.item.interview_id || '',
       campaign_id: detail.item.campaign_id, doctor_id: detail.item.doctor_id, reason });
     if (message) message.textContent = choice === 'restore' ? 'Restored.' : 'Saved.';
     await initializeAdmin();
@@ -1746,7 +1751,9 @@ function detailCommunicationRow(communication: WorkItemDetail['communications'][
 }
 
 async function fetchWorkItemDetail(item: WorkItem): Promise<WorkItemDetailResponse> {
-  const response = await fetch(`/api/admin/work-items/${encodeURIComponent(item.campaign_id)}/${encodeURIComponent(item.doctor_id)}`, { headers: { Accept: 'application/json' } });
+  // A doctor can have several interviews in one campaign; each is its own work item.
+  const interview = item.interview_id ? `?interview_id=${encodeURIComponent(item.interview_id)}` : '';
+  const response = await fetch(`/api/admin/work-items/${encodeURIComponent(item.campaign_id)}/${encodeURIComponent(item.doctor_id)}${interview}`, { headers: { Accept: 'application/json' } });
   const body: unknown = await response.json();
   if (!response.ok) throw new Error(body && typeof body === 'object' && 'message' in body ? String(body.message) : 'The work item could not be loaded.');
   return body as WorkItemDetailResponse;

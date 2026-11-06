@@ -196,6 +196,7 @@ boundary.
 
 ## Work queue views, archive, and "Do not use"
 
+- **One row per interview:** a doctor can do several interviews in one campaign (for example, a beta series), so the work queue, the article view, and the campaign status CSV show each interview as its own row, with its own article, status, actions, and archive button. An unfinished interview with no article is hidden when the same doctor has a newer or completed attempt at the same topic, so restarts do not add duplicate rows. Archive and "Do not use" apply to one interview's row. Decisions made earlier for a whole doctor row still apply to all of that doctor's rows in the campaign.
 - **Filters:** Active (default: everything not archived), Invited, Interview started, Drafting, Doctor review, Marketing review, Sending to WordPress, Ready to push, Errors, Archived, All. Every status maps to exactly one stage, and counts follow the campaign picker.
 - **Large campaigns:** a campaign picker, search, and 50 items per page. The overview returns up to 1,500 work items.
 - **Archive** hides a work item (campaign + doctor) from active views, for example a test; automation continues. **Do not use** also moves the article to `DO_NOT_USE` and expires open review links, so no workflow (reminders, auto-approval, WordPress) acts on it. It is then archived. **Restore** undoes either, returning a "Do not use" article to its previous status.

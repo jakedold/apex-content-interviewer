@@ -113,6 +113,31 @@ latest_articles AS (
     FROM ${table('articles')} a
   ) WHERE row_number = 1
 ),
+campaign_article_counts AS (
+  SELECT campaign_id, COUNT(DISTINCT article_id) AS article_count,
+    COUNT(DISTINCT IF(status = 'PUBLISHED', article_id, NULL)) AS published_count
+  FROM ${table('articles')} GROUP BY campaign_id
+),
+-- One work item per interview (a doctor can do several interviews in one campaign). An unfinished interview with
+-- no article is hidden when the doctor has a newer or completed attempt at the same topic, so restarts do not
+-- add duplicate rows. Window functions, not correlated subqueries: BigQuery rejects those here.
+interview_articles AS (
+  SELECT * EXCEPT(row_number) FROM (
+    SELECT a.*, COALESCE(a.interview_id, CONCAT('no-interview:', a.campaign_id, ':', a.doctor_id)) AS join_key,
+      ROW_NUMBER() OVER (PARTITION BY COALESCE(a.interview_id, CONCAT('no-interview:', a.campaign_id, ':', a.doctor_id)) ORDER BY a.created_at DESC, a.article_id DESC) AS row_number
+    FROM ${table('articles')} a
+  ) WHERE row_number = 1
+),
+work_interviews AS (
+  SELECT * EXCEPT(topic_rank, has_article) FROM (
+    SELECT i.*,
+      ROW_NUMBER() OVER (PARTITION BY i.campaign_id, i.doctor_id, COALESCE(i.topic_id, '')
+        ORDER BY IF(i.completed_at IS NULL, 1, 0), COALESCE(i.completed_at, i.started_at) DESC) AS topic_rank,
+      ia.article_id IS NOT NULL AS has_article
+    FROM ${table('interviews')} i
+    LEFT JOIN interview_articles ia ON ia.join_key = i.interview_id
+  ) WHERE completed_at IS NOT NULL OR has_article OR topic_rank = 1
+),
 campaign_rows AS (
   SELECT c.campaign_id, c.campaign_name, CAST(c.campaign_month AS STRING) AS campaign_month,
     c.status, c.require_marketing_approval, COALESCE(c.preview_only, FALSE) AS preview_only,
@@ -122,13 +147,15 @@ campaign_rows AS (
     MAX(SAFE_CAST(JSON_VALUE(TO_JSON_STRING(c), '$.interview_deadline') AS DATE)) AS interview_deadline,
     COUNT(DISTINCT cd.doctor_id) AS doctor_count,
     COUNT(DISTINCT IF(i.interview_id IS NOT NULL, cd.doctor_id, NULL)) AS interview_count,
-    COUNT(DISTINCT a.article_id) AS article_count,
-    COUNT(DISTINCT IF(a.status = 'PUBLISHED', a.article_id, NULL)) AS published_count,
+    -- Counts every article in the campaign, including a doctor's earlier interviews.
+    ANY_VALUE(COALESCE(ac.article_count, 0)) AS article_count,
+    ANY_VALUE(COALESCE(ac.published_count, 0)) AS published_count,
     COUNT(DISTINCT IF(COALESCE(a.status, i.status, cd.status) IN ('INTERVIEW_ABANDONED','GENERATION_FAILED','ARTICLE_GENERATION_FAILED','COMMUNICATION_FAILED','PUBLISH_FAILED','ON_HOLD','REJECTED'), cd.doctor_id, NULL)) AS issue_count
   FROM ${table('campaigns')} c
   LEFT JOIN ${table('campaign_doctors')} cd USING (campaign_id)
   LEFT JOIN latest_interviews i ON i.campaign_id = cd.campaign_id AND i.doctor_id = cd.doctor_id
   LEFT JOIN latest_articles a ON a.campaign_id = cd.campaign_id AND a.doctor_id = cd.doctor_id
+  LEFT JOIN campaign_article_counts ac ON ac.campaign_id = c.campaign_id
   GROUP BY c.campaign_id, c.campaign_name, c.campaign_month, c.status, c.require_marketing_approval, c.preview_only,
     c.created_at, c.launched_at, c.invitation_send_at
 ),
@@ -141,6 +168,26 @@ work_item_archive AS (
 ),
 -- Articles currently live on the website: marked live after their latest re-send to WordPress (a re-sent page
 -- must be pushed live again). Built here, not as a correlated subquery, because BigQuery rejects those.
+-- Each work item (campaign + doctor + interview) and its latest archive/restore decision. Decisions made for the
+-- whole doctor row (before work items were split per interview) still apply; the newest decision wins.
+queue_units AS (
+  SELECT cd.campaign_id, cd.doctor_id, i.interview_id,
+    CONCAT(cd.campaign_id, ':', cd.doctor_id, IF(i.interview_id IS NULL, '', CONCAT(':', i.interview_id))) AS work_item_id
+  FROM ${table('campaign_doctors')} cd
+  LEFT JOIN work_interviews i ON i.campaign_id = cd.campaign_id AND i.doctor_id = cd.doctor_id
+),
+queue_archive AS (
+  SELECT * FROM (
+    SELECT u.work_item_id, wa.event_type, wa.reason, wa.do_not_use, wa.event_timestamp
+    FROM queue_units u JOIN work_item_archive wa ON wa.entity_id = CONCAT(u.campaign_id, ':', u.doctor_id)
+    UNION ALL
+    SELECT u.work_item_id, wa.event_type, wa.reason, wa.do_not_use, wa.event_timestamp
+    FROM queue_units u JOIN work_item_archive wa ON wa.entity_id = u.work_item_id
+    WHERE u.interview_id IS NOT NULL
+  )
+  WHERE TRUE -- BigQuery requires a WHERE clause alongside QUALIFY.
+  QUALIFY ROW_NUMBER() OVER (PARTITION BY work_item_id ORDER BY event_timestamp DESC) = 1
+),
 live_articles AS (
   SELECT e.entity_id
   FROM ${table('workflow_events')} e
@@ -152,7 +199,7 @@ live_articles AS (
   GROUP BY e.entity_id
 ),
 queue_rows AS (
-  SELECT CONCAT(cd.campaign_id, ':', cd.doctor_id) AS work_item_id,
+  SELECT CONCAT(cd.campaign_id, ':', cd.doctor_id, IF(i.interview_id IS NULL, '', CONCAT(':', i.interview_id))) AS work_item_id,
     cd.campaign_id, c.campaign_name, cd.doctor_id, d.doctor_name, d.credentials,
     p.practice_name, COALESCE(a.article_id, '') AS article_id,
     COALESCE(i.interview_id, '') AS interview_id,
@@ -182,10 +229,10 @@ queue_rows AS (
   JOIN ${table('campaigns')} c USING (campaign_id)
   JOIN ${table('doctors')} d USING (doctor_id)
   LEFT JOIN ${table('practices')} p ON p.practice_id = d.practice_id
-  LEFT JOIN latest_interviews i ON i.campaign_id = cd.campaign_id AND i.doctor_id = cd.doctor_id
+  LEFT JOIN work_interviews i ON i.campaign_id = cd.campaign_id AND i.doctor_id = cd.doctor_id
   LEFT JOIN ${table('campaign_topics')} t ON t.topic_id = i.topic_id
-  LEFT JOIN latest_articles a ON a.campaign_id = cd.campaign_id AND a.doctor_id = cd.doctor_id
-  LEFT JOIN work_item_archive wa ON wa.entity_id = CONCAT(cd.campaign_id, ':', cd.doctor_id)
+  LEFT JOIN interview_articles a ON a.join_key = COALESCE(i.interview_id, CONCAT('no-interview:', cd.campaign_id, ':', cd.doctor_id))
+  LEFT JOIN queue_archive wa ON wa.work_item_id = CONCAT(cd.campaign_id, ':', cd.doctor_id, IF(i.interview_id IS NULL, '', CONCAT(':', i.interview_id)))
   -- Articles on WordPress stay in the queue until the team marks them live (pushed through Headless Hostman).
   WHERE COALESCE(a.status, i.status, cd.status) != 'PUBLISHED'
     OR (a.published_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 90 DAY)
@@ -301,17 +348,27 @@ LIMIT 1;`;
 function campaignStatusQuery(project: string, dataset: string): string {
   const table = tableFactory(project, dataset);
   return `
-WITH latest_interviews AS (
+WITH -- One work item per interview (a doctor can do several interviews in one campaign). An unfinished interview with
+-- no article is hidden when the doctor has a newer or completed attempt at the same topic, so restarts do not
+-- add duplicate rows. Window functions, not correlated subqueries: BigQuery rejects those here.
+interview_articles AS (
   SELECT * EXCEPT(row_number) FROM (
-    SELECT i.*, ROW_NUMBER() OVER (PARTITION BY campaign_id, doctor_id ORDER BY COALESCE(completed_at, started_at) DESC, updated_at DESC) AS row_number
-    FROM ${table('interviews')} i
-  ) WHERE row_number = 1
-), latest_articles AS (
-  SELECT * EXCEPT(row_number) FROM (
-    SELECT a.*, ROW_NUMBER() OVER (PARTITION BY campaign_id, doctor_id ORDER BY created_at DESC, article_id DESC) AS row_number
+    SELECT a.*, COALESCE(a.interview_id, CONCAT('no-interview:', a.campaign_id, ':', a.doctor_id)) AS join_key,
+      ROW_NUMBER() OVER (PARTITION BY COALESCE(a.interview_id, CONCAT('no-interview:', a.campaign_id, ':', a.doctor_id)) ORDER BY a.created_at DESC, a.article_id DESC) AS row_number
     FROM ${table('articles')} a
   ) WHERE row_number = 1
-), campaign AS (
+),
+work_interviews AS (
+  SELECT * EXCEPT(topic_rank, has_article) FROM (
+    SELECT i.*,
+      ROW_NUMBER() OVER (PARTITION BY i.campaign_id, i.doctor_id, COALESCE(i.topic_id, '')
+        ORDER BY IF(i.completed_at IS NULL, 1, 0), COALESCE(i.completed_at, i.started_at) DESC) AS topic_rank,
+      ia.article_id IS NOT NULL AS has_article
+    FROM ${table('interviews')} i
+    LEFT JOIN interview_articles ia ON ia.join_key = i.interview_id
+  ) WHERE completed_at IS NOT NULL OR has_article OR topic_rank = 1
+),
+campaign AS (
   SELECT campaign_name, CAST(campaign_month AS STRING) AS campaign_month,
     JSON_VALUE(TO_JSON_STRING(c), '$.interview_deadline') AS interview_deadline
   FROM ${table('campaigns')} AS c
@@ -344,16 +401,16 @@ WITH latest_interviews AS (
   CROSS JOIN campaign c
   JOIN ${table('doctors')} d USING (doctor_id)
   LEFT JOIN ${table('practices')} p ON p.practice_id = d.practice_id
-  LEFT JOIN latest_interviews i ON i.campaign_id = cd.campaign_id AND i.doctor_id = cd.doctor_id
+  LEFT JOIN work_interviews i ON i.campaign_id = cd.campaign_id AND i.doctor_id = cd.doctor_id
   LEFT JOIN ${table('campaign_topics')} t ON t.topic_id = i.topic_id
-  LEFT JOIN latest_articles a ON a.campaign_id = cd.campaign_id AND a.doctor_id = cd.doctor_id
+  LEFT JOIN interview_articles a ON a.join_key = COALESCE(i.interview_id, CONCAT('no-interview:', cd.campaign_id, ':', cd.doctor_id))
   WHERE cd.campaign_id = @campaign_id
 )
 SELECT TO_JSON_STRING(STRUCT(
   (SELECT campaign_name FROM campaign LIMIT 1) AS campaign_name,
   (SELECT campaign_month FROM campaign LIMIT 1) AS campaign_month,
   (SELECT interview_deadline FROM campaign LIMIT 1) AS interview_deadline,
-  ARRAY(SELECT AS STRUCT * FROM roster ORDER BY practice_name, doctor_name) AS roster_rows
+  ARRAY(SELECT AS STRUCT * FROM roster ORDER BY practice_name, doctor_name, interview_started_at) AS roster_rows
 )) AS payload;`;
 }
 
@@ -364,11 +421,14 @@ WITH latest_interview AS (
   SELECT * EXCEPT(row_number) FROM (
     SELECT i.*, ROW_NUMBER() OVER (ORDER BY COALESCE(i.completed_at, i.started_at) DESC) row_number
     FROM ${table('interviews')} i WHERE i.campaign_id = @campaign_id AND i.doctor_id = @doctor_id
+      AND (@interview_id = '' OR i.interview_id = @interview_id)
   ) WHERE row_number = 1
 ), latest_article AS (
   SELECT * EXCEPT(row_number) FROM (
     SELECT a.*, ROW_NUMBER() OVER (ORDER BY a.created_at DESC) row_number
     FROM ${table('articles')} a WHERE a.campaign_id = @campaign_id AND a.doctor_id = @doctor_id
+      -- With an interview chosen, only that interview's article (a doctor can have several in one campaign).
+      AND (@interview_id = '' OR a.interview_id = @interview_id)
   ) WHERE row_number = 1
 ), item AS (
   SELECT cd.campaign_id, c.campaign_name, CAST(c.campaign_month AS STRING) campaign_month,
@@ -401,7 +461,7 @@ SELECT TO_JSON_STRING(STRUCT(
   ARRAY(SELECT AS STRUCT communication_id, communication_type, channel, recipient, status, sent_at, delivered_at
     FROM ${table('communications')} WHERE campaign_id = @campaign_id AND doctor_id = @doctor_id ORDER BY sent_at DESC LIMIT 50) AS communications,
   ARRAY(SELECT AS STRUCT event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id, TO_JSON_STRING(payload) payload
-    FROM ${table('workflow_events')} WHERE entity_id IN (@campaign_id, @doctor_id, CONCAT(@campaign_id, ':', @doctor_id), COALESCE((SELECT interview_id FROM item LIMIT 1), ''), COALESCE((SELECT article_id FROM item LIMIT 1), ''))
+    FROM ${table('workflow_events')} WHERE entity_id IN (@campaign_id, @doctor_id, CONCAT(@campaign_id, ':', @doctor_id), CONCAT(@campaign_id, ':', @doctor_id, ':', @interview_id), COALESCE((SELECT interview_id FROM item LIMIT 1), ''), COALESCE((SELECT article_id FROM item LIMIT 1), ''))
     ORDER BY event_timestamp DESC LIMIT 100) AS events
 )) AS payload FROM item LIMIT 1;`;
 }
@@ -533,16 +593,16 @@ export async function handleAdminCampaignStatusCsv(request: Request, env: Env, c
   }
 }
 
-export async function handleAdminWorkItem(request: Request, env: Env, campaignId: string, doctorId: string): Promise<Response> {
+export async function handleAdminWorkItem(request: Request, env: Env, campaignId: string, doctorId: string, interviewId = ''): Promise<Response> {
   const adminEnv: AdminEnv = env;
   const missing = configurationMissing(adminEnv);
   if (missing.length) return Response.json({ error: 'ADMIN_CONFIGURATION_REQUIRED', message: 'The protected dashboard data connection is not configured.', missing }, { status: 503 });
   let viewer: AccessClaims;
   try { viewer = await authenticateAdmin(request, adminEnv); }
   catch { return Response.json({ error: 'UNAUTHORIZED', message: 'Cloudflare Access authentication is required.' }, { status: 401 }); }
-  if (!campaignId || !doctorId || campaignId.length > 200 || doctorId.length > 200) return Response.json({ error: 'INVALID_WORK_ITEM', message: 'The work item identifier is invalid.' }, { status: 400 });
+  if (!campaignId || !doctorId || campaignId.length > 200 || doctorId.length > 200 || interviewId.length > 200) return Response.json({ error: 'INVALID_WORK_ITEM', message: 'The work item identifier is invalid.' }, { status: 400 });
   try {
-    const detail = await queryJson(adminEnv, workItemDetailQuery(adminEnv.BQ_PROJECT_ID, adminEnv.BQ_DATASET), [stringParameter('campaign_id', campaignId), stringParameter('doctor_id', doctorId)]);
+    const detail = await queryJson(adminEnv, workItemDetailQuery(adminEnv.BQ_PROJECT_ID, adminEnv.BQ_DATASET), [stringParameter('campaign_id', campaignId), stringParameter('doctor_id', doctorId), stringParameter('interview_id', interviewId)]);
     return Response.json({ viewer: { email: viewer.email ?? null }, capabilities: capabilities(viewer, adminEnv), detail }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {
     console.error(JSON.stringify({ event: 'admin_work_item_failed', viewer: viewer.email ?? viewer.sub ?? 'unknown', campaignId, doctorId, error: error instanceof Error ? error.message : String(error) }));

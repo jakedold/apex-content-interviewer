@@ -258,7 +258,7 @@ test('the work queue has a filter for every stage, defaults to active items, and
 test('work items can be archived, marked "Do not use", and restored through the audited command route', () => {
   for (const action of ['archive_work_item', 'restore_work_item']) assert.match(admin, new RegExp("ADMIN_ACTIONS = \\[[^\\]]*'" + action + "'"));
   assert.match(admin, /entity_type = 'work_item' AND event_type IN \('work_item\.archived', 'work_item\.restored'\)/);
-  assert.match(admin, /CONCAT\(@campaign_id, ':', @doctor_id\), COALESCE/);
+  assert.match(admin, /CONCAT\(@campaign_id, ':', @doctor_id\), CONCAT\(@campaign_id, ':', @doctor_id, ':', @interview_id\), COALESCE/);
   assert.match(client, /data-bulk-action="do_not_use"/);
   assert.match(client, /data-archive-action="restore"/);
   const source = router.nodes.find((node) => node.name === 'Validate and Normalize Command').parameters.jsCode;
@@ -409,4 +409,35 @@ test('"Re-send to WordPress" updates the existing post through the audited route
   assert.equal(start.parameters.workflowInputs.value.allow_republish, true);
   assert.equal(start.parameters.options.waitForSubWorkflow, false);
   assert.equal(router.nodes.find((node) => node.name === 'Record WordPress Re-send').retryOnFail, true);
+});
+
+test('every interview is its own work item, so a doctor with several interviews in one campaign shows several rows', () => {
+  // Queue, CSV, and detail use one row per interview, with that interview's own article.
+  assert.match(admin, /work_interviews AS \(/);
+  assert.match(admin, /CONCAT\(cd\.campaign_id, ':', cd\.doctor_id, IF\(i\.interview_id IS NULL, '', CONCAT\(':', i\.interview_id\)\)\) AS work_item_id/);
+  assert.equal((admin.match(/LEFT JOIN interview_articles a ON a\.join_key = COALESCE\(i\.interview_id/g) || []).length, 2, 'queue and CSV both join the interview\'s own article');
+  assert.match(admin, /AND \(@interview_id = '' OR a\.interview_id = @interview_id\)/);
+  assert.match(admin, /stringParameter\('interview_id', interviewId\)/);
+  assert.match(worker, /url\.searchParams\.get\('interview_id'\)/);
+  assert.match(client, /\?interview_id=\$\{encodeURIComponent\(item\.interview_id\)\}/);
+  // An abandoned restart of the same topic does not add a duplicate row.
+  assert.match(admin, /WHERE completed_at IS NOT NULL OR has_article OR topic_rank = 1/);
+  // Campaign counts include every article, not just each doctor's latest.
+  assert.match(admin, /campaign_article_counts AS \(/);
+  // Archive decisions apply to one interview; older whole-row decisions still count.
+  assert.match(admin, /queue_archive AS \([\s\S]*?wa\.entity_id = CONCAT\(u\.campaign_id, ':', u\.doctor_id\)[\s\S]*?wa\.entity_id = u\.work_item_id/);
+  assert.match(client, /interview_id: item\.interview_id \|\| ''/);
+  assert.match(client, /interview_id: detail\.item\.interview_id \|\| ''/);
+  assert.doesNotMatch(admin, /COALESCE\(\(SELECT MAX\(/);
+
+  const source = router.nodes.find((node) => node.name === 'Validate and Normalize Command').parameters.jsCode;
+  const run = (body) => new Function('$json', source)({ body: { actor_email: 'admin@apexdp.com', idempotency_key: 'abcdefghijklmnop1234', campaign_id: 'campaign_1', doctor_id: 'doctor_1', ...body } });
+  assert.equal(run({ action: 'archive_work_item', interview_id: 'interview_9' })[0].json.work_item_entity, 'campaign_1:doctor_1:interview_9');
+  assert.equal(run({ action: 'archive_work_item' })[0].json.work_item_entity, 'campaign_1:doctor_1');
+  assert.throws(() => run({ action: 'archive_work_item', interview_id: 'bad id!' }), /Invalid interview/);
+  const node = router.nodes.find((entry) => entry.name === 'Archive or Restore Work Item');
+  assert.match(node.parameters.sqlQuery, /AND \(@interview_id = '' OR interview_id = @interview_id\)/);
+  assert.doesNotMatch(node.parameters.sqlQuery, /CONCAT\(@campaign_id, ':', @doctor_id\)/);
+  const names = node.parameters.options.queryParameters.namedParameters.map((param) => param.name);
+  assert.ok(names.includes('interview_id') && names.includes('work_item_entity'));
 });

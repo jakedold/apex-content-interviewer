@@ -51,6 +51,7 @@ export default {
         env,
         decodeURIComponent(workItemMatch[1]),
         decodeURIComponent(workItemMatch[2]),
+        url.searchParams.get('interview_id') ?? '',
       );
     }
 

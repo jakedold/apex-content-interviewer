@@ -359,6 +359,7 @@ type QueueStage = 'invited' | 'interview' | 'drafting' | 'doctor_review' | 'mark
 // Where a work item sits in the Apex process, from its current status. Every status maps to one stage.
 function queueStage(item: WorkItem): QueueStage {
   const status = String(item.status || '').toUpperCase();
+  if (status === 'NEW_INTERVIEW_LINK_SENT') return 'interview';
   if (item.urgency === 'error' || /(FAILED|ERROR|UNAVAILABLE)/.test(status)) return 'errors';
   if (status === 'PUBLISHED') return item.live_on_website ? 'published' : 'ready_to_push';
   if (/^(MARKETING_APPROVED|PUBLISHING)$/.test(status)) return 'sending';
@@ -1522,6 +1523,10 @@ function nextStepAction(detail: WorkItemDetail, enabledActions: string[]): { act
   const offer = (action: NextStepAction) => readOnly || !enabledActions.includes(action.action)
     ? { action: null, message: 'Your account has read-only access. An assigned administrator can move this article to its next step.' }
     : { action, message: '' };
+  const redo = latestRedoRequest(detail);
+  if (redo) {
+    return { action: null, message: `A new interview link was sent to the doctor on ${formatDate(redo.event_timestamp, true)}. When the doctor completes the new interview, a fresh draft is written and replaces this row.` };
+  }
   if (m.liveOnWebsite) {
     const when = m.liveEvent?.event_timestamp ? formatDate(m.liveEvent.event_timestamp, true) : '';
     return { action: null, message: `This article is published on the website${when ? ` (marked ${when})` : ''}. There are no further steps.` };
@@ -1643,6 +1648,53 @@ async function submitResend(event: SubmitEvent, detail: WorkItemDetail): Promise
     await postAdminCommand({ action: 'republish_to_wordpress', article_id: item.article_id, campaign_id: item.campaign_id, doctor_id: item.doctor_id,
       expected_status: 'PUBLISHED', reason });
     if (message) message.textContent = 'Re-send started. The WordPress post is usually updated within a minute; refresh the page on WordPress to check it.';
+    await initializeAdmin();
+  } catch (error) {
+    if (message) message.textContent = friendlyCommandError(error);
+    if (submit) submit.disabled = false;
+  }
+}
+
+// Most recent "send a new interview link" request for this interview, if any.
+function latestRedoRequest(detail: WorkItemDetail): WorkflowEvent | undefined {
+  return detail.events
+    .filter((event) => event.event_type === 'interview.redo_requested' && String(event.entity_id) === String(detail.item.interview_id))
+    .sort((a, b) => String(b.event_timestamp).localeCompare(String(a.event_timestamp)))[0];
+}
+
+const DOCTOR_APPROVED_STATUSES = /^(DOCTOR_APPROVED|DOCTOR_AUTO_APPROVED|MARKETING_REVIEW|MARKETING_CHANGES_REQUESTED|MARKETING_APPROVED|PUBLISHING|PUBLISHED)$/;
+
+// At the doctor's request (interrupted, technical trouble, or wants another try), send a new single-use link for the
+// same topic. Available until the doctor approves the article; the current draft, if any, is stopped.
+function redoPanel(detail: WorkItemDetail, enabledActions: string[]): string {
+  const item = detail.item;
+  if (!enabledActions.includes('resend_interview_link') || !item.interview_id || workItemArchiveState(detail).archived
+    || DOCTOR_APPROVED_STATUSES.test(String(item.article_status || ''))) return '';
+  const redo = latestRedoRequest(detail);
+  return `
+    <form id="admin-redo-form" class="admin-archive-panel">
+      <strong>${redo ? 'Send another new interview link' : 'Send a new interview link'}</strong>
+      <p>${redo ? `A new link was already sent on ${escapeHtml(formatDate(redo.event_timestamp, true))}. Sending another replaces it. ` : ''}Use this when the doctor asks to redo this interview, for example after an interruption or technical trouble, or because they want another try. The doctor gets an email with a new single-use link for the same topic, valid for 14 days. ${item.article_id ? 'The current draft is stopped and its review link no longer works. ' : ''}When the doctor finishes, a fresh draft is written and sent for review as usual. This is only possible until the doctor approves the article.</p>
+      <label>How did the doctor ask to redo it? (required)<textarea name="reason" required minlength="8" maxlength="2000" rows="2" placeholder="Dr. Carlile emailed that a patient came in mid-interview…"></textarea></label>
+      <label class="admin-confirm-check"><input name="confirmation" type="checkbox" required /> I confirm the doctor should get a new interview link${item.article_id ? ' and the current draft should be stopped' : ''}.</label>
+      <button class="admin-secondary-button" type="submit">Send new interview link</button>
+      <p class="admin-form-message" id="redo-form-message" role="status"></p>
+    </form>`;
+}
+
+async function submitRedo(event: SubmitEvent, detail: WorkItemDetail): Promise<void> {
+  event.preventDefault();
+  const item = detail.item;
+  const form = event.currentTarget as HTMLFormElement;
+  const message = form.querySelector<HTMLElement>('#redo-form-message');
+  const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+  const reason = String(new FormData(form).get('reason') ?? '').trim();
+  if (reason.length < 8) { if (message) message.textContent = 'Add a short reason (at least 8 characters).'; return; }
+  if (submit) submit.disabled = true;
+  if (message) message.textContent = 'Sending the new link…';
+  try {
+    await postAdminCommand({ action: 'resend_interview_link', interview_id: item.interview_id, campaign_id: item.campaign_id, doctor_id: item.doctor_id, reason });
+    if (message) message.textContent = 'New interview link sent to the doctor by email.';
     await initializeAdmin();
   } catch (error) {
     if (message) message.textContent = friendlyCommandError(error);
@@ -1801,7 +1853,7 @@ function renderWorkItemDetail(response: WorkItemDetailResponse): void {
     <p class="admin-detail-topic">${escapeHtml(item.topic_title || 'Topic not selected')}</p>
     ${stageVisual(detail)}
     <dl class="admin-detail-list">
-      <div><dt>Current status</dt><dd>${milestones.liveOnWebsite ? statusPill('PUBLISHED') : milestones.onWordPress ? statusPill('READY_TO_PUSH') : statusPill(item.article_status || item.interview_status || item.campaign_doctor_status)}</dd></div>
+      <div><dt>Current status</dt><dd>${latestRedoRequest(detail) ? statusPill('NEW_INTERVIEW_LINK_SENT') : milestones.liveOnWebsite ? statusPill('PUBLISHED') : milestones.onWordPress ? statusPill('READY_TO_PUSH') : statusPill(item.article_status || item.interview_status || item.campaign_doctor_status)}</dd></div>
       <div><dt>Intended website</dt><dd>${item.website_domain ? `<a href="${escapeHtml(item.website_domain)}" target="_blank" rel="noreferrer">${escapeHtml(item.website_domain)}</a>` : 'Not configured'}</dd></div>
       <div><dt>Practice</dt><dd>${escapeHtml(item.practice_name || 'Not assigned')}</dd></div>
       <div><dt>Publishing route</dt><dd>${escapeHtml(item.publisher_type || 'Not configured')}</dd></div>
@@ -1833,6 +1885,7 @@ function renderWorkItemDetail(response: WorkItemDetailResponse): void {
     </section>
     ${nextStepPanel(detail, response.capabilities.enabledActions)}
     ${resendPanel(detail, response.capabilities.enabledActions)}
+    ${redoPanel(detail, response.capabilities.enabledActions)}
     ${archivePanel(detail, response.capabilities.enabledActions)}`;
 
   const iframe = content.querySelector<HTMLIFrameElement>('.admin-article-preview');
@@ -1846,6 +1899,7 @@ function renderWorkItemDetail(response: WorkItemDetailResponse): void {
   content.querySelector<HTMLFormElement>('#admin-next-step-form')?.addEventListener('submit', (event) => void submitNextStep(event, detail, response.capabilities.enabledActions));
   content.querySelector<HTMLFormElement>('#admin-change-form')?.addEventListener('submit', (event) => void submitChangeRequest(event, detail));
   content.querySelector<HTMLFormElement>('#admin-resend-form')?.addEventListener('submit', (event) => void submitResend(event, detail));
+  content.querySelector<HTMLFormElement>('#admin-redo-form')?.addEventListener('submit', (event) => void submitRedo(event, detail));
   content.querySelector<HTMLFormElement>('#admin-archive-form')?.addEventListener('submit', (event) => void submitArchive(event, detail));
 }
 

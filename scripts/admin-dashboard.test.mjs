@@ -424,7 +424,7 @@ test('every interview is its own work item, so a doctor with several interviews 
   assert.match(worker, /url\.searchParams\.get\('interview_id'\)/);
   assert.match(client, /\?interview_id=\$\{encodeURIComponent\(item\.interview_id\)\}/);
   // An abandoned restart of the same topic does not add a duplicate row.
-  assert.match(admin, /WHERE completed_at IS NOT NULL OR has_article OR topic_rank = 1/);
+  assert.match(admin, /WHERE \(completed_at IS NOT NULL OR has_article OR topic_rank = 1\)/);
   // Campaign counts include every article, not just each doctor's latest.
   assert.match(admin, /campaign_article_counts AS \(/);
   // Archive decisions apply to one interview; older whole-row decisions still count.
@@ -452,4 +452,44 @@ test('published articles stay visible for 30 days after they are marked live, an
   assert.match(client, /if \(status === 'PUBLISHED'\) return item\.live_on_website \? 'published' : 'ready_to_push';/);
   assert.match(client, /&& !item\.live_on_website;\n\}/, 'a live article is no longer "ready to push"');
   assert.match(client, /\['auto_approved', 'Auto-approved', \(item\) => !item\.archived && !item\.live_on_website && Boolean\(item\.doctor_auto_approved \|\| item\.marketing_auto_approved\)\]/);
+});
+
+test('a new interview link can be sent at the doctor\'s request until the doctor approves the article', () => {
+  assert.match(admin, /ADMIN_ACTIONS = \[[^\]]*'resend_interview_link'/);
+  assert.match(client, /action: 'resend_interview_link', interview_id: item\.interview_id/);
+  assert.match(client, /id="admin-redo-form"/);
+  // The old row shows "New interview link sent" until a newer interview on the same topic is completed, then it is hidden.
+  assert.equal((admin.match(/AND NOT \(redo_requested_at IS NOT NULL AND latest_topic_completion > redo_requested_at\)/g) || []).length, 2);
+  assert.match(admin, /IF\(i\.redo_requested_at IS NOT NULL, 'NEW_INTERVIEW_LINK_SENT', COALESCE\(a\.status, i\.status, cd\.status\)\) AS status/);
+  assert.match(client, /if \(status === 'NEW_INTERVIEW_LINK_SENT'\) return 'interview';/);
+
+  const source = router.nodes.find((node) => node.name === 'Validate and Normalize Command').parameters.jsCode;
+  const run = (body) => new Function('$json', source)({ body: { actor_email: 'admin@apexdp.com', idempotency_key: 'abcdefghijklmnop1234', campaign_id: 'campaign_1', doctor_id: 'doctor_1', ...body } });
+  assert.equal(run({ action: 'resend_interview_link', interview_id: 'interview_1', reason: 'Patient came in mid-interview' })[0].json.interview_id, 'interview_1');
+  assert.throws(() => run({ action: 'resend_interview_link', interview_id: 'interview_1', reason: 'short' }), /short reason/);
+  assert.throws(() => run({ action: 'resend_interview_link', reason: 'Patient came in mid-interview' }), /interview_id/);
+
+  const rules = router.nodes.find((node) => node.name === 'Route Narrow Command').parameters.rules.values;
+  const index = rules.findIndex((rule) => rule.conditions.conditions[0].rightValue === 'resend_interview_link');
+  assert.equal(router.connections['Route Narrow Command'].main[index][0].node, 'Create New Interview Link');
+  assert.equal(router.connections['Create New Interview Link'].main[0][0].node, 'Return New Interview Link Result');
+  assert.equal(router.connections['Return New Interview Link Result'].main[0][0].node, 'Compose New Interview Link Email');
+  assert.equal(router.connections['Compose New Interview Link Email'].main[0][0].node, 'Email New Interview Link');
+  const sql = router.nodes.find((node) => node.name === 'Create New Interview Link').parameters.sqlQuery;
+  assert.match(sql, /already approved this article/);
+  assert.match(sql, /TO_HEX\(SHA256\(raw_token\)\)/, 'only a hash of the token is stored');
+  assert.match(sql, /SET status = 'SUPERSEDED'/);
+  assert.match(sql, /UPDATE `[^`]*\.articles` SET status = 'DO_NOT_USE'/);
+  assert.match(sql, /'interview\.redo_requested'/);
+  assert.doesNotMatch(sql, /''[A-Za-z]/);
+  // The dashboard reply never carries the link; only the doctor's email does.
+  const reply = router.nodes.find((node) => node.name === 'Return New Interview Link Result').parameters.responseBody;
+  assert.doesNotMatch(reply, /interview_url|token/);
+  const send = router.nodes.find((node) => node.name === 'Email New Interview Link');
+  assert.equal(send.parameters.workflowId.value, 'cZtS9x6kbI46Q2Bi');
+  const compose = router.nodes.find((node) => node.name === 'Compose New Interview Link Email').parameters.jsCode;
+  const email = new Function('$json', compose)({ doctor_name: 'Dr. Test', topic_title: 'Bleeding gums', interview_url: 'https://example.test/interview/abc', expires_at: '2026-11-20T18:00:00Z', doctor_id: 'doctor_1', campaign_id: 'campaign_1', preview_only: false })[0].json;
+  assert.equal(email.communication_type, 'INTERVIEW_LINK_RESENT');
+  assert.match(email.message_text, /https:\/\/example\.test\/interview\/abc/);
+  assert.match(email.message_text, /expires on November 20, 2026/);
 });

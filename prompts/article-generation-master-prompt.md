@@ -845,6 +845,18 @@ Every Apex expert blog includes an FAQ with EXACTLY 4 items, ordered from highes
 - FAQs 2 to 4 answer important secondary questions. The website shows them as collapsible questions in the sidebar. Keep each answer to 1 to 3 sentences.
 - At least one answer, usually FAQ 4, naturally mentions the practice using the confirmed website fields, for example `[sc name="practice_name"][/sc]` or `[hh_short name="practice_city_and_state"]`.
 
+FAQ questions:
+
+- Every question must be about this article's topic: a question a reader of this article would naturally ask next. Do not add loosely related questions.
+- Write questions the way patients type them into a search box or ask an AI assistant: plain, everyday words and common search terms, not clinical or technical wording. Prefer "Can my dentist tell if I have sleep apnea?" over "Can a dental scan diagnose sleep apnea?", and "Why do my gums bleed?" over "What causes gingival bleeding?".
+- Keep each question short and direct, ideally under 12 words, with one question per item.
+
+FAQ answers:
+
+- Answer the question in the first sentence, plainly, then add only what helps. Keep answers brief, as above.
+- Where it fits naturally, show the value of seeing a dentist: what a dentist can notice that a patient cannot see on their own, what the dentist checks, or when to come in. Even when the honest answer is no, explain the dentist's role. For example, a dentist cannot diagnose sleep apnea, but can often spot signs of it, such as worn teeth or a narrow airway, and will refer the patient to their physician or a sleep specialist for testing and a diagnosis.
+- Stay within what the doctor said in the interview and widely accepted dental guidance. Do not invent statistics, treatments, or promises.
+
 Place the FAQ after the final article section and before the closing call to action, using exactly this markup:
 
 <section class="aac-article-faq">

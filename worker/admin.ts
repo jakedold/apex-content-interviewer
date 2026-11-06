@@ -209,6 +209,8 @@ queue_rows AS (
     cd.campaign_id, c.campaign_name, cd.doctor_id, d.doctor_name, d.credentials,
     p.practice_name, COALESCE(a.article_id, '') AS article_id,
     COALESCE(i.interview_id, '') AS interview_id,
+    -- Interview length; under 300 words is too short to write an article (the same minimum the draft step enforces).
+    IF(i.interview_id IS NULL, NULL, ARRAY_LENGTH(REGEXP_EXTRACT_ALL(TRIM(COALESCE(i.transcript, '')), r'\S+'))) AS transcript_words,
     COALESCE(t.topic_title, 'Topic not selected') AS topic_title,
     COALESCE(a.status, i.status, cd.status) AS status,
     COALESCE(a.published_url, '') AS published_url,
@@ -319,7 +321,8 @@ WITH campaign AS (
   SELECT campaign_id, campaign_name, CAST(campaign_month AS STRING) AS campaign_month,
     COALESCE(preview_only, FALSE) AS preview_only,
     JSON_VALUE(TO_JSON_STRING(c), '$.training_resource_url') AS training_resource_url,
-    COALESCE(SAFE_CAST(JSON_VALUE(TO_JSON_STRING(c), '$.send_doctor_review_reminders') AS BOOL), TRUE) AS send_doctor_review_reminders
+    COALESCE(SAFE_CAST(JSON_VALUE(TO_JSON_STRING(c), '$.send_doctor_review_reminders') AS BOOL), TRUE) AS send_doctor_review_reminders,
+    COALESCE(JSON_VALUE(TO_JSON_STRING(c), '$.interview_reminders'), 'auto') AS interview_reminders
   FROM ${table('campaigns')} AS c
   WHERE campaign_id = @campaign_id
 ),
@@ -347,6 +350,7 @@ SELECT TO_JSON_STRING(STRUCT(
   (SELECT campaign_month FROM campaign LIMIT 1) AS campaign_month,
   (SELECT training_resource_url FROM campaign LIMIT 1) AS training_resource_url,
   (SELECT send_doctor_review_reminders FROM campaign LIMIT 1) AS send_doctor_review_reminders,
+  (SELECT interview_reminders FROM campaign LIMIT 1) AS interview_reminders,
   IF((SELECT preview_only FROM campaign LIMIT 1), 'Presentation preview', 'Linked doctors') AS audience,
   CASE
     WHEN (SELECT COUNT(DISTINCT practice_id) FROM recipients) = 1
@@ -460,6 +464,10 @@ WITH latest_interview AS (
     t.topic_title, t.topic_description,
     a.article_id, a.status article_status, a.current_version, a.created_at article_created_at,
     a.doctor_review_deadline, a.doctor_approved_at, a.marketing_approved_at, a.published_at, a.published_url,
+    -- Live page on the practice website: /resources/blog/<slug>/ (the slug WordPress published).
+    IF(REGEXP_EXTRACT(a.published_url, r'/([^/?#]+)/?(?:[?#].*)?$') IS NULL OR NULLIF(TRIM(p.website_domain), '') IS NULL, NULL,
+      CONCAT(REGEXP_REPLACE(TRIM(p.website_domain), r'/+$', ''), '/resources/blog/', REGEXP_EXTRACT(a.published_url, r'/([^/?#]+)/?(?:[?#].*)?$'), '/')) AS live_url,
+    ARRAY_LENGTH(REGEXP_EXTRACT_ALL(TRIM(COALESCE(i.transcript, '')), r'\S+')) AS transcript_words,
     v.version_type, v.content article_content, v.created_at version_created_at
   FROM ${table('campaign_doctors')} cd
   JOIN ${table('campaigns')} c USING (campaign_id)
@@ -688,4 +696,99 @@ export async function handleAdminCommand(request: Request, env: Env): Promise<Re
     console.error(JSON.stringify({ event: 'admin_command_failed', viewer: viewer.email, action: command.action, error: error instanceof Error ? error.message : String(error) }));
     return Response.json({ error: 'ADMIN_COMMAND_UNAVAILABLE', message: 'The workflow command service is temporarily unavailable.' }, { status: 502 });
   }
+}
+
+// Pre-launch campaign checks: featured image links open as images, and WordPress slugs are not already in use (in
+// earlier campaigns, published articles, or as a live page at <practice website>/resources/blog/<slug>/ for any
+// selected practice). Returns warnings only; the team can still choose to launch.
+function campaignChecksQuery(project: string, dataset: string): string {
+  const table = tableFactory(project, dataset);
+  return `
+WITH slugs AS (SELECT DISTINCT LOWER(slug) AS slug FROM UNNEST(JSON_VALUE_ARRAY(PARSE_JSON(@slugs_json))) slug WHERE NULLIF(TRIM(slug), '') IS NOT NULL),
+topic_uses AS (
+  SELECT LOWER(t.wordpress_slug) AS slug, STRING_AGG(DISTINCT c.campaign_name, ', ' LIMIT 3) AS used_by
+  FROM ${table('campaign_topics')} t JOIN ${table('campaigns')} c ON c.campaign_id = t.campaign_id
+  WHERE LOWER(t.wordpress_slug) IN (SELECT slug FROM slugs)
+  GROUP BY 1
+),
+published_uses AS (
+  SELECT LOWER(REGEXP_EXTRACT(published_url, r'/([^/?#]+)/?(?:[?#].*)?$')) AS slug, COUNT(*) AS article_count
+  FROM ${table('articles')}
+  WHERE published_url IS NOT NULL AND LOWER(REGEXP_EXTRACT(published_url, r'/([^/?#]+)/?(?:[?#].*)?$')) IN (SELECT slug FROM slugs)
+  GROUP BY 1
+),
+sites AS (
+  SELECT DISTINCT p.practice_name, REGEXP_REPLACE(TRIM(p.website_domain), r'/+$', '') AS website
+  FROM ${table('doctors')} d JOIN ${table('practices')} p ON p.practice_id = d.practice_id
+  WHERE d.doctor_id IN UNNEST(JSON_VALUE_ARRAY(PARSE_JSON(@doctor_ids_json))) AND NULLIF(TRIM(p.website_domain), '') IS NOT NULL
+)
+SELECT TO_JSON_STRING(STRUCT(
+  ARRAY(SELECT AS STRUCT slug, used_by FROM topic_uses) AS topic_uses,
+  ARRAY(SELECT AS STRUCT slug, article_count FROM published_uses) AS published_uses,
+  ARRAY(SELECT AS STRUCT practice_name, website FROM sites ORDER BY practice_name LIMIT 250) AS sites
+)) AS payload;`;
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Promise<Response | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try { return await fetch(url, { ...init, signal: controller.signal, redirect: 'follow' }); }
+  catch { return null; }
+  finally { clearTimeout(timer); }
+}
+
+export async function handleAdminCampaignChecks(request: Request, env: Env): Promise<Response> {
+  const adminEnv: AdminEnv = env;
+  let viewer: AccessClaims;
+  try { viewer = await authenticateAdmin(request, adminEnv); }
+  catch { return Response.json({ error: 'UNAUTHORIZED', message: 'Cloudflare Access authentication is required.' }, { status: 401 }); }
+  if (!viewer.email || !actionEmails(adminEnv).includes(viewer.email)) return Response.json({ error: 'FORBIDDEN', message: 'Your account has read-only access.' }, { status: 403 });
+  let body: { topics?: Array<{ title?: string; featured_image_source_url?: string; wordpress_slug?: string }>; doctor_ids?: string[] };
+  try { body = await request.json(); } catch { return Response.json({ error: 'INVALID_REQUEST', message: 'The checks request was not valid.' }, { status: 400 }); }
+  const topics = Array.isArray(body.topics) ? body.topics.slice(0, 3) : [];
+  const doctorIds = Array.isArray(body.doctor_ids) ? body.doctor_ids.map(String).slice(0, 200) : [];
+  const warnings: string[] = [];
+
+  // 1. Each distinct featured image link must open as an image.
+  const images = [...new Set(topics.map((topic) => String(topic.featured_image_source_url ?? '').trim()).filter((url) => url.startsWith('https://apexparent.hostmanpowered.com/wp-content/uploads/')))];
+  await Promise.all(images.map(async (url) => {
+    const response = await fetchWithTimeout(url, { method: 'GET', headers: { Range: 'bytes=0-0' } }, 8000);
+    const type = response?.headers.get('content-type') ?? '';
+    if (!response || !(response.ok || response.status === 206) || !type.startsWith('image/')) {
+      const which = topics.map((topic, index) => (topic.featured_image_source_url === url ? index + 1 : 0)).filter(Boolean).join(' and ');
+      warnings.push(`Topic ${which}: the featured image link did not open as an image${response ? ` (the site answered ${response.status}${type ? `, ${type.split(';')[0]}` : ''})` : ' (no answer)'}. Check the Media Library file URL.`);
+    }
+  }));
+
+  // 2. Slugs already used by earlier campaigns or articles, or as a live page on a selected practice's site.
+  const slugs = [...new Set(topics.map((topic) => String(topic.wordpress_slug ?? '').trim().toLowerCase()).filter(Boolean))];
+  if (slugs.length) {
+    try {
+      const result = await queryJson(adminEnv, campaignChecksQuery(adminEnv.BQ_PROJECT_ID, adminEnv.BQ_DATASET),
+        [stringParameter('slugs_json', JSON.stringify(slugs)), stringParameter('doctor_ids_json', JSON.stringify(doctorIds))]) as {
+          topic_uses?: Array<{ slug: string; used_by: string }>; published_uses?: Array<{ slug: string; article_count: number }>; sites?: Array<{ practice_name: string; website: string }>;
+        };
+      for (const use of result.topic_uses ?? []) warnings.push(`The slug "${use.slug}" was already used by an earlier campaign (${use.used_by}).`);
+      for (const use of result.published_uses ?? []) warnings.push(`The slug "${use.slug}" is already used by ${use.article_count} published article${Number(use.article_count) === 1 ? '' : 's'}.`);
+      const pages = (result.sites ?? []).flatMap((site) => slugs.map((slug) => ({ ...site, slug, url: `${site.website}/resources/blog/${slug}/` })))
+        .filter((page) => /^https:\/\//.test(page.url));
+      const taken: string[] = [];
+      let unreachable = 0;
+      for (let index = 0; index < pages.length; index += 10) {
+        await Promise.all(pages.slice(index, index + 10).map(async (page) => {
+          const response = await fetchWithTimeout(page.url, { method: 'GET' }, 6000);
+          if (!response) { unreachable += 1; return; }
+          // Only a real page at that address counts (not a redirect to the blog list or home page).
+          let finalPath = '';
+          try { finalPath = new URL(response.url || page.url).pathname.replace(/\/+$/, ''); } catch { finalPath = ''; }
+          if (response.ok && finalPath.endsWith(`/resources/blog/${page.slug}`)) taken.push(`${page.practice_name}: ${page.url}`);
+        }));
+      }
+      if (unreachable) warnings.push(`${unreachable} practice site${unreachable === 1 ? '' : 's'} could not be checked for an existing page with this slug.`);
+      if (taken.length) warnings.push(`A blog page already exists at this address on ${taken.length} selected practice site${taken.length === 1 ? '' : 's'}: ${taken.slice(0, 8).join('; ')}${taken.length > 8 ? '; and more' : ''}. Choose a different slug, or launch anyway if that page should be replaced.`);
+    } catch (error) {
+      warnings.push(`The slug check could not finish (${error instanceof Error ? error.message : 'unknown error'}). You can still launch.`);
+    }
+  }
+  return Response.json({ warnings, checked: { images: images.length, slugs: slugs.length } }, { headers: { 'Cache-Control': 'private, no-store' } });
 }

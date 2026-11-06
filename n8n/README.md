@@ -25,6 +25,14 @@ Version-controlled workflow exports:
 - `14-record-marketing-review-response.json`
 - `15-publish-approved-article-to-wordpress.json`
 - `16-send-doctor-message.json` — sends every doctor email. When the sender passes `email_json` (greeting, intro, buttons, closing lines), its **Build Doctor Email** step renders the branded Apex design: logo at the top, simple letter wording, one button per link, and the mission line at the bottom. Without `email_json`, it sends plain text. Senders: 02 (invitations), 07 (review requests and revised drafts), 17 (review reminders), and 24 (resent interview links).
+- `26-interview-reminders.json` — hourly interview reminders, following each campaign's **Interview reminders** setting:
+  - auto: two reminders if doctors have two weeks or more, otherwise one;
+  - two: 7 and 2 days before the deadline;
+  - one: 3 days before the deadline;
+  - none: no reminders;
+  - without a deadline: one reminder 10 days after the invitation.
+
+  Each reminder goes out once, never within 2 days of the invitation, and only to doctors who have not finished an interview. Reminders stop when a colleague at the same practice finishes one or the doctor's row is archived. Built by `scripts/build-interview-reminders.mjs`. Inactive in the export: connect Google BigQuery, test manually, then activate.
 - `17-doctor-review-reminders.json`
 - `18-send-marketing-review-invitation.json`
 - `19-prestonwood-wordpress-draft-pilot.json` — isolated manual credential/subsite check; creates only a fixed internal draft at Prestonwood and is not part of the article pipeline

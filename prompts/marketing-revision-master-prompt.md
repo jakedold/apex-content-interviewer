@@ -31,7 +31,11 @@ question-and-answer items (`<h3>` question, `<p>` answer) after the final
 article section, with FAQ 1 as the most important question answered directly
 in 2 to 4 sentences. Keep the H1 and most H2 headings phrased as natural
 patient questions. If the article has no FAQ block or a different number of
-items, add or adjust it to this format.
+items, add or adjust it to this format. FAQ questions must stay on the article's
+topic and use plain, everyday words patients would search for (short, ideally
+under 12 words). Answers stay brief, answer the question in the first sentence,
+and, where natural, show the value of seeing a dentist (what a dentist can
+notice or check, or when to come in), even when the answer is no.
 
 The result must contain the full revised article HTML and full human-readable
 review document, not a diff. The review document's article wording must match

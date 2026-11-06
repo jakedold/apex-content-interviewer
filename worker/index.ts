@@ -1,4 +1,4 @@
-import { handleAdminCampaignStatusCsv, handleAdminCampaignTemplate, handleAdminCommand, handleAdminOverview, handleAdminWorkItem } from './admin';
+import { handleAdminCampaignChecks, handleAdminCampaignStatusCsv, handleAdminCampaignTemplate, handleAdminCommand, handleAdminOverview, handleAdminWorkItem } from './admin';
 
 const ROUTES: Readonly<Record<string, string>> = {
   '/api/validate': '/webhook/aac/interview/validate',
@@ -53,6 +53,13 @@ export default {
         decodeURIComponent(workItemMatch[2]),
         url.searchParams.get('interview_id') ?? '',
       );
+    }
+
+    if (url.pathname === '/api/admin/campaign-checks') {
+      if (request.method !== 'POST') {
+        return new Response(null, { status: 405, headers: { Allow: 'POST' } });
+      }
+      return handleAdminCampaignChecks(request, env);
     }
 
     if (url.pathname === '/api/admin/commands') {

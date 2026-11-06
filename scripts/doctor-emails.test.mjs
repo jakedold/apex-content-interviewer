@@ -7,7 +7,7 @@ const node = (workflow, name) => workflow.nodes.find((entry) => entry.name === n
 const w16 = load('16-send-doctor-message.json');
 const builder = node(w16, 'Build Doctor Email').parameters.jsCode;
 const route = { recipient: 'doctor@example.com', subject: 'Test subject', message_text: 'Plain text', action_url: '' };
-const build = (emailJson) => new Function('$json', '$', builder)(route, () => ({ first: () => ({ json: { email_json: emailJson } }) }))[0].json;
+const build = (emailJson, extra = {}) => new Function('$json', '$', builder)({ ...route, ...extra }, () => ({ first: () => ({ json: { email_json: emailJson } }) }))[0].json;
 
 test('workflow 16 builds the branded doctor email from email_json, and keeps plain text without it', () => {
   const html = build(JSON.stringify({
@@ -22,11 +22,13 @@ test('workflow 16 builds the branded doctor email from email_json, and keeps pla
   assert.match(html, /Reimagining dentistry to change the lives of our patients, teammates, and the communities we serve\./);
   assert.match(html, /PRIVATE PRACTICE REIMAGINED&reg;/);
   assert.doesNotMatch(html, /#8AC441|#e8f4fa|#eef6fb/i, 'no green bar or light-blue boxes');
-  assert.equal(build('').message_html, '');
+  const plain = build('', { message_text: 'Hello <Dr>,\nYour link:', action_url: 'https://apex-content-interviewer.jdold.workers.dev/interview/t1?a=1&b=2' }).message_html;
+  assert.match(plain, /Hello &lt;Dr&gt;,<br>Your link:<br><br><a href="https:\/\/apex-content-interviewer\.jdold\.workers\.dev\/interview\/t1\?a=1&amp;b=2">/, 'plain-text messages still go out, as simple HTML with a clickable link');
+  assert.doesNotMatch(plain, /brand\/email-logo\.png/);
   assert.throws(() => build(JSON.stringify({ items: [{ title: 'x', url: 'javascript:alert(1)', button: 'Go' }] })), /valid secure link/);
   const send = node(w16, 'Send Doctor Email').parameters;
-  assert.equal(send.emailType, "={{ $json.message_html ? 'html' : 'text' }}");
-  assert.match(send.message, /\$json\.message_html \|\|/);
+  assert.equal(send.emailType, 'html', 'n8n rejects a formula in Email Type, so it is always HTML');
+  assert.equal(send.message, '={{ $json.message_html }}');
   assert.ok(node(w16, 'Receive Doctor Message Internally').parameters.workflowInputs.values.some((value) => value.name === 'email_json'));
   assert.equal(w16.connections['Is Email Delivery Available?'].main[0][0].node, 'Build Doctor Email');
   assert.equal(w16.connections['Build Doctor Email'].main[0][0].node, 'Send Doctor Email');

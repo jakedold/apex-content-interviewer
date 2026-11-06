@@ -26,3 +26,31 @@ test('census sync preserves history and never enables publishing', () => {
   assert.doesNotMatch(sync.parameters.sqlQuery, /DELETE FROM/);
   assert.doesNotMatch(sync.parameters.sqlQuery, /publisher_type = 'WORDPRESS'/);
 });
+
+test('a bad Doctor Profiles row is skipped and reported instead of stopping the whole sync', () => {
+  const prepare = workflow.nodes.find((node) => node.name === 'Prepare Current Census Roster').parameters.jsCode;
+  const sheets = {
+    'Keep location rows together': [{ Code: 'CO-04', Name: 'Audubon Dental', Type: 'GD', URL: 'audubondentalcare.com' }],
+    'Keep website rows together': [{ Codes: 'CO-04', Locations: 'Audubon Dental', 'Wordpress Site': 'apexparent.hostmanpowered.com/co-04/' }],
+    'Keep dentist rows together': [{ row_number: 2, Employee: 'Test Doctor', 'Primary Location': 'Audubon Dental (CO-04)', Department: 'General Dentist', 'Employment Type': 'Full-Time' }],
+    'Keep email rows together': [{ row_number: 2, 'Work Email': 'test.doctor@example.com' }],
+    'Keep doctor profiles together': [
+      { row_number: 2, Active: true, 'Work Email': 'test.doctor@example.com', 'Location Code': 'CO-04', 'Doctor Name': 'Dr. Test Doctor', Credentials: 'DDS', 'Short Bio': 'Dr. Test Doctor is a placeholder used only in this test.', 'Photo Source URL': 'https://www.ebay.com/itm/324508445477' },
+      { row_number: 3, Active: true, 'Work Email': 'test.doctor@example.com', 'Location Code': 'CO-04', 'Doctor Name': 'Dr. Duplicate', Credentials: 'DDS', 'Short Bio': 'A second active row for the same doctor and location.' },
+      { row_number: 4, Active: true, 'Work Email': 'other@example.com', 'Location Code': 'CO-04', 'Doctor Name': 'Dr. Missing Bio', Credentials: 'DDS', 'Short Bio': '' },
+      { row_number: 5, Active: false, 'Work Email': '', 'Doctor Name': '' },
+    ],
+  };
+  const $ = (name) => ({ first: () => ({ json: { rows: sheets[name] } }) });
+  const output = new Function('$', prepare)($)[0].json;
+  assert.equal(output.warning_count, 3);
+  assert.match(output.warnings.join('\n'), /row 3 \(Dr\. Duplicate\) was skipped: another active row already uses test\.doctor@example\.com at CO-04/);
+  assert.match(output.warnings.join('\n'), /row 4 \(Dr\. Missing Bio\) was skipped: missing Short Bio/);
+  assert.match(output.warnings.join('\n'), /row 2 \(Dr\. Test Doctor\): the Photo Source URL is not a direct link to an image file/);
+  const roster = JSON.parse(output.roster_json);
+  assert.equal(roster.doctors[0].author_name, 'Dr. Test Doctor', 'the first valid row is still applied');
+  assert.equal(roster.doctors[0].photo_source_url, '', 'a non-image photo link is not used');
+  assert.deepEqual(roster.warnings, output.warnings);
+  const sql = workflow.nodes.find((node) => node.name === 'Sync Census to BigQuery').parameters.sqlQuery;
+  assert.match(sql, /JSON_QUERY\(roster, '\$\.warnings'\) AS warnings/);
+});

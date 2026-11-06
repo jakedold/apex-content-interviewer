@@ -1,4 +1,5 @@
 import './admin.css';
+import { labelShortcodesInHtml } from './shortcodes';
 
 type Campaign = {
   campaign_id: string;
@@ -135,6 +136,7 @@ type Overview = {
   work_queue: WorkItem[];
   recent_events: WorkflowEvent[];
   communication_failures: CommunicationFailure[];
+  roster_sync?: { synced_at: string; warnings: string[] } | null;
 };
 
 type AdminResponse = {
@@ -327,9 +329,21 @@ function renderFailure(error: ApiError, status: number): void {
   document.querySelector<HTMLButtonElement>('#retry-admin')?.addEventListener('click', () => void initializeAdmin());
 }
 
+// Rows the latest hourly doctor sync skipped or adjusted, so the team can fix them in the roster workbook.
+function rosterSyncNotice(data: AdminResponse): string {
+  const sync = data.overview.roster_sync;
+  const warnings = (sync?.warnings ?? []).filter(Boolean);
+  if (!sync || !warnings.length) return '';
+  return `<div class="admin-auto-approval-notice admin-roster-notice" role="note">
+    <strong>Doctor sync: ${warnings.length} row${warnings.length === 1 ? '' : 's'} in the roster workbook need${warnings.length === 1 ? 's' : ''} attention</strong>
+    <p>The hourly sync on ${escapeHtml(formatDate(sync.synced_at, true))} skipped or adjusted these rows; everything else synced normally. Fix them on the Doctor Profiles tab and the next hourly sync picks up the change.</p>
+    <ul>${warnings.slice(0, 20).map((warning) => `<li>${escapeHtml(warning)}</li>`).join('')}</ul>
+  </div>`;
+}
+
 function renderSummary(data: AdminResponse): string {
   const summary = data.overview.summary;
-  return `
+  return `${rosterSyncNotice(data)}
     <section class="admin-summary-grid" aria-label="Content operations summary">
       <article class="admin-summary-card">
         <span>Active campaigns</span><strong>${numberValue(summary.active_campaigns)}</strong>
@@ -1886,7 +1900,8 @@ function renderWorkItemDetail(response: WorkItemDetailResponse): void {
     ${archivePanel(detail, response.capabilities.enabledActions)}`;
 
   const iframe = content.querySelector<HTMLIFrameElement>('.admin-article-preview');
-  if (iframe && article.articleHtml) iframe.srcdoc = article.articleHtml;
+  // Website fields show as readable labels in the preview, as on the review pages.
+  if (iframe && article.articleHtml) iframe.srcdoc = labelShortcodesInHtml(article.articleHtml);
   for (const tab of content.querySelectorAll<HTMLButtonElement>('[data-detail-tab]')) {
     tab.addEventListener('click', () => {
       content.querySelectorAll('[data-detail-tab]').forEach((candidate) => candidate.classList.toggle('is-active', candidate === tab));

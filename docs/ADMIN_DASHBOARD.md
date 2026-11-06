@@ -195,6 +195,12 @@ boundary.
   - **Expiry:** links follow the campaign's interview deadline (nothing is sent once it has passed). A campaign without a deadline gets links that do not expire, and so do its original invitation links (workflow 02).
   - **Approved topics:** a topic whose article the doctor already approved is not offered.
   - **Re-recording:** when the doctor records a topic again, workflow 06 stops that topic's earlier, not-yet-approved draft (`DO_NOT_USE`, review link closed, `article.replaced_by_newer_interview`). The work queue then hides the earlier interview, and the new draft goes to doctor review as usual.
+- **Doctor sync notice:** the hourly doctor sync (workflow 25) no longer stops when a Doctor Profiles row has a problem. It handles these cases:
+  - a missing name, credentials, email, or bio: the row is skipped;
+  - a second active row for the same email and location: the second row is skipped;
+  - a photo link that isn't a direct image file: the row is kept, but without the photo.
+
+  The other rows still sync, and the dashboard lists the affected rows at the top until they are fixed.
 - **Work queue multi-select:** tick articles and use **Move selected to next step**. Each article gets the step shown under its status, sent as its own audited command. The **Ready to push** filter lists articles on WordPress waiting for the team to push them live through Headless Hostman.
 - **Marketing auto-approval (workflow 21):** a marketing review nobody answers within 24 hours is approved automatically and sent to WordPress. Only reviews requested in the last 7 days are included, at most 25 per run. Auto-approved articles (doctor or marketing) are flagged "Auto-approved · check carefully" in the queue and in the article view, so the team gives them extra attention before pushing live.
 - Actions handled by workflow 24 (`mark_live_on_website`, `request_marketing_changes`) and the marketing auto-approval (workflow 21) only work after the updated workflows are imported and activated in n8n.

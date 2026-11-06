@@ -53,6 +53,9 @@ const dentists = censusRows.map((row) => {
   if (!Number.isInteger(rowNumber)) throw new Error('Doctor census row number missing.');
   return [row.Employee ?? '', row['Primary Location'] ?? '', row.Department ?? '', row['Employment Type'] ?? '', emailByRow.get(rowNumber) ?? ''];
 });
+// Problems in Doctor Profiles rows are skipped and reported (on the dashboard), instead of stopping the whole sync.
+const warnings = [];
+const isImageUrl = (value) => /^https:\\/\\/[A-Za-z0-9.-]+\\/[-A-Za-z0-9._~%/]+\\.(?:jpe?g|png|webp|gif)$/i.test(value);
 const profilesByKey = new Map();
 for (const row of $('Keep doctor profiles together').first().json.rows) {
   const active = row.Active === true || String(row.Active ?? '').trim().toLowerCase() === 'true';
@@ -67,11 +70,23 @@ for (const row of $('Keep doctor profiles together').first().json.rows) {
     author_bio: String(row['Short Bio'] ?? '').trim(),
     profile_verified_at: String(row['Verified At'] ?? '').trim(),
   };
-  if (!email || !profile.author_name || !profile.credentials || !profile.author_bio) {
-    throw new Error('Every active Doctor Profiles row needs Work Email, Doctor Name, Credentials, and Short Bio.');
+  const label = 'Doctor Profiles row ' + (row.row_number ?? '?') + (profile.author_name ? ' (' + profile.author_name + ')' : '');
+  const missing = [['Work Email', email], ['Doctor Name', profile.author_name], ['Credentials', profile.credentials], ['Short Bio', profile.author_bio]]
+    .filter(([, value]) => !value).map(([name]) => name);
+  if (missing.length) {
+    warnings.push(label + ' was skipped: missing ' + missing.join(', ') + '.');
+    continue;
   }
   const key = email + '::' + locationCode;
-  if (profilesByKey.has(key)) throw new Error('Duplicate active Doctor Profiles row: ' + key);
+  if (profilesByKey.has(key)) {
+    warnings.push(label + ' was skipped: another active row already uses ' + email + (locationCode ? ' at ' + locationCode : '') + '. Uncheck Active on the row that is not current.');
+    continue;
+  }
+  // A photo link must point straight to an image file; otherwise the bio card would show a broken picture.
+  if (profile.photo_source_url && !isImageUrl(profile.photo_source_url)) {
+    warnings.push(label + ': the Photo Source URL is not a direct link to an image file (.jpg, .png, .webp, or .gif), so no photo is used. Paste the image file link from the WordPress Media Library.');
+    profile.photo_source_url = '';
+  }
   profilesByKey.set(key, profile);
 }
 const roster = buildCampaignRoster(
@@ -100,6 +115,7 @@ const normalized = {
     location_code: key.split('::')[1] || '',
     ...profile,
   })),
+  warnings,
 };
 return [{ json: {
   roster_json: JSON.stringify(normalized),
@@ -107,6 +123,8 @@ return [{ json: {
   doctor_count: normalized.doctors.length,
   excluded_location_count: roster.excludedLocations.length,
   excluded_doctor_count: roster.excludedDoctors.length,
+  warning_count: warnings.length,
+  warnings,
 } }];`;
 nodes.push(validate);
 
@@ -240,7 +258,8 @@ WHERE LOWER(TRIM(T.email)) = P.email
 INSERT INTO \`apex-marketing-n8n.automated_article_creation.workflow_events\`
 (event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id, payload)
 VALUES (GENERATE_UUID(), 'roster', 'doctor_census', 'roster.synced', CURRENT_TIMESTAMP(), 'n8n:google-sheets', NULL,
-  TO_JSON(STRUCT((SELECT COUNT(*) FROM source_practices) AS practice_count, (SELECT COUNT(*) FROM source_doctors) AS doctor_count)));
+  TO_JSON(STRUCT((SELECT COUNT(*) FROM source_practices) AS practice_count, (SELECT COUNT(*) FROM source_doctors) AS doctor_count,
+    JSON_QUERY(roster, '$.warnings') AS warnings)));
 
 SELECT
   (SELECT COUNT(*) FROM source_practices) AS practice_count,

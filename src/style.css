@@ -423,3 +423,24 @@ h1 {
   .live-transcript-heading { align-items: flex-start; flex-direction: column; gap: 3px; }
   .live-transcript-log { max-height: 42vh; -webkit-overflow-scrolling: touch; }
 }
+
+/* Website fields (Shortcoder tags) shown as readable labels on review pages. */
+.shortcode-field {
+  background: #e8f4fa;
+  border: 1px dashed #0092c9;
+  border-radius: 4px;
+  padding: 0 0.3em;
+  color: #064c78;
+  white-space: nowrap;
+}
+
+.article-preview .shortcode-note {
+  margin: 0 0 24px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: #f4f6f8;
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #6d6e6e;
+}

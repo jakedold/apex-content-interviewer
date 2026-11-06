@@ -81,7 +81,7 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const title = $json.article_title || 'your article';\nconst name = $json.doctor_name || 'Doctor';\nconst revised = Number($json.current_version) > 1;\nreturn { json: {\n  doctor_id: $json.doctor_id,\n  article_id: $json.article_id,\n  campaign_id: $json.campaign_id,\n  communication_type: revised ? 'DOCTOR_REVISED_DRAFT' : 'DOCTOR_REVIEW_REQUEST',\n  subject: revised ? 'Your revised article is ready for review' : 'Your article is ready for review',\n  message_text: ['Hello ' + name + ',', '', (revised ? 'The revised article' : 'A draft article') + ' \"' + title + '\" is ready for your review. Please use the secure link below to approve it or request changes.', '', 'This review link expires at the review deadline.', '', 'Apex Dental Partners'].join(String.fromCharCode(10)),\n  action_url: $json.review_url,\n} };"
+        "jsCode": "const title = $json.article_title || 'your article';\nconst name = $json.doctor_name || 'Doctor';\nconst revised = Number($json.current_version) > 1;\nconst deadline = $json.expires_at ? new Date($json.expires_at) : null;\nconst deadlineText = deadline && Number.isFinite(deadline.getTime())\n  ? deadline.toLocaleDateString('en-US', { timeZone: 'America/Chicago', weekday: 'long', month: 'long', day: 'numeric' })\n  : '';\n// Branded email (workflow 16).\nconst emailJson = JSON.stringify({\n  greeting: 'Hello ' + name + ',',\n  intro: [revised ? 'Your revised article is ready for your review:' : 'Your article is ready for your review:'],\n  items: [{ title, url: $json.review_url, button: revised ? 'Review your revised article' : 'Review your article' }],\n  after: ['You can approve it as written or tell us what to change.'\n    + (deadlineText ? ' Please review it by **' + deadlineText + '**. If we do not hear from you by then, the article moves forward as approved.' : '')],\n});\nreturn { json: {\n  email_json: emailJson,\n  doctor_id: $json.doctor_id,\n  article_id: $json.article_id,\n  campaign_id: $json.campaign_id,\n  communication_type: revised ? 'DOCTOR_REVISED_DRAFT' : 'DOCTOR_REVIEW_REQUEST',\n  subject: revised ? 'Your revised article is ready for review' : 'Your article is ready for review',\n  message_text: ['Hello ' + name + ',', '', (revised ? 'The revised article' : 'A draft article') + ' \"' + title + '\" is ready for your review. Please use the secure link below to approve it or request changes.', '', 'This review link expires at the review deadline.', '', 'Apex Dental Partners'].join(String.fromCharCode(10)),\n  action_url: $json.review_url,\n} };"
       },
       "id": "aac-prepare-doctor-review-message",
       "name": "Prepare Doctor Review Message",
@@ -109,7 +109,8 @@
             "communication_type": "={{ $json.communication_type }}",
             "subject": "={{ $json.subject }}",
             "message_text": "={{ $json.message_text }}",
-            "action_url": "={{ $json.action_url }}"
+            "action_url": "={{ $json.action_url }}",
+            "email_json": "={{ $json.email_json || '' }}"
           },
           "matchingColumns": [],
           "schema": [
@@ -146,6 +147,11 @@
             {
               "id": "action_url",
               "displayName": "action_url",
+              "type": "string"
+            },
+            {
+              "id": "email_json",
+              "displayName": "email_json",
               "type": "string"
             }
           ],

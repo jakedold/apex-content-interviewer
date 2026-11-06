@@ -160,7 +160,8 @@
         },
         "options": {
           "waitForSubWorkflow": true
-        }
+        },
+        "mode": "each"
       },
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.3,

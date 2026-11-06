@@ -44,6 +44,7 @@ type CampaignTemplate = {
   practice_id: string | null;
   training_resource_url: string | null;
   send_doctor_review_reminders: boolean | null;
+  interview_reminders?: string | null;
   topics: CampaignTemplateTopic[];
   recipients: CampaignTemplateRecipient[];
 };
@@ -1012,6 +1013,7 @@ async function duplicateCampaign(campaignId: string): Promise<void> {
     setCampaignField(form, 'launch_confirmation', '');
     const reminderCheckbox = form.elements.namedItem('send_doctor_review_reminders');
     if (reminderCheckbox instanceof HTMLInputElement) reminderCheckbox.checked = template.send_doctor_review_reminders !== false;
+    setCampaignField(form, 'interview_reminders', template.interview_reminders || 'auto');
 
     const audience = form.elements.namedItem('audience') as HTMLSelectElement | null;
     if (audience) {
@@ -1199,7 +1201,16 @@ function renderDashboard(data: AdminResponse): void {
           <label>Campaign month<input name="campaign_month" required type="month" /></label>
 
           <fieldset class="admin-send-options"><legend>Doctor communications</legend>
-            <label>Interview completion deadline (optional)<input name="interview_deadline" type="date" /><small>Topic links expire at 11:59 PM Central on this date. If blank, links expire 30 days after the invitation. This deadline applies to completing the interview.</small></label>
+            <label>Interview completion deadline (optional)<input name="interview_deadline" type="date" /><small>Topic links expire at 11:59 PM Central on this date. If blank, links do not expire. This deadline applies to completing the interview.</small></label>
+            <label>Interview reminders
+              <select name="interview_reminders">
+                <option value="auto" selected>Recommended: two reminders if doctors have two weeks or more, otherwise one</option>
+                <option value="two">Two reminders: 7 days and 2 days before the deadline</option>
+                <option value="one">One reminder: 3 days before the deadline</option>
+                <option value="none">No interview reminders</option>
+              </select>
+              <small>Reminders go only to doctors who have not finished an interview, and stop once they or a colleague at their practice finish. None go out within 2 days of the invitation. Without a deadline, one reminder goes out 10 days after the invitation (unless set to none).</small>
+            </label>
             <label>Training link or video (optional)<input name="training_resource_url" type="url" placeholder="https://…" /><small>This link is included in the invitation email.</small></label>
             <label class="admin-toggle"><input name="send_doctor_review_reminders" type="checkbox" checked /><span>Send one reminder 48 hours before the doctor review deadline.</span></label>
           </fieldset>
@@ -2118,6 +2129,7 @@ async function submitCampaign(event: SubmitEvent): Promise<void> {
       interview_deadline: interviewDeadline,
       training_resource_url: trainingResourceUrl,
       send_doctor_review_reminders: data.has('send_doctor_review_reminders'),
+      interview_reminders: String(data.get('interview_reminders') ?? 'auto'),
       topics,
       doctor_ids: doctorIds,
     });

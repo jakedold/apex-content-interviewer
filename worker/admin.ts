@@ -321,7 +321,8 @@ WITH campaign AS (
   SELECT campaign_id, campaign_name, CAST(campaign_month AS STRING) AS campaign_month,
     COALESCE(preview_only, FALSE) AS preview_only,
     JSON_VALUE(TO_JSON_STRING(c), '$.training_resource_url') AS training_resource_url,
-    COALESCE(SAFE_CAST(JSON_VALUE(TO_JSON_STRING(c), '$.send_doctor_review_reminders') AS BOOL), TRUE) AS send_doctor_review_reminders
+    COALESCE(SAFE_CAST(JSON_VALUE(TO_JSON_STRING(c), '$.send_doctor_review_reminders') AS BOOL), TRUE) AS send_doctor_review_reminders,
+    COALESCE(JSON_VALUE(TO_JSON_STRING(c), '$.interview_reminders'), 'auto') AS interview_reminders
   FROM ${table('campaigns')} AS c
   WHERE campaign_id = @campaign_id
 ),
@@ -349,6 +350,7 @@ SELECT TO_JSON_STRING(STRUCT(
   (SELECT campaign_month FROM campaign LIMIT 1) AS campaign_month,
   (SELECT training_resource_url FROM campaign LIMIT 1) AS training_resource_url,
   (SELECT send_doctor_review_reminders FROM campaign LIMIT 1) AS send_doctor_review_reminders,
+  (SELECT interview_reminders FROM campaign LIMIT 1) AS interview_reminders,
   IF((SELECT preview_only FROM campaign LIMIT 1), 'Presentation preview', 'Linked doctors') AS audience,
   CASE
     WHEN (SELECT COUNT(DISTINCT practice_id) FROM recipients) = 1

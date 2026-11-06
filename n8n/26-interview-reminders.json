@@ -1,0 +1,226 @@
+{
+  "name": "AAC - 26 - Interview Reminders",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "40 * * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        300
+      ],
+      "id": "aac-26-schedule",
+      "name": "Check Interview Reminders Hourly"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        500
+      ],
+      "id": "aac-26-manual",
+      "name": "Run Interview Reminder Check Manually"
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "value": "apex-marketing-n8n",
+          "mode": "list",
+          "cachedResultName": "apex-marketing-n8n"
+        },
+        "sqlQuery": "-- AAC 26: interview reminders.\n-- Campaign setting (interview_reminders): auto = two reminders when doctors have two weeks or more before the deadline,\n-- otherwise one; two = 7 and 2 days before the deadline; one = 3 days before; none = no reminders. Without a deadline,\n-- one reminder 10 days after the invitation (unless none). No reminder within 2 days of the invitation.\n-- Reminders go only to doctors with no completed interview in the campaign, and stop once a colleague at the same\n-- practice completes one (300 words or more), or when the doctor's row is archived. Each reminder is sent once.\nCREATE TEMP TABLE reminder_candidates AS\nWITH completed AS (\n  SELECT DISTINCT campaign_id, doctor_id FROM `apex-marketing-n8n.automated_article_creation.interviews` WHERE completed_at IS NOT NULL\n),\npractice_covered AS (\n  SELECT DISTINCT i.campaign_id, d.practice_id\n  FROM `apex-marketing-n8n.automated_article_creation.interviews` i JOIN `apex-marketing-n8n.automated_article_creation.doctors` d ON d.doctor_id = i.doctor_id\n  WHERE i.completed_at IS NOT NULL AND ARRAY_LENGTH(REGEXP_EXTRACT_ALL(TRIM(COALESCE(i.transcript, '')), r'\\S+')) >= 300\n),\narchived AS (\n  SELECT entity_id FROM `apex-marketing-n8n.automated_article_creation.workflow_events`\n  WHERE entity_type = 'work_item' AND event_type IN ('work_item.archived', 'work_item.restored')\n  QUALIFY ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY event_timestamp DESC) = 1 AND event_type = 'work_item.archived'\n),\nsent AS (\n  SELECT DISTINCT campaign_id, doctor_id, communication_type FROM `apex-marketing-n8n.automated_article_creation.communications`\n  WHERE status = 'SENT' AND STARTS_WITH(communication_type, 'INTERVIEW_REMINDER_')\n),\nbase AS (\n  SELECT cd.campaign_id, cd.doctor_id, cd.invited_at, d.doctor_name, c.campaign_name,\n    COALESCE(c.preview_only, FALSE) AS preview_only,\n    JSON_VALUE(TO_JSON_STRING(c), '$.interview_deadline') AS interview_deadline,\n    COALESCE(NULLIF(LOWER(JSON_VALUE(TO_JSON_STRING(c), '$.interview_reminders')), ''), 'auto') AS reminder_setting,\n    IF(SAFE_CAST(JSON_VALUE(TO_JSON_STRING(c), '$.interview_deadline') AS DATE) IS NULL, NULL,\n      TIMESTAMP(DATETIME(DATE_ADD(SAFE_CAST(JSON_VALUE(TO_JSON_STRING(c), '$.interview_deadline') AS DATE), INTERVAL 1 DAY), TIME '00:00:00'), 'America/Chicago')) AS deadline_end\n  FROM `apex-marketing-n8n.automated_article_creation.campaign_doctors` cd\n  JOIN `apex-marketing-n8n.automated_article_creation.campaigns` c ON c.campaign_id = cd.campaign_id\n  JOIN `apex-marketing-n8n.automated_article_creation.doctors` d ON d.doctor_id = cd.doctor_id\n  LEFT JOIN completed cp ON cp.campaign_id = cd.campaign_id AND cp.doctor_id = cd.doctor_id\n  LEFT JOIN practice_covered pc ON pc.campaign_id = cd.campaign_id AND pc.practice_id = d.practice_id\n  LEFT JOIN archived ar ON ar.entity_id = CONCAT(cd.campaign_id, ':', cd.doctor_id)\n  WHERE c.status = 'LAUNCHED'\n    AND JSON_VALUE(TO_JSON_STRING(c), '$.archived_at') IS NULL\n    AND cd.invited_at IS NOT NULL\n    AND cd.invited_at <= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 2 DAY)\n    AND d.active = TRUE AND NULLIF(TRIM(d.email), '') IS NOT NULL\n    AND cp.doctor_id IS NULL AND pc.practice_id IS NULL AND ar.entity_id IS NULL\n),\nplanned AS (\n  SELECT *,\n    CASE\n      WHEN reminder_setting = 'none' THEN 'none'\n      WHEN deadline_end IS NULL THEN 'no_deadline'\n      WHEN reminder_setting = 'auto' THEN IF(TIMESTAMP_DIFF(deadline_end, invited_at, HOUR) >= 14 * 24, 'two', 'one')\n      ELSE reminder_setting\n    END AS plan\n  FROM base\n),\ndue AS (\n  SELECT *,\n    CASE\n      WHEN plan = 'two' AND CURRENT_TIMESTAMP() >= TIMESTAMP_SUB(deadline_end, INTERVAL 2 DAY) AND CURRENT_TIMESTAMP() < deadline_end THEN 'INTERVIEW_REMINDER_2D'\n      WHEN plan = 'two' AND CURRENT_TIMESTAMP() >= TIMESTAMP_SUB(deadline_end, INTERVAL 7 DAY) AND CURRENT_TIMESTAMP() < deadline_end THEN 'INTERVIEW_REMINDER_7D'\n      WHEN plan = 'one' AND CURRENT_TIMESTAMP() >= TIMESTAMP_SUB(deadline_end, INTERVAL 3 DAY) AND CURRENT_TIMESTAMP() < deadline_end THEN 'INTERVIEW_REMINDER_3D'\n      WHEN plan = 'no_deadline' AND CURRENT_TIMESTAMP() >= TIMESTAMP_ADD(invited_at, INTERVAL 10 DAY) THEN 'INTERVIEW_REMINDER_10D'\n    END AS reminder_type\n  FROM planned\n)\nSELECT due.* FROM due\nLEFT JOIN sent s ON s.campaign_id = due.campaign_id AND s.doctor_id = due.doctor_id AND s.communication_type = due.reminder_type\nWHERE due.reminder_type IS NOT NULL AND s.doctor_id IS NULL\nORDER BY due.deadline_end, due.campaign_id, due.doctor_id\nLIMIT 50;\n\n-- Fresh single-use links for every active topic (earlier links keep working). Only a hash of each token is stored.\nCREATE TEMP TABLE new_links AS\nSELECT GENERATE_UUID() AS link_id, r.*, tp.topic_id, tp.topic_title, tp.topic_sort_order,\n  CONCAT(REPLACE(GENERATE_UUID(), '-', ''), REPLACE(GENERATE_UUID(), '-', '')) AS raw_token,\n  COALESCE(r.deadline_end, TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 3650 DAY)) AS expires_at\nFROM reminder_candidates r\nJOIN `apex-marketing-n8n.automated_article_creation.campaign_topics` tp ON tp.campaign_id = r.campaign_id AND tp.active = TRUE;\n\nINSERT INTO `apex-marketing-n8n.automated_article_creation.interview_links`\n(link_id, campaign_id, doctor_id, topic_id, secure_token_hash, status, created_at, expires_at, first_opened_at, used_at, interview_id)\nSELECT link_id, campaign_id, doctor_id, topic_id, TO_HEX(SHA256(raw_token)), 'READY', CURRENT_TIMESTAMP(), expires_at, NULL, NULL, NULL\nFROM new_links;\n\nSELECT campaign_id, doctor_id, doctor_name, campaign_name, preview_only, interview_deadline, reminder_type,\n  topic_title, topic_sort_order,\n  CONCAT('https://apex-content-interviewer.jdold.workers.dev/interview/', raw_token) AS interview_url\nFROM new_links\nORDER BY campaign_id, doctor_id, topic_sort_order;",
+        "options": {
+          "location": "US"
+        }
+      },
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [
+        260,
+        400
+      ],
+      "id": "aac-26-prepare",
+      "name": "Prepare Interview Reminders",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "// One reminder email per doctor, with a button for each topic (branded design via workflow 16).\nconst rows = $input.all().map((item) => item.json).filter((row) => row.interview_url);\nconst groups = new Map();\nfor (const row of rows) {\n  const key = row.campaign_id + '::' + row.doctor_id;\n  if (!groups.has(key)) groups.set(key, []);\n  groups.get(key).push(row);\n}\nconst emails = [];\nfor (const group of groups.values()) {\n  group.sort((a, b) => Number(a.topic_sort_order) - Number(b.topic_sort_order));\n  const first = group[0];\n  const previewOnly = first.preview_only === true || String(first.preview_only).toLowerCase() === 'true';\n  const deadline = String(first.interview_deadline || '').slice(0, 10);\n  const deadlineLabel = deadline ? new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' }).format(new Date(deadline + 'T12:00:00Z')) : '';\n  const several = group.length > 1;\n  const intro = 'A friendly reminder that your article interview for ' + first.campaign_name + ' is still open. It takes about 10 minutes, and we turn the conversation into an article for your practice website.';\n  const pick = several ? 'Pick the topic you would most like to talk about:' : 'Here is your interview link:';\n  const deadlineLine = deadline ? 'Please complete your interview by **' + deadlineLabel + '** (Central Time).' : '';\n  const tip = 'Before you begin, choose a quiet place; headphones with a microphone help. Please do not include patient-identifying information.';\n  const done = 'If you have already finished your interview, thank you, and please ignore this email.';\n  const lines = ['Hello ' + first.doctor_name + ',', '', intro, '', pick, ''];\n  for (const row of group) lines.push((several ? row.topic_sort_order + '. ' : '') + row.topic_title, row.interview_url, '');\n  if (deadlineLine) lines.push(deadlineLine.replace(/\\*\\*/g, ''), '');\n  lines.push(tip, '', done, '', 'Apex Dental Partners');\n  emails.push({ json: {\n    doctor_id: first.doctor_id,\n    article_id: '',\n    campaign_id: first.campaign_id,\n    communication_type: first.reminder_type,\n    subject: first.reminder_type === 'INTERVIEW_REMINDER_2D' ? 'Reminder: your article interview is due ' + deadlineLabel : 'Reminder: your article interview for ' + first.campaign_name,\n    message_text: lines.join(String.fromCharCode(10)),\n    action_url: '',\n    email_json: JSON.stringify({\n      greeting: 'Hello ' + first.doctor_name + ',',\n      intro: [intro, pick],\n      items: group.map((row) => ({ title: row.topic_title, url: row.interview_url, button: previewOnly ? 'Try this interview' : 'Start this interview' })),\n      after: [deadlineLine, tip, done].filter(Boolean),\n    }),\n  } });\n}\nreturn emails;"
+      },
+      "id": "aac-26-compose",
+      "name": "Compose Interview Reminder Emails",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "cZtS9x6kbI46Q2Bi",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/cZtS9x6kbI46Q2Bi",
+          "cachedResultName": "AAC - 16 - Send Doctor Message"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "doctor_id": "={{ $json.doctor_id || '' }}",
+            "article_id": "={{ $json.article_id || '' }}",
+            "campaign_id": "={{ $json.campaign_id || '' }}",
+            "communication_type": "={{ $json.communication_type || '' }}",
+            "subject": "={{ $json.subject || '' }}",
+            "message_text": "={{ $json.message_text || '' }}",
+            "action_url": "={{ $json.action_url || '' }}",
+            "email_json": "={{ $json.email_json || '' }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "doctor_id",
+              "displayName": "doctor_id",
+              "type": "string"
+            },
+            {
+              "id": "article_id",
+              "displayName": "article_id",
+              "type": "string"
+            },
+            {
+              "id": "campaign_id",
+              "displayName": "campaign_id",
+              "type": "string"
+            },
+            {
+              "id": "communication_type",
+              "displayName": "communication_type",
+              "type": "string"
+            },
+            {
+              "id": "subject",
+              "displayName": "subject",
+              "type": "string"
+            },
+            {
+              "id": "message_text",
+              "displayName": "message_text",
+              "type": "string"
+            },
+            {
+              "id": "action_url",
+              "displayName": "action_url",
+              "type": "string"
+            },
+            {
+              "id": "email_json",
+              "displayName": "email_json",
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        },
+        "mode": "each"
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        780,
+        400
+      ],
+      "id": "aac-26-send",
+      "name": "Send Interview Reminder"
+    },
+    {
+      "parameters": {
+        "content": "## AAC 26 - Interview Reminders\n\nRuns hourly at minute 40. Emails doctors who have not finished their campaign interview, following the campaign's **Interview reminders** setting (auto, two, one, or none). Each reminder is sent once and includes fresh links for every topic; earlier links keep working. Reminders stop once the doctor or a colleague at the same practice finishes an interview, or the doctor's row is archived.\n\nConnect **Google BigQuery account**, test with **Run Interview Reminder Check Manually**, then activate.",
+        "height": 300,
+        "width": 520
+      },
+      "id": "aac-26-notes",
+      "name": "Interview Reminder Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Check Interview Reminders Hourly": {
+      "main": [
+        [
+          {
+            "node": "Prepare Interview Reminders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Interview Reminder Check Manually": {
+      "main": [
+        [
+          {
+            "node": "Prepare Interview Reminders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Interview Reminders": {
+      "main": [
+        [
+          {
+            "node": "Compose Interview Reminder Emails",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compose Interview Reminder Emails": {
+      "main": [
+        [
+          {
+            "node": "Send Interview Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Chicago"
+  },
+  "versionId": "interview-reminders-2026-11",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

@@ -82,7 +82,7 @@ test('the doctor bio sits in the left sidebar directly under the FAQ, not below 
   assert.equal(content.match(/About Dr\. Test/g).length, 1);
   assert.ok(content.trim().endsWith('</aside></div>'));
   assert.match(sidebar, /View full bio/);
-  assert.match(sidebar, /href="https:\/\/public-dental\.test" target="_blank" rel="noopener">Book appointment/);
+  assert.match(sidebar, /href="https:\/\/public-dental\.test\/contact-us\/" target="_blank" rel="noopener">Book appointment/);
   assert.match(content, /\.aac-article-sidebar\{grid-column:1!important/);
 });
 
@@ -220,10 +220,12 @@ test('"Book appointment" opens the site\'s NexHealth scheduling pop-up when the 
   assert.deepEqual(JSON.parse(Buffer.from(settings, 'base64').toString()), { id: '7500', toggle: false });
   assert.match(book, /href="#elementor-action%3Aaction%3Dpopup%3Aopen%26settings%3D/);
   assert.doesNotMatch(book, /target="_blank"/, 'the pop-up opens on the page');
-  // No NexHealth popup, or the lookup failed: the practice website link stays.
+  // No NexHealth popup, or the lookup failed: the button goes to the practice's Contact Us page.
   for (const popups of [[], [{ error: 'rest_no_route' }]]) {
-    assert.match(run(popups), /<a class="aac-author-bio-button aac-author-bio-book"[^>]*href="https:\/\/public-dental\.test" target="_blank"/);
+    assert.match(run(popups), /<a class="aac-author-bio-button aac-author-bio-book"[^>]*href="https:\/\/public-dental\.test\/contact-us\/" target="_blank"/);
   }
+  // The article's own closing call to action keeps the practice website link.
+  assert.match(withPopup, /Schedule at https:\/\/public-dental\.test</);
   const lookup = workflow.nodes.find((node) => node.name === 'Find Scheduling Popup');
   assert.equal(lookup.onError, 'continueRegularOutput');
   assert.match(lookup.parameters.url, /\/elementor_library\?search=NexHealth/);

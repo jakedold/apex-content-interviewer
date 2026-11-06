@@ -156,6 +156,7 @@ type AdminResponse = {
 };
 
 type WorkItemDetail = {
+  topics?: Array<{ topic_id: string; topic_title: string; topic_sort_order: number; approved: boolean }>;
   item: {
     campaign_id: string;
     campaign_name: string;
@@ -1650,6 +1651,54 @@ async function submitResend(event: SubmitEvent, detail: WorkItemDetail): Promise
   }
 }
 
+// Email the doctor interview links again (for example, they lost the invitation): every topic, or one topic. Earlier
+// links keep working and nothing already written changes. If the doctor records a topic again, the new interview
+// replaces that topic's earlier draft, unless the doctor already approved it (approved topics are not offered).
+function resendLinksPanel(detail: WorkItemDetail, enabledActions: string[]): string {
+  const item = detail.item;
+  const topics = detail.topics ?? [];
+  if (!enabledActions.includes('resend_interview_links') || workItemArchiveState(detail).archived || !topics.length) return '';
+  const open = topics.filter((topic) => !topic.approved);
+  if (!open.length) return '';
+  const current = open.find((topic) => topic.topic_id === item.topic_id);
+  const lastSent = detail.events
+    .filter((event) => event.event_type === 'interview.links_resent')
+    .sort((a, b) => String(b.event_timestamp).localeCompare(String(a.event_timestamp)))[0];
+  const options = [
+    `<option value="" ${current ? '' : 'selected'}>All ${open.length === topics.length ? `${topics.length} topics` : 'open topics'} (like the original invitation)</option>`,
+    ...topics.map((topic) => `<option value="${escapeHtml(topic.topic_id)}" ${topic.approved ? 'disabled' : ''} ${current?.topic_id === topic.topic_id ? 'selected' : ''}>${escapeHtml(topic.topic_title)}${topic.approved ? ' (already approved)' : ''}</option>`),
+  ].join('');
+  return `
+    <form id="admin-resend-links-form" class="admin-archive-panel">
+      <strong>Resend interview link</strong>
+      <p>${lastSent ? `Links were last resent on ${escapeHtml(formatDate(lastSent.event_timestamp, true))}. ` : ''}Emails the doctor a fresh interview link, for example if they lost the invitation or want to record the interview again. Earlier links keep working, and nothing already written changes. If the doctor records a topic again, the new interview replaces that topic's earlier draft, unless they already approved it. Links follow the campaign's interview deadline; for a campaign without a deadline, they do not expire.</p>
+      <label>Topic<select name="topic_id">${options}</select></label>
+      <label>Note (optional)<textarea name="reason" rows="2" maxlength="2000" placeholder="Dr. Carlile asked for the link again by email…"></textarea></label>
+      <button class="admin-secondary-button" type="submit">Email the link</button>
+      <p class="admin-form-message" id="resend-links-form-message" role="status"></p>
+    </form>`;
+}
+
+async function submitResendLinks(event: SubmitEvent, detail: WorkItemDetail): Promise<void> {
+  event.preventDefault();
+  const item = detail.item;
+  const form = event.currentTarget as HTMLFormElement;
+  const message = form.querySelector<HTMLElement>('#resend-links-form-message');
+  const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+  const data = new FormData(form);
+  if (submit) submit.disabled = true;
+  if (message) message.textContent = 'Sending…';
+  try {
+    await postAdminCommand({ action: 'resend_interview_links', campaign_id: item.campaign_id, doctor_id: item.doctor_id,
+      topic_id: String(data.get('topic_id') ?? ''), reason: String(data.get('reason') ?? '').trim() });
+    if (message) message.textContent = 'Sent. The doctor will get an email with the link.';
+    await initializeAdmin();
+  } catch (error) {
+    if (message) message.textContent = friendlyCommandError(error);
+    if (submit) submit.disabled = false;
+  }
+}
+
 // Latest archive/restore decision for this work item: this interview's own decision, or one made for the whole
 // doctor row in this campaign (before work items were split per interview), whichever is newer.
 function workItemArchiveState(detail: WorkItemDetail): { archived: boolean; doNotUse: boolean; reason: string } {
@@ -1833,6 +1882,7 @@ function renderWorkItemDetail(response: WorkItemDetailResponse): void {
     </section>
     ${nextStepPanel(detail, response.capabilities.enabledActions)}
     ${resendPanel(detail, response.capabilities.enabledActions)}
+    ${resendLinksPanel(detail, response.capabilities.enabledActions)}
     ${archivePanel(detail, response.capabilities.enabledActions)}`;
 
   const iframe = content.querySelector<HTMLIFrameElement>('.admin-article-preview');
@@ -1846,6 +1896,7 @@ function renderWorkItemDetail(response: WorkItemDetailResponse): void {
   content.querySelector<HTMLFormElement>('#admin-next-step-form')?.addEventListener('submit', (event) => void submitNextStep(event, detail, response.capabilities.enabledActions));
   content.querySelector<HTMLFormElement>('#admin-change-form')?.addEventListener('submit', (event) => void submitChangeRequest(event, detail));
   content.querySelector<HTMLFormElement>('#admin-resend-form')?.addEventListener('submit', (event) => void submitResend(event, detail));
+  content.querySelector<HTMLFormElement>('#admin-resend-links-form')?.addEventListener('submit', (event) => void submitResendLinks(event, detail));
   content.querySelector<HTMLFormElement>('#admin-archive-form')?.addEventListener('submit', (event) => void submitArchive(event, detail));
 }
 

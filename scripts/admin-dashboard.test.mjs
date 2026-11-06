@@ -424,7 +424,7 @@ test('every interview is its own work item, so a doctor with several interviews 
   assert.match(worker, /url\.searchParams\.get\('interview_id'\)/);
   assert.match(client, /\?interview_id=\$\{encodeURIComponent\(item\.interview_id\)\}/);
   // An abandoned restart of the same topic does not add a duplicate row.
-  assert.match(admin, /WHERE completed_at IS NOT NULL OR has_article OR topic_rank = 1/);
+  assert.match(admin, /WHERE \(completed_at IS NOT NULL OR has_article OR topic_rank = 1\)/);
   // Campaign counts include every article, not just each doctor's latest.
   assert.match(admin, /campaign_article_counts AS \(/);
   // Archive decisions apply to one interview; older whole-row decisions still count.
@@ -452,4 +452,67 @@ test('published articles stay visible for 30 days after they are marked live, an
   assert.match(client, /if \(status === 'PUBLISHED'\) return item\.live_on_website \? 'published' : 'ready_to_push';/);
   assert.match(client, /&& !item\.live_on_website;\n\}/, 'a live article is no longer "ready to push"');
   assert.match(client, /\['auto_approved', 'Auto-approved', \(item\) => !item\.archived && !item\.live_on_website && Boolean\(item\.doctor_auto_approved \|\| item\.marketing_auto_approved\)\]/);
+});
+
+test('interview links can be emailed again by topic without cancelling earlier links, and a re-recorded topic replaces its unapproved draft', () => {
+  assert.match(admin, /ADMIN_ACTIONS = \[[^\]]*'resend_interview_links'/);
+  assert.match(client, /action: 'resend_interview_links', campaign_id: item\.campaign_id/);
+  assert.match(client, /id="admin-resend-links-form"/);
+  assert.match(admin, /AS topics,/);
+  assert.doesNotMatch(admin, /COALESCE\(\(SELECT MAX\(/);
+  // The queue hides an earlier interview once the same topic is recorded again, unless its draft was approved.
+  assert.equal((admin.match(/AND \(article_status IS NULL OR article_status = 'DO_NOT_USE'\)\)/g) || []).length, 2);
+
+  const source = router.nodes.find((node) => node.name === 'Validate and Normalize Command').parameters.jsCode;
+  const run = (body) => new Function('$json', source)({ body: { actor_email: 'admin@apexdp.com', idempotency_key: 'abcdefghijklmnop1234', campaign_id: 'campaign_1', doctor_id: 'doctor_1', ...body } });
+  assert.equal(run({ action: 'resend_interview_links' })[0].json.topic_id, '');
+  assert.equal(run({ action: 'resend_interview_links', topic_id: 'topic_2' })[0].json.topic_id, 'topic_2');
+  assert.throws(() => run({ action: 'resend_interview_links', topic_id: 'bad topic!' }), /Invalid topic/);
+
+  const rules = router.nodes.find((node) => node.name === 'Route Narrow Command').parameters.rules.values;
+  const index = rules.findIndex((rule) => rule.conditions.conditions[0].rightValue === 'resend_interview_links');
+  assert.equal(router.connections['Route Narrow Command'].main[index][0].node, 'Create Interview Links Again');
+  assert.equal(router.connections['Create Interview Links Again'].main[0][0].node, 'Return Interview Links Result');
+  assert.equal(router.connections['Return Interview Links Result'].main[0][0].node, 'Compose Interview Links Email');
+  assert.equal(router.connections['Compose Interview Links Email'].main[0][0].node, 'Email Interview Links');
+  const sql = router.nodes.find((node) => node.name === 'Create Interview Links Again').parameters.sqlQuery;
+  assert.doesNotMatch(sql, /SUPERSEDED/, 'earlier links keep working');
+  assert.doesNotMatch(sql, /UPDATE `[^`]*\.articles`/, 'nothing already written changes');
+  assert.match(sql, /TO_HEX\(SHA256\(raw_token\)\)/, 'only a hash of the token is stored');
+  assert.match(sql, /INTERVAL 3650 DAY/, 'no deadline: the link does not expire');
+  assert.match(sql, /interview deadline for this campaign has passed/);
+  assert.match(sql, /already approved the article for the chosen topic/);
+  assert.doesNotMatch(sql, /''[A-Za-z]/);
+  const reply = router.nodes.find((node) => node.name === 'Return Interview Links Result').parameters.responseBody;
+  assert.doesNotMatch(reply, /interview_url|token/, 'links go only to the doctor');
+  assert.equal(router.nodes.find((node) => node.name === 'Email Interview Links').parameters.workflowId.value, 'cZtS9x6kbI46Q2Bi');
+
+  const compose = router.nodes.find((node) => node.name === 'Compose Interview Links Email').parameters.jsCode;
+  const rows = [2, 1].map((n) => ({ json: { doctor_name: 'Dr. Test', doctor_id: 'doctor_1', campaign_id: 'campaign_1', campaign_name: 'January', topic_title: 'Topic ' + n, topic_sort_order: n, interview_url: 'https://example.test/interview/' + n, interview_deadline: '2026-12-15', preview_only: false } }));
+  const all = new Function('$input', compose)({ all: () => rows })[0].json;
+  assert.match(all.message_text, /1\. Topic 1\nhttps:\/\/example\.test\/interview\/1\n\n2\. Topic 2/);
+  assert.match(all.message_text, /Any earlier links you received still work/);
+  assert.match(all.message_text, /by December 15, 2026/);
+  assert.equal(all.communication_type, 'INTERVIEW_LINKS_RESENT');
+  const one = new Function('$input', compose)({ all: () => [{ json: { ...rows[0].json, interview_deadline: null } }] })[0].json;
+  assert.equal(one.subject, 'Your interview link: Topic 2');
+  assert.doesNotMatch(one.message_text, /expires/);
+
+  const persist = JSON.parse(read('n8n/06-generate-article.json')).nodes.find((node) => node.name === 'Persist Initial Article Draft').parameters;
+  const q = persist.sqlQuery ?? persist.query;
+  assert.match(q, /CREATE TEMP TABLE replaced_articles AS/);
+  assert.match(q, /old_i\.topic_id = new_i\.topic_id/);
+  assert.match(q, /a\.status NOT IN \('DOCTOR_APPROVED'[^)]*'PUBLISHED', 'DO_NOT_USE'\)/);
+  assert.match(q, /'article\.replaced_by_newer_interview'/);
+  assert.ok(q.indexOf('replaced_articles') < q.lastIndexOf('SELECT\n  @article_id AS article_id'));
+});
+
+test('campaign invitations without an interview deadline do not expire', () => {
+  const dispatch = JSON.parse(read('n8n/02-dispatch-campaign-invitations.json'));
+  const node = (name) => dispatch.nodes.find((entry) => entry.name === name);
+  const sql = node('Create three topic links').parameters.sqlQuery ?? node('Create three topic links').parameters.query;
+  assert.match(sql, /IS NULL,\s*-- No interview deadline[^\n]*\n\s*TIMESTAMP_ADD\(CURRENT_TIMESTAMP\(\), INTERVAL 3650 DAY\)/);
+  assert.doesNotMatch(sql, /INTERVAL 30 DAY/);
+  assert.match(node('Compose three-topic invitation').parameters.jsCode, /These links do not expire/);
+  assert.equal(dispatch.active, true, 'the export keeps the scheduled workflow active');
 });

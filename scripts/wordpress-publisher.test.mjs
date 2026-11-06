@@ -198,3 +198,35 @@ test('an older article whose FAQ uses collapsible <details> items still gets the
   assert.match(main, /Closing call to action at https:\/\/public-dental\.test/, 'the closing call to action after the FAQ stays in the article');
   assert.doesNotMatch(main, /Frequently Asked Questions/);
 });
+
+test('"Book appointment" opens the site\'s NexHealth scheduling pop-up when the site has one', () => {
+  const candidate = { ...row(verifiedConfig), photo_source_url: 'https://public-dental.test/doctor.jpg', wordpress_publish_date: '2026-10-16' };
+  candidate.publication_package_json = JSON.stringify({
+    metadata: { h1: 'Test article', slug: 'test-article', meta_description: 'Test summary' },
+    author_bio: 'Dr. Test is a placeholder dentist used only in this automated layout test.',
+    article_html: '<h1>Test article</h1><p>Body</p><p>Schedule at {{APPOINTMENT_URL}}</p>',
+  });
+  const prepared = prepare(candidate)[0].json;
+  const chosen = new Function('$input', '$', chooseSource)({ all: () => [] }, () => ({ first: () => ({ json: prepared }) }))[0].json;
+  const run = (popups) => new Function('$json', '$', layoutSource)(
+    { id: 7, source_url: 'https://apexparent.hostmanpowered.com/wp-content/uploads/test.jpg' },
+    (name) => name === 'Find Scheduling Popup'
+      ? { all: () => popups.map((json) => ({ json })) }
+      : { first: () => ({ json: chosen }) },
+  )[0].json.content;
+  const withPopup = run([{ id: 9100, title: { rendered: 'Other popup' }, status: 'publish' }, { id: 7500, title: { rendered: 'NexHealth' }, status: 'publish' }]);
+  const book = withPopup.match(/<a class="aac-author-bio-button aac-author-bio-book"[^>]*>/)[0];
+  const settings = decodeURIComponent(book.match(/settings%3D([^"]+)"/)[1]);
+  assert.deepEqual(JSON.parse(Buffer.from(settings, 'base64').toString()), { id: '7500', toggle: false });
+  assert.match(book, /href="#elementor-action%3Aaction%3Dpopup%3Aopen%26settings%3D/);
+  assert.doesNotMatch(book, /target="_blank"/, 'the pop-up opens on the page');
+  // No NexHealth popup, or the lookup failed: the practice website link stays.
+  for (const popups of [[], [{ error: 'rest_no_route' }]]) {
+    assert.match(run(popups), /<a class="aac-author-bio-button aac-author-bio-book"[^>]*href="https:\/\/public-dental\.test" target="_blank"/);
+  }
+  const lookup = workflow.nodes.find((node) => node.name === 'Find Scheduling Popup');
+  assert.equal(lookup.onError, 'continueRegularOutput');
+  assert.match(lookup.parameters.url, /\/elementor_library\?search=NexHealth/);
+  assert.equal(workflow.connections['Choose WordPress Create or Update'].main[0][0].node, 'Find Scheduling Popup');
+  assert.equal(workflow.connections['Find Scheduling Popup'].main[0][0].node, 'Download Featured Image');
+});

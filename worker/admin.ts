@@ -209,6 +209,8 @@ queue_rows AS (
     cd.campaign_id, c.campaign_name, cd.doctor_id, d.doctor_name, d.credentials,
     p.practice_name, COALESCE(a.article_id, '') AS article_id,
     COALESCE(i.interview_id, '') AS interview_id,
+    -- Interview length; under 100 words is too short to write an article (the same minimum the draft step enforces).
+    IF(i.interview_id IS NULL, NULL, ARRAY_LENGTH(REGEXP_EXTRACT_ALL(TRIM(COALESCE(i.transcript, '')), r'\S+'))) AS transcript_words,
     COALESCE(t.topic_title, 'Topic not selected') AS topic_title,
     COALESCE(a.status, i.status, cd.status) AS status,
     COALESCE(a.published_url, '') AS published_url,
@@ -460,6 +462,10 @@ WITH latest_interview AS (
     t.topic_title, t.topic_description,
     a.article_id, a.status article_status, a.current_version, a.created_at article_created_at,
     a.doctor_review_deadline, a.doctor_approved_at, a.marketing_approved_at, a.published_at, a.published_url,
+    -- Live page on the practice website: /resources/blog/<slug>/ (the slug WordPress published).
+    IF(REGEXP_EXTRACT(a.published_url, r'/([^/?#]+)/?(?:[?#].*)?$') IS NULL OR NULLIF(TRIM(p.website_domain), '') IS NULL, NULL,
+      CONCAT(REGEXP_REPLACE(TRIM(p.website_domain), r'/+$', ''), '/resources/blog/', REGEXP_EXTRACT(a.published_url, r'/([^/?#]+)/?(?:[?#].*)?$'), '/')) AS live_url,
+    ARRAY_LENGTH(REGEXP_EXTRACT_ALL(TRIM(COALESCE(i.transcript, '')), r'\S+')) AS transcript_words,
     v.version_type, v.content article_content, v.created_at version_created_at
   FROM ${table('campaign_doctors')} cd
   JOIN ${table('campaigns')} c USING (campaign_id)

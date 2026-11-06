@@ -67,6 +67,7 @@ type WorkItem = {
   published_url: string;
   // Marked live on the website (pushed through Headless Hostman) in the last 30 days.
   live_on_website?: boolean;
+  transcript_words?: number | null;
   updated_at: string | null;
   urgency: 'error' | 'attention' | 'complete' | 'active';
   current_version?: number | null;
@@ -160,6 +161,8 @@ type AdminResponse = {
 type WorkItemDetail = {
   topics?: Array<{ topic_id: string; topic_title: string; topic_sort_order: number; approved: boolean }>;
   item: {
+    live_url?: string | null;
+    transcript_words?: number | null;
     campaign_id: string;
     campaign_name: string;
     campaign_month: string;
@@ -369,12 +372,21 @@ function isReadyToPush(item: WorkItem): boolean {
   return item.status === 'PUBLISHED' && Boolean(item.article_id) && !item.archived && !item.live_on_website;
 }
 
-type QueueStage = 'invited' | 'interview' | 'drafting' | 'doctor_review' | 'marketing_review' | 'sending' | 'ready_to_push' | 'published' | 'errors';
+type QueueStage = 'invited' | 'interview' | 'drafting' | 'too_short' | 'doctor_review' | 'marketing_review' | 'sending' | 'ready_to_push' | 'published' | 'errors';
+
+// A completed interview without an article that is under the 100-word minimum for writing one (for example, it got
+// cut off). It cannot move forward; the next step is to resend the interview link.
+const MIN_INTERVIEW_WORDS = 100;
+function isTooShort(item: { article_id?: string | null; interview_id?: string | null; transcript_words?: number | null; status?: string | null }): boolean {
+  return !item.article_id && Boolean(item.interview_id) && typeof item.transcript_words === 'number'
+    && item.transcript_words < MIN_INTERVIEW_WORDS && /COMPLETED|FAILED/.test(String(item.status || '').toUpperCase());
+}
 
 // Where a work item sits in the Apex process, from its current status. Every status maps to one stage.
 function queueStage(item: WorkItem): QueueStage {
   const status = String(item.status || '').toUpperCase();
   if (item.urgency === 'error' || /(FAILED|ERROR|UNAVAILABLE)/.test(status)) return 'errors';
+  if (isTooShort(item)) return 'too_short';
   if (status === 'PUBLISHED') return item.live_on_website ? 'published' : 'ready_to_push';
   if (/^(MARKETING_APPROVED|PUBLISHING)$/.test(status)) return 'sending';
   if (/^(DOCTOR_APPROVED|DOCTOR_AUTO_APPROVED|MARKETING_REVIEW|MARKETING_CHANGES_REQUESTED)$/.test(status)) return 'marketing_review';
@@ -396,7 +408,7 @@ const QUEUE_FILTERS: Array<[string, string, (item: WorkItem) => boolean]> = [
   // Approved automatically because nobody responded in time: give these a closer look before they are pushed live.
   ['auto_approved', 'Auto-approved', (item) => !item.archived && !item.live_on_website && Boolean(item.doctor_auto_approved || item.marketing_auto_approved)],
   ['published', 'Published', (item) => !item.archived && queueStage(item) === 'published'],
-  ['attention', 'Needs attention', (item) => !item.archived && (queueStage(item) === 'errors' || Boolean(stalledReason(item)))],
+  ['attention', 'Needs attention', (item) => !item.archived && (['errors', 'too_short'].includes(queueStage(item)) || Boolean(stalledReason(item)))],
   ['archived', 'Archived', (item) => Boolean(item.archived)],
   ['all', 'All', () => true],
 ];
@@ -404,7 +416,7 @@ const QUEUE_PAGE_SIZE = 50;
 
 // An item that has sat at one step longer than expected, so it does not get stuck silently.
 function stalledReason(item: WorkItem): string {
-  if (item.archived || !item.updated_at) return '';
+  if (item.archived || !item.updated_at || isTooShort(item)) return '';
   const hours = (Date.now() - new Date(item.updated_at).getTime()) / 3_600_000;
   if (!Number.isFinite(hours)) return '';
   const stage = queueStage(item);
@@ -449,6 +461,7 @@ function queueNextStep(item: WorkItem): QueueStep | null {
   let step: QueueStep | null = null;
   if (item.archived) step = null;
   else if (!item.article_id && item.interview_id && queueStage(item) === 'drafting') step = 'generate_article';
+  // A too-short interview has no next step here; resend the interview link from the article view.
   else if (!item.article_id || !item.current_version) step = null;
   else if (item.status === 'DOCTOR_REVIEW_PENDING') step = 'approve_for_doctor';
   else if (item.require_marketing_approval && /^(DOCTOR_APPROVED|DOCTOR_AUTO_APPROVED|MARKETING_REVIEW)$/.test(item.status)) step = 'approve_for_marketing';
@@ -467,6 +480,7 @@ function autoApprovalFlag(item: { marketing_auto_approved?: boolean; doctor_auto
 }
 
 function stalledFlag(item: WorkItem): string {
+  if (isTooShort(item)) return `<span class="admin-flag admin-flag-stalled" title="The interview is under ${MIN_INTERVIEW_WORDS} words, which is too short to write an article. Open it and resend the interview link.">Too short to write an article: resend the interview link</span>`;
   const reason = stalledReason(item);
   return reason ? `<span class="admin-flag admin-flag-stalled" title="This item has not moved for a while. Open it to see what it is waiting for.">Stalled: ${escapeHtml(reason)}</span>` : '';
 }
@@ -1581,6 +1595,9 @@ function nextStepAction(detail: WorkItemDetail, enabledActions: string[]): { act
       success: 'Approval recorded. The article is moving to marketing review.',
     });
   }
+  if (detailTooShort(detail)) {
+    return { action: null, message: `This interview is only ${item.transcript_words ?? 0} words, which is too short to write an article (about ${MIN_INTERVIEW_WORDS} are needed). It may have been cut off. Use “Resend interview link” below to ask the doctor to try again; the message to the doctor is filled in for you.` };
+  }
   if (m.interviewCompleted && !m.articleDrafted && item.interview_id) {
     return offer({
       action: 'generate_article',
@@ -1665,6 +1682,13 @@ async function submitResend(event: SubmitEvent, detail: WorkItemDetail): Promise
   }
 }
 
+const CUT_OFF_NOTE = 'It looks like your interview got cut off before we had enough to write your article. Could you give it another try? It only takes about 10 minutes.';
+
+function detailTooShort(detail: WorkItemDetail): boolean {
+  const item = detail.item;
+  return isTooShort({ article_id: item.article_id, interview_id: item.interview_id, transcript_words: item.transcript_words, status: item.interview_status });
+}
+
 // Email the doctor interview links again (for example, they lost the invitation): every topic, or one topic. Earlier
 // links keep working and nothing already written changes. If the doctor records a topic again, the new interview
 // replaces that topic's earlier draft, unless the doctor already approved it (approved topics are not offered).
@@ -1687,7 +1711,8 @@ function resendLinksPanel(detail: WorkItemDetail, enabledActions: string[]): str
       <strong>Resend interview link</strong>
       <p>${lastSent ? `Links were last resent on ${escapeHtml(formatDate(lastSent.event_timestamp, true))}. ` : ''}Emails the doctor a fresh interview link, for example if they lost the invitation or want to record the interview again. Earlier links keep working, and nothing already written changes. If the doctor records a topic again, the new interview replaces that topic's earlier draft, unless they already approved it. Links follow the campaign's interview deadline; for a campaign without a deadline, they do not expire.</p>
       <label>Topic<select name="topic_id">${options}</select></label>
-      <label>Note (optional)<textarea name="reason" rows="2" maxlength="2000" placeholder="Dr. Carlile asked for the link again by email…"></textarea></label>
+      <label>Message to the doctor (optional, shown at the top of the email)<textarea name="doctor_note" rows="3" maxlength="800" placeholder="For example: It looks like your interview got cut off…">${detailTooShort(detail) ? escapeHtml(CUT_OFF_NOTE) : ''}</textarea></label>
+      <label>Internal note (optional, not sent)<textarea name="reason" rows="2" maxlength="2000" placeholder="Dr. Carlile asked for the link again by email…"></textarea></label>
       <button class="admin-secondary-button" type="submit">Email the link</button>
       <p class="admin-form-message" id="resend-links-form-message" role="status"></p>
     </form>`;
@@ -1704,7 +1729,8 @@ async function submitResendLinks(event: SubmitEvent, detail: WorkItemDetail): Pr
   if (message) message.textContent = 'Sending…';
   try {
     await postAdminCommand({ action: 'resend_interview_links', campaign_id: item.campaign_id, doctor_id: item.doctor_id,
-      topic_id: String(data.get('topic_id') ?? ''), reason: String(data.get('reason') ?? '').trim() });
+      topic_id: String(data.get('topic_id') ?? ''), reason: String(data.get('reason') ?? '').trim(),
+      doctor_note: String(data.get('doctor_note') ?? '').trim() });
     if (message) message.textContent = 'Sent. The doctor will get an email with the link.';
     await initializeAdmin();
   } catch (error) {
@@ -1865,6 +1891,7 @@ function renderWorkItemDetail(response: WorkItemDetailResponse): void {
     ${stageVisual(detail)}
     <dl class="admin-detail-list">
       <div><dt>Current status</dt><dd>${milestones.liveOnWebsite ? statusPill('PUBLISHED') : milestones.onWordPress ? statusPill('READY_TO_PUSH') : statusPill(item.article_status || item.interview_status || item.campaign_doctor_status)}</dd></div>
+      ${milestones.liveOnWebsite && item.live_url ? `<div><dt>Live article</dt><dd><a href="${escapeHtml(item.live_url)}" target="_blank" rel="noreferrer">${escapeHtml(item.live_url)}</a></dd></div>` : ''}
       <div><dt>Intended website</dt><dd>${item.website_domain ? `<a href="${escapeHtml(item.website_domain)}" target="_blank" rel="noreferrer">${escapeHtml(item.website_domain)}</a>` : 'Not configured'}</dd></div>
       <div><dt>Practice</dt><dd>${escapeHtml(item.practice_name || 'Not assigned')}</dd></div>
       <div><dt>Publishing route</dt><dd>${escapeHtml(item.publisher_type || 'Not configured')}</dd></div>

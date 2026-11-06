@@ -333,7 +333,7 @@ test('items that sit too long at one step are flagged as stalled and get their o
   const stalled = client.match(/function stalledReason[\s\S]*?\n}\n/)[0];
   for (const reason of ['no draft after 1 hour', 'rewrite not finished after 2 hours', 'in doctor review over 6 days', 'waiting for marketing over 2 days', 'not on WordPress after 2 hours']) assert.ok(stalled.includes(reason), reason);
   // Errors and stalled items share one "Needs attention" filter.
-  assert.match(client, /\['attention', 'Needs attention', \(item\) => !item\.archived && \(queueStage\(item\) === 'errors' \|\| Boolean\(stalledReason\(item\)\)\)\]/);
+  assert.match(client, /\['attention', 'Needs attention', \(item\) => !item\.archived && \(\['errors', 'too_short'\]\.includes\(queueStage\(item\)\) \|\| Boolean\(stalledReason\(item\)\)\)\]/);
   assert.match(client, /\$\{stalledFlag\(item\)\}/);
 });
 
@@ -535,4 +535,37 @@ test('the dashboard shows rows the latest doctor sync skipped, so they can be fi
   assert.match(admin, /JSON_QUERY_ARRAY\(payload, '\$\.warnings'\)/);
   assert.match(client, /function rosterSyncNotice\(data: AdminResponse\)/);
   assert.match(client, /return `\$\{rosterSyncNotice\(data\)\}/);
+});
+
+test('a cut-off interview is flagged "too short", cannot be drafted, and the resend email can carry a note to the doctor', () => {
+  assert.match(admin, /ARRAY_LENGTH\(REGEXP_EXTRACT_ALL\(TRIM\(COALESCE\(i\.transcript, ''\)\), r'\\S\+'\)\)\) AS transcript_words/);
+  assert.match(client, /const MIN_INTERVIEW_WORDS = 100;/);
+  assert.match(client, /if \(isTooShort\(item\)\) return 'too_short';/);
+  assert.match(client, /Too short to write an article: resend the interview link/);
+  assert.match(client, /if \(detailTooShort\(detail\)\) \{\n    return \{ action: null/, 'no "Write the draft now" for a too-short interview');
+  assert.match(client, /name="doctor_note"[^>]*>\$\{detailTooShort\(detail\) \? escapeHtml\(CUT_OFF_NOTE\) : ''\}/);
+  const source = router.nodes.find((node) => node.name === 'Validate and Normalize Command').parameters.jsCode;
+  const run = (body) => new Function('$json', source)({ body: { actor_email: 'admin@apexdp.com', idempotency_key: 'abcdefghijklmnop1234', campaign_id: 'campaign_1', doctor_id: 'doctor_1', ...body } });
+  assert.equal(run({ action: 'resend_interview_links', doctor_note: 'It looks like your interview got cut off.' })[0].json.doctor_note, 'It looks like your interview got cut off.');
+  assert.throws(() => run({ action: 'resend_interview_links', doctor_note: 'x'.repeat(801) }), /800 characters/);
+  assert.match(router.nodes.find((node) => node.name === 'Create Interview Links Again').parameters.sqlQuery, /@doctor_note AS doctor_note/);
+  const compose = router.nodes.find((node) => node.name === 'Compose Interview Links Email').parameters.jsCode;
+  const out = new Function('$input', compose)({ all: () => [{ json: { doctor_name: 'Dr. Test', doctor_id: 'd1', campaign_id: 'c1', campaign_name: 'January', topic_title: 'Topic', topic_sort_order: 1, interview_url: 'https://example.test/interview/1', interview_deadline: null, preview_only: false, doctor_note: 'It looks like your interview got cut off.' } }] })[0].json;
+  assert.equal(JSON.parse(out.email_json).intro[0], 'It looks like your interview got cut off.');
+  assert.match(out.message_text, /Hello Dr\. Test,\n\nIt looks like your interview got cut off\./);
+});
+
+test('marking an article published emails the doctor a link to the live article, and the dashboard shows it', () => {
+  const live = router.nodes.find((node) => node.name === 'Record Live on Website').parameters.sqlQuery;
+  assert.match(live, /'\/resources\/blog\/'/);
+  assert.equal(router.connections['Return Live on Website Result'].main[0][0].node, 'Compose Article Live Email');
+  assert.equal(router.connections['Compose Article Live Email'].main[0][0].node, 'Email Article Live');
+  const compose = router.nodes.find((node) => node.name === 'Compose Article Live Email').parameters.jsCode;
+  const email = new Function('$json', compose)({ doctor_id: 'd1', article_id: 'a1', campaign_id: 'c1', doctor_name: 'Dr. Test', practice_name: 'Audubon Dental', article_title: 'Cracked Tooth', live_url: 'https://audubondentalcare.com/resources/blog/cracked-tooth-no-pain/' })[0].json;
+  assert.equal(email.communication_type, 'ARTICLE_LIVE');
+  assert.equal(JSON.parse(email.email_json).items[0].url, 'https://audubondentalcare.com/resources/blog/cracked-tooth-no-pain/');
+  assert.deepEqual(new Function('$json', compose)({ live_url: '' }), [], 'no email without a valid live link');
+  assert.equal(router.nodes.find((node) => node.name === 'Email Article Live').parameters.workflowId.value, 'cZtS9x6kbI46Q2Bi');
+  assert.match(admin, /'\/resources\/blog\/'[\s\S]*AS live_url/);
+  assert.match(client, /<dt>Live article<\/dt>/);
 });

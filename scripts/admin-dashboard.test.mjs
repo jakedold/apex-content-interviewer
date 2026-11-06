@@ -506,3 +506,13 @@ test('interview links can be emailed again by topic without cancelling earlier l
   assert.match(q, /'article\.replaced_by_newer_interview'/);
   assert.ok(q.indexOf('replaced_articles') < q.lastIndexOf('SELECT\n  @article_id AS article_id'));
 });
+
+test('campaign invitations without an interview deadline do not expire', () => {
+  const dispatch = JSON.parse(read('n8n/02-dispatch-campaign-invitations.json'));
+  const node = (name) => dispatch.nodes.find((entry) => entry.name === name);
+  const sql = node('Create three topic links').parameters.sqlQuery ?? node('Create three topic links').parameters.query;
+  assert.match(sql, /IS NULL,\s*-- No interview deadline[^\n]*\n\s*TIMESTAMP_ADD\(CURRENT_TIMESTAMP\(\), INTERVAL 3650 DAY\)/);
+  assert.doesNotMatch(sql, /INTERVAL 30 DAY/);
+  assert.match(node('Compose three-topic invitation').parameters.jsCode, /These links do not expire/);
+  assert.equal(dispatch.active, true, 'the export keeps the scheduled workflow active');
+});

@@ -454,42 +454,55 @@ test('published articles stay visible for 30 days after they are marked live, an
   assert.match(client, /\['auto_approved', 'Auto-approved', \(item\) => !item\.archived && !item\.live_on_website && Boolean\(item\.doctor_auto_approved \|\| item\.marketing_auto_approved\)\]/);
 });
 
-test('a new interview link can be sent at the doctor\'s request until the doctor approves the article', () => {
-  assert.match(admin, /ADMIN_ACTIONS = \[[^\]]*'resend_interview_link'/);
-  assert.match(client, /action: 'resend_interview_link', interview_id: item\.interview_id/);
-  assert.match(client, /id="admin-redo-form"/);
-  // The old row shows "New interview link sent" until a newer interview on the same topic is completed, then it is hidden.
-  assert.equal((admin.match(/AND NOT \(redo_requested_at IS NOT NULL AND latest_topic_completion > redo_requested_at\)/g) || []).length, 2);
-  assert.match(admin, /IF\(i\.redo_requested_at IS NOT NULL, 'NEW_INTERVIEW_LINK_SENT', COALESCE\(a\.status, i\.status, cd\.status\)\) AS status/);
-  assert.match(client, /if \(status === 'NEW_INTERVIEW_LINK_SENT'\) return 'interview';/);
+test('interview links can be emailed again by topic without cancelling earlier links, and a re-recorded topic replaces its unapproved draft', () => {
+  assert.match(admin, /ADMIN_ACTIONS = \[[^\]]*'resend_interview_links'/);
+  assert.match(client, /action: 'resend_interview_links', campaign_id: item\.campaign_id/);
+  assert.match(client, /id="admin-resend-links-form"/);
+  assert.match(admin, /AS topics,/);
+  assert.doesNotMatch(admin, /COALESCE\(\(SELECT MAX\(/);
+  // The queue hides an earlier interview once the same topic is recorded again, unless its draft was approved.
+  assert.equal((admin.match(/AND \(article_status IS NULL OR article_status = 'DO_NOT_USE'\)\)/g) || []).length, 2);
 
   const source = router.nodes.find((node) => node.name === 'Validate and Normalize Command').parameters.jsCode;
   const run = (body) => new Function('$json', source)({ body: { actor_email: 'admin@apexdp.com', idempotency_key: 'abcdefghijklmnop1234', campaign_id: 'campaign_1', doctor_id: 'doctor_1', ...body } });
-  assert.equal(run({ action: 'resend_interview_link', interview_id: 'interview_1', reason: 'Patient came in mid-interview' })[0].json.interview_id, 'interview_1');
-  assert.throws(() => run({ action: 'resend_interview_link', interview_id: 'interview_1', reason: 'short' }), /short reason/);
-  assert.throws(() => run({ action: 'resend_interview_link', reason: 'Patient came in mid-interview' }), /interview_id/);
+  assert.equal(run({ action: 'resend_interview_links' })[0].json.topic_id, '');
+  assert.equal(run({ action: 'resend_interview_links', topic_id: 'topic_2' })[0].json.topic_id, 'topic_2');
+  assert.throws(() => run({ action: 'resend_interview_links', topic_id: 'bad topic!' }), /Invalid topic/);
 
   const rules = router.nodes.find((node) => node.name === 'Route Narrow Command').parameters.rules.values;
-  const index = rules.findIndex((rule) => rule.conditions.conditions[0].rightValue === 'resend_interview_link');
-  assert.equal(router.connections['Route Narrow Command'].main[index][0].node, 'Create New Interview Link');
-  assert.equal(router.connections['Create New Interview Link'].main[0][0].node, 'Return New Interview Link Result');
-  assert.equal(router.connections['Return New Interview Link Result'].main[0][0].node, 'Compose New Interview Link Email');
-  assert.equal(router.connections['Compose New Interview Link Email'].main[0][0].node, 'Email New Interview Link');
-  const sql = router.nodes.find((node) => node.name === 'Create New Interview Link').parameters.sqlQuery;
-  assert.match(sql, /already approved this article/);
+  const index = rules.findIndex((rule) => rule.conditions.conditions[0].rightValue === 'resend_interview_links');
+  assert.equal(router.connections['Route Narrow Command'].main[index][0].node, 'Create Interview Links Again');
+  assert.equal(router.connections['Create Interview Links Again'].main[0][0].node, 'Return Interview Links Result');
+  assert.equal(router.connections['Return Interview Links Result'].main[0][0].node, 'Compose Interview Links Email');
+  assert.equal(router.connections['Compose Interview Links Email'].main[0][0].node, 'Email Interview Links');
+  const sql = router.nodes.find((node) => node.name === 'Create Interview Links Again').parameters.sqlQuery;
+  assert.doesNotMatch(sql, /SUPERSEDED/, 'earlier links keep working');
+  assert.doesNotMatch(sql, /UPDATE `[^`]*\.articles`/, 'nothing already written changes');
   assert.match(sql, /TO_HEX\(SHA256\(raw_token\)\)/, 'only a hash of the token is stored');
-  assert.match(sql, /SET status = 'SUPERSEDED'/);
-  assert.match(sql, /UPDATE `[^`]*\.articles` SET status = 'DO_NOT_USE'/);
-  assert.match(sql, /'interview\.redo_requested'/);
+  assert.match(sql, /INTERVAL 3650 DAY/, 'no deadline: the link does not expire');
+  assert.match(sql, /interview deadline for this campaign has passed/);
+  assert.match(sql, /already approved the article for the chosen topic/);
   assert.doesNotMatch(sql, /''[A-Za-z]/);
-  // The dashboard reply never carries the link; only the doctor's email does.
-  const reply = router.nodes.find((node) => node.name === 'Return New Interview Link Result').parameters.responseBody;
-  assert.doesNotMatch(reply, /interview_url|token/);
-  const send = router.nodes.find((node) => node.name === 'Email New Interview Link');
-  assert.equal(send.parameters.workflowId.value, 'cZtS9x6kbI46Q2Bi');
-  const compose = router.nodes.find((node) => node.name === 'Compose New Interview Link Email').parameters.jsCode;
-  const email = new Function('$json', compose)({ doctor_name: 'Dr. Test', topic_title: 'Bleeding gums', interview_url: 'https://example.test/interview/abc', expires_at: '2026-11-20T18:00:00Z', doctor_id: 'doctor_1', campaign_id: 'campaign_1', preview_only: false })[0].json;
-  assert.equal(email.communication_type, 'INTERVIEW_LINK_RESENT');
-  assert.match(email.message_text, /https:\/\/example\.test\/interview\/abc/);
-  assert.match(email.message_text, /expires on November 20, 2026/);
+  const reply = router.nodes.find((node) => node.name === 'Return Interview Links Result').parameters.responseBody;
+  assert.doesNotMatch(reply, /interview_url|token/, 'links go only to the doctor');
+  assert.equal(router.nodes.find((node) => node.name === 'Email Interview Links').parameters.workflowId.value, 'cZtS9x6kbI46Q2Bi');
+
+  const compose = router.nodes.find((node) => node.name === 'Compose Interview Links Email').parameters.jsCode;
+  const rows = [2, 1].map((n) => ({ json: { doctor_name: 'Dr. Test', doctor_id: 'doctor_1', campaign_id: 'campaign_1', campaign_name: 'January', topic_title: 'Topic ' + n, topic_sort_order: n, interview_url: 'https://example.test/interview/' + n, interview_deadline: '2026-12-15', preview_only: false } }));
+  const all = new Function('$input', compose)({ all: () => rows })[0].json;
+  assert.match(all.message_text, /1\. Topic 1\nhttps:\/\/example\.test\/interview\/1\n\n2\. Topic 2/);
+  assert.match(all.message_text, /Any earlier links you received still work/);
+  assert.match(all.message_text, /by December 15, 2026/);
+  assert.equal(all.communication_type, 'INTERVIEW_LINKS_RESENT');
+  const one = new Function('$input', compose)({ all: () => [{ json: { ...rows[0].json, interview_deadline: null } }] })[0].json;
+  assert.equal(one.subject, 'Your interview link: Topic 2');
+  assert.doesNotMatch(one.message_text, /expires/);
+
+  const persist = JSON.parse(read('n8n/06-generate-article.json')).nodes.find((node) => node.name === 'Persist Initial Article Draft').parameters;
+  const q = persist.sqlQuery ?? persist.query;
+  assert.match(q, /CREATE TEMP TABLE replaced_articles AS/);
+  assert.match(q, /old_i\.topic_id = new_i\.topic_id/);
+  assert.match(q, /a\.status NOT IN \('DOCTOR_APPROVED'[^)]*'PUBLISHED', 'DO_NOT_USE'\)/);
+  assert.match(q, /'article\.replaced_by_newer_interview'/);
+  assert.ok(q.indexOf('replaced_articles') < q.lastIndexOf('SELECT\n  @article_id AS article_id'));
 });

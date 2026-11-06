@@ -128,27 +128,21 @@ interview_articles AS (
     FROM ${table('articles')} a
   ) WHERE row_number = 1
 ),
--- A new interview link sent from the dashboard ("redo"): the old interview shows "New interview link sent" until the
--- doctor completes a newer interview on the same topic, then it is hidden (the new interview replaces it).
-redo_requests AS (
-  SELECT entity_id AS interview_id, MAX(event_timestamp) AS redo_requested_at
-  FROM ${table('workflow_events')}
-  WHERE entity_type = 'interview' AND event_type = 'interview.redo_requested'
-  GROUP BY entity_id
-),
+-- A doctor who records a topic again replaces the earlier interview: once a newer interview on the same topic is
+-- completed, an earlier one is hidden if it has no article or its draft was stopped (an approved draft stays).
 work_interviews AS (
-  SELECT * EXCEPT(topic_rank, has_article, latest_topic_completion) FROM (
+  SELECT * EXCEPT(topic_rank, has_article, article_status, latest_topic_completion) FROM (
     SELECT i.*,
       ROW_NUMBER() OVER (PARTITION BY i.campaign_id, i.doctor_id, COALESCE(i.topic_id, '')
         ORDER BY IF(i.completed_at IS NULL, 1, 0), COALESCE(i.completed_at, i.started_at) DESC) AS topic_rank,
       MAX(i.completed_at) OVER (PARTITION BY i.campaign_id, i.doctor_id, COALESCE(i.topic_id, '')) AS latest_topic_completion,
       ia.article_id IS NOT NULL AS has_article,
-      rr.redo_requested_at
+      ia.status AS article_status
     FROM ${table('interviews')} i
     LEFT JOIN interview_articles ia ON ia.join_key = i.interview_id
-    LEFT JOIN redo_requests rr ON rr.interview_id = i.interview_id
   ) WHERE (completed_at IS NOT NULL OR has_article OR topic_rank = 1)
-    AND NOT (redo_requested_at IS NOT NULL AND latest_topic_completion > redo_requested_at)
+    AND NOT (topic_id IS NOT NULL AND latest_topic_completion > completed_at
+      AND (article_status IS NULL OR article_status = 'DO_NOT_USE'))
 ),
 campaign_rows AS (
   SELECT c.campaign_id, c.campaign_name, CAST(c.campaign_month AS STRING) AS campaign_month,
@@ -216,7 +210,7 @@ queue_rows AS (
     p.practice_name, COALESCE(a.article_id, '') AS article_id,
     COALESCE(i.interview_id, '') AS interview_id,
     COALESCE(t.topic_title, 'Topic not selected') AS topic_title,
-    IF(i.redo_requested_at IS NOT NULL, 'NEW_INTERVIEW_LINK_SENT', COALESCE(a.status, i.status, cd.status)) AS status,
+    COALESCE(a.status, i.status, cd.status) AS status,
     COALESCE(a.published_url, '') AS published_url,
     la.entity_id IS NOT NULL AS live_on_website,
     a.current_version, c.require_marketing_approval,
@@ -235,8 +229,7 @@ queue_rows AS (
       COALESCE(i.updated_at, i.completed_at, i.started_at, TIMESTAMP '1970-01-01'),
       COALESCE(cd.updated_at, cd.invited_at, c.launched_at, c.created_at, TIMESTAMP '1970-01-01')
     ) AS updated_at,
-    CASE WHEN i.redo_requested_at IS NOT NULL THEN 'active'
-      WHEN COALESCE(a.status, i.status, cd.status) IN ('GENERATION_FAILED','ARTICLE_GENERATION_FAILED','COMMUNICATION_FAILED','PUBLISH_FAILED') THEN 'error'
+    CASE WHEN COALESCE(a.status, i.status, cd.status) IN ('GENERATION_FAILED','ARTICLE_GENERATION_FAILED','COMMUNICATION_FAILED','PUBLISH_FAILED') THEN 'error'
       WHEN COALESCE(a.status, i.status, cd.status) IN ('DOCTOR_REVIEW_PENDING','DOCTOR_REVIEW','REVISION_REQUESTED','DOCTOR_CHANGES_REQUESTED','MARKETING_REVIEW','MARKETING_CHANGES_REQUESTED','ON_HOLD') THEN 'attention'
       ELSE 'active' END AS urgency
   FROM ${table('campaign_doctors')} cd
@@ -374,27 +367,21 @@ interview_articles AS (
     FROM ${table('articles')} a
   ) WHERE row_number = 1
 ),
--- A new interview link sent from the dashboard ("redo"): the old interview shows "New interview link sent" until the
--- doctor completes a newer interview on the same topic, then it is hidden (the new interview replaces it).
-redo_requests AS (
-  SELECT entity_id AS interview_id, MAX(event_timestamp) AS redo_requested_at
-  FROM ${table('workflow_events')}
-  WHERE entity_type = 'interview' AND event_type = 'interview.redo_requested'
-  GROUP BY entity_id
-),
+-- A doctor who records a topic again replaces the earlier interview: once a newer interview on the same topic is
+-- completed, an earlier one is hidden if it has no article or its draft was stopped (an approved draft stays).
 work_interviews AS (
-  SELECT * EXCEPT(topic_rank, has_article, latest_topic_completion) FROM (
+  SELECT * EXCEPT(topic_rank, has_article, article_status, latest_topic_completion) FROM (
     SELECT i.*,
       ROW_NUMBER() OVER (PARTITION BY i.campaign_id, i.doctor_id, COALESCE(i.topic_id, '')
         ORDER BY IF(i.completed_at IS NULL, 1, 0), COALESCE(i.completed_at, i.started_at) DESC) AS topic_rank,
       MAX(i.completed_at) OVER (PARTITION BY i.campaign_id, i.doctor_id, COALESCE(i.topic_id, '')) AS latest_topic_completion,
       ia.article_id IS NOT NULL AS has_article,
-      rr.redo_requested_at
+      ia.status AS article_status
     FROM ${table('interviews')} i
     LEFT JOIN interview_articles ia ON ia.join_key = i.interview_id
-    LEFT JOIN redo_requests rr ON rr.interview_id = i.interview_id
   ) WHERE (completed_at IS NOT NULL OR has_article OR topic_rank = 1)
-    AND NOT (redo_requested_at IS NOT NULL AND latest_topic_completion > redo_requested_at)
+    AND NOT (topic_id IS NOT NULL AND latest_topic_completion > completed_at
+      AND (article_status IS NULL OR article_status = 'DO_NOT_USE'))
 ),
 campaign AS (
   SELECT campaign_name, CAST(campaign_month AS STRING) AS campaign_month,
@@ -411,7 +398,6 @@ campaign AS (
     p.practice_name,
     COALESCE(t.topic_title, '') AS topic_title,
     CASE
-      WHEN i.redo_requested_at IS NOT NULL THEN 'NEW_INTERVIEW_LINK_SENT'
       WHEN a.status IS NOT NULL THEN a.status
       WHEN i.completed_at IS NOT NULL THEN 'INTERVIEW_COMPLETED'
       WHEN i.started_at IS NOT NULL THEN 'INTERVIEW_IN_PROGRESS'
@@ -483,6 +469,15 @@ SELECT TO_JSON_STRING(STRUCT(
   (SELECT AS STRUCT * EXCEPT(transcript, article_content) FROM item LIMIT 1) AS item,
   (SELECT transcript FROM item LIMIT 1) AS transcript,
   (SELECT article_content FROM item LIMIT 1) AS article_content,
+  -- Campaign topics, for resending interview links; a topic whose article the doctor already approved is not offered.
+  -- (Joined to an uncorrelated list of approved topics: BigQuery rejects correlated subqueries that read other tables.)
+  ARRAY(SELECT AS STRUCT tp.topic_id, tp.topic_title, tp.topic_sort_order, ap.topic_id IS NOT NULL AS approved
+    FROM ${table('campaign_topics')} tp
+    LEFT JOIN (SELECT DISTINCT ti.topic_id FROM ${table('interviews')} ti JOIN ${table('articles')} ta ON ta.interview_id = ti.interview_id
+      WHERE ti.campaign_id = @campaign_id AND ti.doctor_id = @doctor_id AND ti.topic_id IS NOT NULL
+        AND ta.status IN ('DOCTOR_APPROVED', 'DOCTOR_AUTO_APPROVED', 'MARKETING_REVIEW', 'MARKETING_CHANGES_REQUESTED', 'MARKETING_APPROVED', 'PUBLISHING', 'PUBLISHED')) ap
+      ON ap.topic_id = tp.topic_id
+    WHERE tp.campaign_id = @campaign_id AND tp.active = TRUE ORDER BY tp.topic_sort_order) AS topics,
   ARRAY(SELECT AS STRUCT version_number, version_type, revision_instruction, created_at, created_by
     FROM ${table('article_versions')} WHERE article_id = (SELECT article_id FROM item LIMIT 1) ORDER BY version_number DESC) AS versions,
   ARRAY(SELECT AS STRUCT approval_id, approval_type, status, requested_at, deadline, responded_at, response
@@ -526,7 +521,7 @@ function accessManagement(viewer: AccessClaims, env: AdminEnv): Record<string, u
 }
 
 // Actions the dashboard may send to the audited n8n command workflow (24).
-const ADMIN_ACTIONS = ['approve_for_doctor', 'approve_for_marketing', 'request_marketing_changes', 'mark_live_on_website', 'republish_to_wordpress', 'resend_interview_link', 'archive_work_item', 'restore_work_item', 'generate_article', 'launch_campaign', 'archive_campaign', 'restore_campaign'] as const;
+const ADMIN_ACTIONS = ['approve_for_doctor', 'approve_for_marketing', 'request_marketing_changes', 'mark_live_on_website', 'republish_to_wordpress', 'resend_interview_links', 'archive_work_item', 'restore_work_item', 'generate_article', 'launch_campaign', 'archive_campaign', 'restore_campaign'] as const;
 
 function capabilities(viewer: AccessClaims, env: AdminEnv): Record<string, unknown> {
   const canAct = Boolean(viewer.email && actionEmails(env).includes(viewer.email) && env.ADMIN_COMMAND_SECRET && env.ADMIN_COMMAND_PATH);

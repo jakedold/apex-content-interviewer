@@ -156,6 +156,7 @@ type AdminResponse = {
 };
 
 type WorkItemDetail = {
+  topics?: Array<{ topic_id: string; topic_title: string; topic_sort_order: number; approved: boolean }>;
   item: {
     campaign_id: string;
     campaign_name: string;
@@ -359,7 +360,6 @@ type QueueStage = 'invited' | 'interview' | 'drafting' | 'doctor_review' | 'mark
 // Where a work item sits in the Apex process, from its current status. Every status maps to one stage.
 function queueStage(item: WorkItem): QueueStage {
   const status = String(item.status || '').toUpperCase();
-  if (status === 'NEW_INTERVIEW_LINK_SENT') return 'interview';
   if (item.urgency === 'error' || /(FAILED|ERROR|UNAVAILABLE)/.test(status)) return 'errors';
   if (status === 'PUBLISHED') return item.live_on_website ? 'published' : 'ready_to_push';
   if (/^(MARKETING_APPROVED|PUBLISHING)$/.test(status)) return 'sending';
@@ -1523,10 +1523,6 @@ function nextStepAction(detail: WorkItemDetail, enabledActions: string[]): { act
   const offer = (action: NextStepAction) => readOnly || !enabledActions.includes(action.action)
     ? { action: null, message: 'Your account has read-only access. An assigned administrator can move this article to its next step.' }
     : { action, message: '' };
-  const redo = latestRedoRequest(detail);
-  if (redo) {
-    return { action: null, message: `A new interview link was sent to the doctor on ${formatDate(redo.event_timestamp, true)}. When the doctor completes the new interview, a fresh draft is written and replaces this row.` };
-  }
   if (m.liveOnWebsite) {
     const when = m.liveEvent?.event_timestamp ? formatDate(m.liveEvent.event_timestamp, true) : '';
     return { action: null, message: `This article is published on the website${when ? ` (marked ${when})` : ''}. There are no further steps.` };
@@ -1655,46 +1651,47 @@ async function submitResend(event: SubmitEvent, detail: WorkItemDetail): Promise
   }
 }
 
-// Most recent "send a new interview link" request for this interview, if any.
-function latestRedoRequest(detail: WorkItemDetail): WorkflowEvent | undefined {
-  return detail.events
-    .filter((event) => event.event_type === 'interview.redo_requested' && String(event.entity_id) === String(detail.item.interview_id))
-    .sort((a, b) => String(b.event_timestamp).localeCompare(String(a.event_timestamp)))[0];
-}
-
-const DOCTOR_APPROVED_STATUSES = /^(DOCTOR_APPROVED|DOCTOR_AUTO_APPROVED|MARKETING_REVIEW|MARKETING_CHANGES_REQUESTED|MARKETING_APPROVED|PUBLISHING|PUBLISHED)$/;
-
-// At the doctor's request (interrupted, technical trouble, or wants another try), send a new single-use link for the
-// same topic. Available until the doctor approves the article; the current draft, if any, is stopped.
-function redoPanel(detail: WorkItemDetail, enabledActions: string[]): string {
+// Email the doctor interview links again (for example, they lost the invitation): every topic, or one topic. Earlier
+// links keep working and nothing already written changes. If the doctor records a topic again, the new interview
+// replaces that topic's earlier draft, unless the doctor already approved it (approved topics are not offered).
+function resendLinksPanel(detail: WorkItemDetail, enabledActions: string[]): string {
   const item = detail.item;
-  if (!enabledActions.includes('resend_interview_link') || !item.interview_id || workItemArchiveState(detail).archived
-    || DOCTOR_APPROVED_STATUSES.test(String(item.article_status || ''))) return '';
-  const redo = latestRedoRequest(detail);
+  const topics = detail.topics ?? [];
+  if (!enabledActions.includes('resend_interview_links') || workItemArchiveState(detail).archived || !topics.length) return '';
+  const open = topics.filter((topic) => !topic.approved);
+  if (!open.length) return '';
+  const current = open.find((topic) => topic.topic_id === item.topic_id);
+  const lastSent = detail.events
+    .filter((event) => event.event_type === 'interview.links_resent')
+    .sort((a, b) => String(b.event_timestamp).localeCompare(String(a.event_timestamp)))[0];
+  const options = [
+    `<option value="" ${current ? '' : 'selected'}>All ${open.length === topics.length ? `${topics.length} topics` : 'open topics'} (like the original invitation)</option>`,
+    ...topics.map((topic) => `<option value="${escapeHtml(topic.topic_id)}" ${topic.approved ? 'disabled' : ''} ${current?.topic_id === topic.topic_id ? 'selected' : ''}>${escapeHtml(topic.topic_title)}${topic.approved ? ' (already approved)' : ''}</option>`),
+  ].join('');
   return `
-    <form id="admin-redo-form" class="admin-archive-panel">
-      <strong>${redo ? 'Send another new interview link' : 'Send a new interview link'}</strong>
-      <p>${redo ? `A new link was already sent on ${escapeHtml(formatDate(redo.event_timestamp, true))}. Sending another replaces it. ` : ''}Use this when the doctor asks to redo this interview, for example after an interruption or technical trouble, or because they want another try. The doctor gets an email with a new single-use link for the same topic, valid for 14 days. ${item.article_id ? 'The current draft is stopped and its review link no longer works. ' : ''}When the doctor finishes, a fresh draft is written and sent for review as usual. This is only possible until the doctor approves the article.</p>
-      <label>How did the doctor ask to redo it? (required)<textarea name="reason" required minlength="8" maxlength="2000" rows="2" placeholder="Dr. Carlile emailed that a patient came in mid-interview…"></textarea></label>
-      <label class="admin-confirm-check"><input name="confirmation" type="checkbox" required /> I confirm the doctor should get a new interview link${item.article_id ? ' and the current draft should be stopped' : ''}.</label>
-      <button class="admin-secondary-button" type="submit">Send new interview link</button>
-      <p class="admin-form-message" id="redo-form-message" role="status"></p>
+    <form id="admin-resend-links-form" class="admin-archive-panel">
+      <strong>Resend interview link</strong>
+      <p>${lastSent ? `Links were last resent on ${escapeHtml(formatDate(lastSent.event_timestamp, true))}. ` : ''}Emails the doctor a fresh interview link, for example if they lost the invitation or want to record the interview again. Earlier links keep working, and nothing already written changes. If the doctor records a topic again, the new interview replaces that topic's earlier draft, unless they already approved it. Links follow the campaign's interview deadline; for a campaign without a deadline, they do not expire.</p>
+      <label>Topic<select name="topic_id">${options}</select></label>
+      <label>Note (optional)<textarea name="reason" rows="2" maxlength="2000" placeholder="Dr. Carlile asked for the link again by email…"></textarea></label>
+      <button class="admin-secondary-button" type="submit">Email the link</button>
+      <p class="admin-form-message" id="resend-links-form-message" role="status"></p>
     </form>`;
 }
 
-async function submitRedo(event: SubmitEvent, detail: WorkItemDetail): Promise<void> {
+async function submitResendLinks(event: SubmitEvent, detail: WorkItemDetail): Promise<void> {
   event.preventDefault();
   const item = detail.item;
   const form = event.currentTarget as HTMLFormElement;
-  const message = form.querySelector<HTMLElement>('#redo-form-message');
+  const message = form.querySelector<HTMLElement>('#resend-links-form-message');
   const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]');
-  const reason = String(new FormData(form).get('reason') ?? '').trim();
-  if (reason.length < 8) { if (message) message.textContent = 'Add a short reason (at least 8 characters).'; return; }
+  const data = new FormData(form);
   if (submit) submit.disabled = true;
-  if (message) message.textContent = 'Sending the new link…';
+  if (message) message.textContent = 'Sending…';
   try {
-    await postAdminCommand({ action: 'resend_interview_link', interview_id: item.interview_id, campaign_id: item.campaign_id, doctor_id: item.doctor_id, reason });
-    if (message) message.textContent = 'New interview link sent to the doctor by email.';
+    await postAdminCommand({ action: 'resend_interview_links', campaign_id: item.campaign_id, doctor_id: item.doctor_id,
+      topic_id: String(data.get('topic_id') ?? ''), reason: String(data.get('reason') ?? '').trim() });
+    if (message) message.textContent = 'Sent. The doctor will get an email with the link.';
     await initializeAdmin();
   } catch (error) {
     if (message) message.textContent = friendlyCommandError(error);
@@ -1853,7 +1850,7 @@ function renderWorkItemDetail(response: WorkItemDetailResponse): void {
     <p class="admin-detail-topic">${escapeHtml(item.topic_title || 'Topic not selected')}</p>
     ${stageVisual(detail)}
     <dl class="admin-detail-list">
-      <div><dt>Current status</dt><dd>${latestRedoRequest(detail) ? statusPill('NEW_INTERVIEW_LINK_SENT') : milestones.liveOnWebsite ? statusPill('PUBLISHED') : milestones.onWordPress ? statusPill('READY_TO_PUSH') : statusPill(item.article_status || item.interview_status || item.campaign_doctor_status)}</dd></div>
+      <div><dt>Current status</dt><dd>${milestones.liveOnWebsite ? statusPill('PUBLISHED') : milestones.onWordPress ? statusPill('READY_TO_PUSH') : statusPill(item.article_status || item.interview_status || item.campaign_doctor_status)}</dd></div>
       <div><dt>Intended website</dt><dd>${item.website_domain ? `<a href="${escapeHtml(item.website_domain)}" target="_blank" rel="noreferrer">${escapeHtml(item.website_domain)}</a>` : 'Not configured'}</dd></div>
       <div><dt>Practice</dt><dd>${escapeHtml(item.practice_name || 'Not assigned')}</dd></div>
       <div><dt>Publishing route</dt><dd>${escapeHtml(item.publisher_type || 'Not configured')}</dd></div>
@@ -1885,7 +1882,7 @@ function renderWorkItemDetail(response: WorkItemDetailResponse): void {
     </section>
     ${nextStepPanel(detail, response.capabilities.enabledActions)}
     ${resendPanel(detail, response.capabilities.enabledActions)}
-    ${redoPanel(detail, response.capabilities.enabledActions)}
+    ${resendLinksPanel(detail, response.capabilities.enabledActions)}
     ${archivePanel(detail, response.capabilities.enabledActions)}`;
 
   const iframe = content.querySelector<HTMLIFrameElement>('.admin-article-preview');
@@ -1899,7 +1896,7 @@ function renderWorkItemDetail(response: WorkItemDetailResponse): void {
   content.querySelector<HTMLFormElement>('#admin-next-step-form')?.addEventListener('submit', (event) => void submitNextStep(event, detail, response.capabilities.enabledActions));
   content.querySelector<HTMLFormElement>('#admin-change-form')?.addEventListener('submit', (event) => void submitChangeRequest(event, detail));
   content.querySelector<HTMLFormElement>('#admin-resend-form')?.addEventListener('submit', (event) => void submitResend(event, detail));
-  content.querySelector<HTMLFormElement>('#admin-redo-form')?.addEventListener('submit', (event) => void submitRedo(event, detail));
+  content.querySelector<HTMLFormElement>('#admin-resend-links-form')?.addEventListener('submit', (event) => void submitResendLinks(event, detail));
   content.querySelector<HTMLFormElement>('#admin-archive-form')?.addEventListener('submit', (event) => void submitArchive(event, detail));
 }
 

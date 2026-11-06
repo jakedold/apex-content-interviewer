@@ -10,7 +10,7 @@ test('doctor profiles are synced into durable author fields', () => {
   const prepare = workflow.nodes.find((node) => node.name === 'Prepare Current Census Roster').parameters.jsCode;
   const sync = workflow.nodes.find((node) => node.name === 'Sync Census to BigQuery').parameters.sqlQuery;
   assert.match(prepare, /Short Bio/);
-  assert.match(prepare, /Every active Doctor Profiles row needs Work Email, Doctor Name, Credentials, and Short Bio/);
+  assert.match(prepare, /was skipped: missing /);
   for (const field of ['author_name', 'author_bio', 'profile_url', 'photo_source_url', 'profile_verified_at']) {
     assert.match(sync, new RegExp(field));
   }

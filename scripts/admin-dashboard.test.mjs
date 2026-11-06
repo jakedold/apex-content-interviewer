@@ -529,3 +529,10 @@ test('review pages and the dashboard preview show website fields as readable lab
   assert.match(main, /class="shortcode-note"/);
   assert.match(client, /iframe\.srcdoc = labelShortcodesInHtml\(article\.articleHtml\)/);
 });
+
+test('the dashboard shows rows the latest doctor sync skipped, so they can be fixed in the workbook', () => {
+  assert.match(admin, /event_type = 'roster\.synced'[\s\S]*?\) AS roster_sync/);
+  assert.match(admin, /JSON_QUERY_ARRAY\(payload, '\$\.warnings'\)/);
+  assert.match(client, /function rosterSyncNotice\(data: AdminResponse\)/);
+  assert.match(client, /return `\$\{rosterSyncNotice\(data\)\}/);
+});

@@ -740,3 +740,5 @@
 .admin-archive-panel textarea { width: 100%; box-sizing: border-box; border: 1px solid #cfd9e1; border-radius: 7px; padding: 9px 11px; font: inherit; font-size: 12px; }
 
 .admin-flag-stalled { color: #8a2c0d; background: #fde4d6; }
+.admin-roster-notice { margin: 0 0 18px; }
+.admin-roster-notice ul { margin: 8px 0 0; padding-left: 18px; color: #5f4a20; font-size: 12px; line-height: 1.5; }

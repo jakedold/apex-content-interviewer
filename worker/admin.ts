@@ -302,7 +302,13 @@ SELECT TO_JSON_STRING(STRUCT(
     ORDER BY COALESCE(first_invitation_sent_at, invitation_send_at, launched_at, created_at) DESC LIMIT 250) AS campaigns,
   ARRAY(SELECT AS STRUCT * FROM queue_rows ORDER BY archived, CASE urgency WHEN 'error' THEN 0 WHEN 'attention' THEN 1 ELSE 2 END, updated_at ASC LIMIT 1500) AS work_queue,
   ARRAY(SELECT AS STRUCT * FROM event_rows ORDER BY event_timestamp DESC LIMIT 150) AS recent_events,
-  ARRAY(SELECT AS STRUCT * FROM communication_failures ORDER BY sent_at DESC LIMIT 50) AS communication_failures
+  ARRAY(SELECT AS STRUCT * FROM communication_failures ORDER BY sent_at DESC LIMIT 50) AS communication_failures,
+  -- Rows the latest hourly doctor sync skipped or adjusted (for example a duplicate or incomplete Doctor Profiles row).
+  (SELECT AS STRUCT event_timestamp AS synced_at,
+      ARRAY(SELECT JSON_VALUE(w) FROM UNNEST(COALESCE(JSON_QUERY_ARRAY(payload, '$.warnings'), [])) w) AS warnings
+    FROM ${table('workflow_events')}
+    WHERE entity_type = 'roster' AND event_type = 'roster.synced' AND event_timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
+    ORDER BY event_timestamp DESC LIMIT 1) AS roster_sync
 )) AS payload;`;
 }
 

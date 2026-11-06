@@ -64,6 +64,8 @@ type WorkItem = {
   topic_title: string;
   status: string;
   published_url: string;
+  // Marked live on the website (pushed through Headless Hostman) in the last 30 days.
+  live_on_website?: boolean;
   updated_at: string | null;
   urgency: 'error' | 'attention' | 'complete' | 'active';
   current_version?: number | null;
@@ -349,16 +351,16 @@ function renderSummary(data: AdminResponse): string {
 
 // An article that is on WordPress and waiting for the team to push it live through Headless Hostman.
 function isReadyToPush(item: WorkItem): boolean {
-  return item.status === 'PUBLISHED' && Boolean(item.article_id) && !item.archived;
+  return item.status === 'PUBLISHED' && Boolean(item.article_id) && !item.archived && !item.live_on_website;
 }
 
-type QueueStage = 'invited' | 'interview' | 'drafting' | 'doctor_review' | 'marketing_review' | 'sending' | 'ready_to_push' | 'errors';
+type QueueStage = 'invited' | 'interview' | 'drafting' | 'doctor_review' | 'marketing_review' | 'sending' | 'ready_to_push' | 'published' | 'errors';
 
 // Where a work item sits in the Apex process, from its current status. Every status maps to one stage.
 function queueStage(item: WorkItem): QueueStage {
   const status = String(item.status || '').toUpperCase();
   if (item.urgency === 'error' || /(FAILED|ERROR|UNAVAILABLE)/.test(status)) return 'errors';
-  if (status === 'PUBLISHED') return 'ready_to_push';
+  if (status === 'PUBLISHED') return item.live_on_website ? 'published' : 'ready_to_push';
   if (/^(MARKETING_APPROVED|PUBLISHING)$/.test(status)) return 'sending';
   if (/^(DOCTOR_APPROVED|DOCTOR_AUTO_APPROVED|MARKETING_REVIEW|MARKETING_CHANGES_REQUESTED)$/.test(status)) return 'marketing_review';
   if (item.article_id || /(DOCTOR_REVIEW|DOCTOR_CHANGES|REVISION|ARTICLE_DRAFTED)/.test(status)) return 'doctor_review';
@@ -367,17 +369,19 @@ function queueStage(item: WorkItem): QueueStage {
   return 'invited';
 }
 
+// Filters follow the stages the team works in. Quick in-between steps (interview in progress, drafting, sending to
+// WordPress) are grouped with the stage around them; if one gets stuck it shows under "Needs attention".
 const QUEUE_FILTERS: Array<[string, string, (item: WorkItem) => boolean]> = [
-  ['active', 'Active', (item) => !item.archived],
-  ['invited', 'Invited', (item) => !item.archived && queueStage(item) === 'invited'],
-  ['interview', 'Interview started', (item) => !item.archived && queueStage(item) === 'interview'],
-  ['drafting', 'Drafting', (item) => !item.archived && queueStage(item) === 'drafting'],
-  ['doctor_review', 'Doctor review', (item) => !item.archived && queueStage(item) === 'doctor_review'],
+  // In progress: leaves out doctors who have not responded to their invitation yet, and finished (published) items.
+  ['active', 'Active', (item) => !item.archived && !['invited', 'published'].includes(queueStage(item))],
+  ['awaiting', 'Awaiting interview', (item) => !item.archived && ['invited', 'interview'].includes(queueStage(item))],
+  ['doctor_review', 'Doctor review', (item) => !item.archived && ['drafting', 'doctor_review'].includes(queueStage(item))],
   ['marketing_review', 'Marketing review', (item) => !item.archived && queueStage(item) === 'marketing_review'],
-  ['sending', 'Sending to WordPress', (item) => !item.archived && queueStage(item) === 'sending'],
-  ['ready', 'Ready to push', (item) => isReadyToPush(item)],
-  ['errors', 'Errors', (item) => !item.archived && queueStage(item) === 'errors'],
-  ['stalled', 'Stalled', (item) => Boolean(stalledReason(item))],
+  ['ready', 'Ready to push', (item) => !item.archived && ['sending', 'ready_to_push'].includes(queueStage(item))],
+  // Approved automatically because nobody responded in time: give these a closer look before they are pushed live.
+  ['auto_approved', 'Auto-approved', (item) => !item.archived && !item.live_on_website && Boolean(item.doctor_auto_approved || item.marketing_auto_approved)],
+  ['published', 'Published', (item) => !item.archived && queueStage(item) === 'published'],
+  ['attention', 'Needs attention', (item) => !item.archived && (queueStage(item) === 'errors' || Boolean(stalledReason(item)))],
   ['archived', 'Archived', (item) => Boolean(item.archived)],
   ['all', 'All', () => true],
 ];

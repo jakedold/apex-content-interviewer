@@ -147,7 +147,8 @@ test('"Push to the next step" offers the manual step for each stage through the 
 });
 
 test('articles on WordPress stay in the work queue until they are marked live', () => {
-  assert.match(admin, /OR \(a\.published_at >= TIMESTAMP_SUB\(CURRENT_TIMESTAMP\(\), INTERVAL 90 DAY\)\s*AND a\.article_id NOT IN \(SELECT entity_id FROM live_articles\)\)/);
+  assert.match(admin, /OR \(a\.published_at >= TIMESTAMP_SUB\(CURRENT_TIMESTAMP\(\), INTERVAL 90 DAY\) AND la\.entity_id IS NULL\)/);
+  assert.match(admin, /LEFT JOIN live_articles la ON la\.entity_id = a\.article_id/);
   assert.match(admin, /live_articles AS \([\s\S]*?event_type = 'article\.marked_live'[\s\S]*?\),\nqueue_rows AS/);
 });
 
@@ -243,16 +244,17 @@ test('marketing reviews nobody answers are auto-approved after 24 hours, within 
 
 test('the work queue has a filter for every stage, defaults to active items, and pages long lists', () => {
   const filters = client.match(/const QUEUE_FILTERS[\s\S]*?\n\];/)[0];
-  const keys = [...filters.matchAll(/\['([a-z_]+)', '([^']+)'/g)].map((match) => match[2]);
-  assert.deepEqual(keys, ['Active', 'Invited', 'Interview started', 'Drafting', 'Doctor review', 'Marketing review', 'Sending to WordPress', 'Ready to push', 'Errors', 'Stalled', 'Archived', 'All']);
+  const keys = [...filters.matchAll(/^\s*\['([a-z_]+)', '([^']+)'/gm)].map((match) => match[2]);
+  assert.deepEqual(keys, ['Active', 'Awaiting interview', 'Doctor review', 'Marketing review', 'Ready to push', 'Auto-approved', 'Published', 'Needs attention', 'Archived', 'All']);
   assert.match(client, /let queueFilter = 'active';/);
-  assert.match(filters, /\['active', 'Active', \(item\) => !item\.archived\]/);
+  // Active leaves out doctors who have not responded yet and finished (published) items.
+  assert.match(filters, /\['active', 'Active', \(item\) => !item\.archived && !\['invited', 'published'\]\.includes\(queueStage\(item\)\)\]/);
   assert.match(client, /const QUEUE_PAGE_SIZE = 50;/);
   assert.match(client, /id="admin-queue-campaign"/);
   assert.match(admin, /LIMIT 1500\) AS work_queue/);
   // Every stage the queue can report has a filter button.
   const stages = [...client.match(/type QueueStage = ([^;]+);/)[1].matchAll(/'([a-z_]+)'/g)].map((match) => match[1]);
-  for (const stage of stages) assert.ok(filters.includes(`queueStage(item) === '${stage}'`) || (stage === 'ready_to_push' && filters.includes('isReadyToPush(item)')), stage);
+  for (const stage of stages) assert.ok(filters.includes(`'${stage}'`), stage);
 });
 
 test('work items can be archived, marked "Do not use", and restored through the audited command route', () => {
@@ -330,7 +332,8 @@ test('a completed interview with no draft can have its draft written from the da
 test('items that sit too long at one step are flagged as stalled and get their own filter', () => {
   const stalled = client.match(/function stalledReason[\s\S]*?\n}\n/)[0];
   for (const reason of ['no draft after 1 hour', 'rewrite not finished after 2 hours', 'in doctor review over 6 days', 'waiting for marketing over 2 days', 'not on WordPress after 2 hours']) assert.ok(stalled.includes(reason), reason);
-  assert.match(client, /\['stalled', 'Stalled', \(item\) => Boolean\(stalledReason\(item\)\)\]/);
+  // Errors and stalled items share one "Needs attention" filter.
+  assert.match(client, /\['attention', 'Needs attention', \(item\) => !item\.archived && \(queueStage\(item\) === 'errors' \|\| Boolean\(stalledReason\(item\)\)\)\]/);
   assert.match(client, /\$\{stalledFlag\(item\)\}/);
 });
 
@@ -440,4 +443,13 @@ test('every interview is its own work item, so a doctor with several interviews 
   assert.doesNotMatch(node.parameters.sqlQuery, /CONCAT\(@campaign_id, ':', @doctor_id\)/);
   const names = node.parameters.options.queryParameters.namedParameters.map((param) => param.name);
   assert.ok(names.includes('interview_id') && names.includes('work_item_entity'));
+});
+
+test('published articles stay visible for 30 days after they are marked live, and auto-approved items have their own filter', () => {
+  assert.match(admin, /SELECT e\.entity_id, MAX\(e\.event_timestamp\) AS live_at/);
+  assert.match(admin, /la\.entity_id IS NOT NULL AS live_on_website/);
+  assert.match(admin, /OR la\.live_at >= TIMESTAMP_SUB\(CURRENT_TIMESTAMP\(\), INTERVAL 30 DAY\)/);
+  assert.match(client, /if \(status === 'PUBLISHED'\) return item\.live_on_website \? 'published' : 'ready_to_push';/);
+  assert.match(client, /&& !item\.live_on_website;\n\}/, 'a live article is no longer "ready to push"');
+  assert.match(client, /\['auto_approved', 'Auto-approved', \(item\) => !item\.archived && !item\.live_on_website && Boolean\(item\.doctor_auto_approved \|\| item\.marketing_auto_approved\)\]/);
 });

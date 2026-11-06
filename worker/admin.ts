@@ -189,7 +189,7 @@ queue_archive AS (
   QUALIFY ROW_NUMBER() OVER (PARTITION BY work_item_id ORDER BY event_timestamp DESC) = 1
 ),
 live_articles AS (
-  SELECT e.entity_id
+  SELECT e.entity_id, MAX(e.event_timestamp) AS live_at
   FROM ${table('workflow_events')} e
   LEFT JOIN (SELECT entity_id, MAX(event_timestamp) AS resent_at FROM ${table('workflow_events')}
     WHERE entity_type = 'article' AND event_type = 'article.resent_to_wordpress' GROUP BY entity_id) r
@@ -206,6 +206,7 @@ queue_rows AS (
     COALESCE(t.topic_title, 'Topic not selected') AS topic_title,
     COALESCE(a.status, i.status, cd.status) AS status,
     COALESCE(a.published_url, '') AS published_url,
+    la.entity_id IS NOT NULL AS live_on_website,
     a.current_version, c.require_marketing_approval,
     EXISTS(SELECT 1 FROM ${table('approvals')} ap WHERE ap.article_id = a.article_id
       AND ap.approval_type = 'MARKETING_REVIEW' AND ap.status = 'AUTO_APPROVED') AS marketing_auto_approved,
@@ -232,11 +233,13 @@ queue_rows AS (
   LEFT JOIN work_interviews i ON i.campaign_id = cd.campaign_id AND i.doctor_id = cd.doctor_id
   LEFT JOIN ${table('campaign_topics')} t ON t.topic_id = i.topic_id
   LEFT JOIN interview_articles a ON a.join_key = COALESCE(i.interview_id, CONCAT('no-interview:', cd.campaign_id, ':', cd.doctor_id))
+  LEFT JOIN live_articles la ON la.entity_id = a.article_id
   LEFT JOIN queue_archive wa ON wa.work_item_id = CONCAT(cd.campaign_id, ':', cd.doctor_id, IF(i.interview_id IS NULL, '', CONCAT(':', i.interview_id)))
-  -- Articles on WordPress stay in the queue until the team marks them live (pushed through Headless Hostman).
+  -- Articles on WordPress stay in the queue until the team marks them live (pushed through Headless Hostman), then
+  -- under "Published" for 30 days after they were marked live.
   WHERE COALESCE(a.status, i.status, cd.status) != 'PUBLISHED'
-    OR (a.published_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 90 DAY)
-      AND a.article_id NOT IN (SELECT entity_id FROM live_articles))
+    OR (a.published_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 90 DAY) AND la.entity_id IS NULL)
+    OR la.live_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
 ),
 event_rows AS (
   SELECT event_id, entity_type, entity_id, event_type, event_timestamp, source_system, workflow_execution_id,

@@ -24,7 +24,7 @@ Version-controlled workflow exports:
 - `13-validate-marketing-review-link.json`
 - `14-record-marketing-review-response.json`
 - `15-publish-approved-article-to-wordpress.json`
-- `16-send-doctor-message.json` — sends every doctor email. When the sender passes `email_json` (greeting, intro, buttons, closing lines), its **Build Doctor Email** step renders the branded Apex design: logo at the top, simple letter wording, one button per link, and the mission line at the bottom. Without `email_json`, it sends plain text. Senders: 02 (invitations), 07 (review requests and revised drafts), 17 (review reminders), and 24 (resent interview links).
+- `16-send-doctor-message.json` — sends every doctor email. When the sender passes `email_json` (greeting, intro, buttons, closing lines), its **Build Doctor Email** step renders the branded Apex design: logo at the top, simple letter wording, one button per link, and the mission line at the bottom. Without `email_json`, it sends the plain-text wording as simple HTML (the Gmail step always sends HTML; n8n does not accept a formula there). Senders: 02 (invitations), 07 (review requests and revised drafts), 17 (review reminders), and 24 (resent interview links).
 - `26-interview-reminders.json` — hourly interview reminders, following each campaign's **Interview reminders** setting:
   - auto: two reminders if doctors have two weeks or more, otherwise one;
   - two: 7 and 2 days before the deadline;

@@ -208,16 +208,23 @@ test('"Book appointment" opens the site\'s NexHealth scheduling pop-up when the 
   });
   const prepared = prepare(candidate)[0].json;
   const chosen = new Function('$input', '$', chooseSource)({ all: () => [] }, () => ({ first: () => ({ json: prepared }) }))[0].json;
-  const run = (popups) => new Function('$json', '$', layoutSource)(
+  // btoa and Buffer are passed as undefined because n8n Code steps do not provide them ("btoa is not defined").
+  const run = (popups) => new Function('$json', '$', 'btoa', 'Buffer', layoutSource)(
     { id: 7, source_url: 'https://apexparent.hostmanpowered.com/wp-content/uploads/test.jpg' },
     (name) => name === 'Find Scheduling Popup'
       ? { all: () => popups.map((json) => ({ json })) }
       : { first: () => ({ json: chosen }) },
+    undefined,
+    undefined,
   )[0].json.content;
   const withPopup = run([{ id: 9100, title: { rendered: 'Other popup' }, status: 'publish' }, { id: 7500, title: { rendered: 'NexHealth' }, status: 'publish' }]);
   const book = withPopup.match(/<a class="aac-author-bio-button aac-author-bio-book"[^>]*>/)[0];
   const settings = decodeURIComponent(book.match(/settings%3D([^"]+)"/)[1]);
   assert.deepEqual(JSON.parse(Buffer.from(settings, 'base64').toString()), { id: '7500', toggle: false });
+  for (const id of [7, 75, 7500, 123456]) {
+    const other = run([{ id, title: { rendered: 'NexHealth' }, status: 'publish' }]).match(/<a class="aac-author-bio-button aac-author-bio-book"[^>]*>/)[0];
+    assert.equal(decodeURIComponent(other.match(/settings%3D([^"]+)"/)[1]), Buffer.from(JSON.stringify({ id: String(id), toggle: false })).toString('base64'));
+  }
   assert.match(book, /href="#elementor-action%3Aaction%3Dpopup%3Aopen%26settings%3D/);
   assert.doesNotMatch(book, /target="_blank"/, 'the pop-up opens on the page');
   // No NexHealth popup, or the lookup failed: the button goes to the practice's Contact Us page.
@@ -248,4 +255,14 @@ test('the article writers follow the FAQ rules: on-topic, plain search terms, br
   const review = JSON.parse(fs.readFileSync(new URL('../n8n/06-generate-article.json', import.meta.url), 'utf8'))
     .nodes.find((node) => node.name === 'Prepare Local SEO Review').parameters.jsCode;
   assert.match(review, /plain, everyday words and common search terms/);
+});
+
+test('no n8n Code step uses btoa, atob, or Buffer, which n8n does not provide', () => {
+  for (const file of fs.readdirSync(new URL('../n8n/', import.meta.url)).filter((name) => name.endsWith('.json'))) {
+    const exported = JSON.parse(fs.readFileSync(new URL(`../n8n/${file}`, import.meta.url), 'utf8'));
+    for (const step of exported.nodes || []) {
+      if (step.type !== 'n8n-nodes-base.code') continue;
+      assert.doesNotMatch(step.parameters.jsCode || '', /\b(btoa|atob|Buffer)\s*[.(]/, `${file}: ${step.name}`);
+    }
+  }
 });

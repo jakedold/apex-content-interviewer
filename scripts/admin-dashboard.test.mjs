@@ -558,6 +558,11 @@ test('a cut-off interview is flagged "too short", cannot be drafted, and the res
 test('marking an article published emails the doctor a link to the live article, and the dashboard shows it', () => {
   const live = router.nodes.find((node) => node.name === 'Record Live on Website').parameters.sqlQuery;
   assert.match(live, /'\/resources\/blog\/'/);
+  // The live link is built exactly as the dashboard builds it (the slug pattern ends in $, the domain loses trailing slashes).
+  const liveUrlSql = (sql) => sql.match(/CONCAT\(REGEXP_REPLACE\(TRIM\(p\.website_domain\)[^\n]*?AS live_url/)?.[0];
+  assert.ok(liveUrlSql(live), 'the live link expression is present');
+  assert.equal(liveUrlSql(live), liveUrlSql(admin));
+  assert.ok(live.includes("REGEXP_EXTRACT(a.published_url, r'/([^/?#]+)/?(?:[?#].*)?$') IS NULL"));
   assert.equal(router.connections['Return Live on Website Result'].main[0][0].node, 'Compose Article Live Email');
   assert.equal(router.connections['Compose Article Live Email'].main[0][0].node, 'Email Article Live');
   const compose = router.nodes.find((node) => node.name === 'Compose Article Live Email').parameters.jsCode;

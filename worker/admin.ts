@@ -464,9 +464,9 @@ WITH latest_interview AS (
     t.topic_title, t.topic_description,
     a.article_id, a.status article_status, a.current_version, a.created_at article_created_at,
     a.doctor_review_deadline, a.doctor_approved_at, a.marketing_approved_at, a.published_at, a.published_url,
-    -- Live page on the practice website: /resources/blog/<slug>/ (the slug WordPress published).
+    -- Live page on the practice website: /blog/<slug>/ (the slug WordPress published).
     IF(REGEXP_EXTRACT(a.published_url, r'/([^/?#]+)/?(?:[?#].*)?$') IS NULL OR NULLIF(TRIM(p.website_domain), '') IS NULL, NULL,
-      CONCAT(REGEXP_REPLACE(TRIM(p.website_domain), r'/+$', ''), '/resources/blog/', REGEXP_EXTRACT(a.published_url, r'/([^/?#]+)/?(?:[?#].*)?$'), '/')) AS live_url,
+      CONCAT(REGEXP_REPLACE(TRIM(p.website_domain), r'/+$', ''), '/blog/', REGEXP_EXTRACT(a.published_url, r'/([^/?#]+)/?(?:[?#].*)?$'), '/')) AS live_url,
     ARRAY_LENGTH(REGEXP_EXTRACT_ALL(TRIM(COALESCE(i.transcript, '')), r'\S+')) AS transcript_words,
     v.version_type, v.content article_content, v.created_at version_created_at
   FROM ${table('campaign_doctors')} cd
@@ -699,7 +699,7 @@ export async function handleAdminCommand(request: Request, env: Env): Promise<Re
 }
 
 // Pre-launch campaign checks: featured image links open as images, and WordPress slugs are not already in use (in
-// earlier campaigns, published articles, or as a live page at <practice website>/resources/blog/<slug>/ for any
+// earlier campaigns, published articles, or as a live page at <practice website>/blog/<slug>/ for any
 // selected practice). Returns warnings only; the team can still choose to launch.
 function campaignChecksQuery(project: string, dataset: string): string {
   const table = tableFactory(project, dataset);
@@ -770,7 +770,7 @@ export async function handleAdminCampaignChecks(request: Request, env: Env): Pro
         };
       for (const use of result.topic_uses ?? []) warnings.push(`The slug "${use.slug}" was already used by an earlier campaign (${use.used_by}).`);
       for (const use of result.published_uses ?? []) warnings.push(`The slug "${use.slug}" is already used by ${use.article_count} published article${Number(use.article_count) === 1 ? '' : 's'}.`);
-      const pages = (result.sites ?? []).flatMap((site) => slugs.map((slug) => ({ ...site, slug, url: `${site.website}/resources/blog/${slug}/` })))
+      const pages = (result.sites ?? []).flatMap((site) => slugs.map((slug) => ({ ...site, slug, url: `${site.website}/blog/${slug}/` })))
         .filter((page) => /^https:\/\//.test(page.url));
       const taken: string[] = [];
       let unreachable = 0;
@@ -781,7 +781,7 @@ export async function handleAdminCampaignChecks(request: Request, env: Env): Pro
           // Only a real page at that address counts (not a redirect to the blog list or home page).
           let finalPath = '';
           try { finalPath = new URL(response.url || page.url).pathname.replace(/\/+$/, ''); } catch { finalPath = ''; }
-          if (response.ok && finalPath.endsWith(`/resources/blog/${page.slug}`)) taken.push(`${page.practice_name}: ${page.url}`);
+          if (response.ok && finalPath.endsWith(`/blog/${page.slug}`)) taken.push(`${page.practice_name}: ${page.url}`);
         }));
       }
       if (unreachable) warnings.push(`${unreachable} practice site${unreachable === 1 ? '' : 's'} could not be checked for an existing page with this slug.`);

@@ -202,7 +202,7 @@ boundary.
 
   The other rows still sync, and the dashboard lists the affected rows at the top until they are fixed.
 - **Too-short interviews:** a completed interview under 300 words (a full 8 to 10 minute interview is usually 1,000 words or more, so this usually means it got cut off) shows under **Needs attention** as "Too short to write an article". It is never drafted. The article view instead offers **Resend interview link**, with a prefilled message to the doctor that the router (24) puts at the top of the email.
-- **Live article email:** when an article is marked published, workflow 24 emails the doctor a thank-you with the live link (practice website + `/resources/blog/<slug>/`, from the slug WordPress published). The article view shows the same link.
+- **Live article email:** when an article is marked published, workflow 24 emails the doctor a thank-you with the live link (practice website + `/blog/<slug>/`, from the slug WordPress published). The article view shows the same link.
 - **One article per practice per campaign:** the first doctor at a practice to finish a campaign interview (300+ words) gets the practice's article. Workflow 06 handles the rest:
   - A later doctor's interview from the same practice is held (`ON_HOLD_PRACTICE_COVERED`) without a draft, and that doctor gets a thank-you naming their colleague.
   - Colleagues who have not done theirs are told once that there is nothing they need to do, and their interview reminders stop.
@@ -211,7 +211,7 @@ boundary.
 - **Pre-launch checks:** before a campaign launches, the builder (through `/api/admin/campaign-checks`) checks:
   - that each featured image link opens as an image;
   - that each WordPress slug is not already used by an earlier campaign or a published article;
-  - that no page already exists at `<practice website>/resources/blog/<slug>/` for any selected practice.
+  - that no page already exists at `<practice website>/blog/<slug>/` for any selected practice.
 
   Any problem is listed; clicking launch again launches anyway.
 - **Work queue multi-select:** tick articles and use **Move selected to next step**. Each article gets the step shown under its status, sent as its own audited command. The **Ready to push** filter lists articles on WordPress waiting for the team to push them live through Headless Hostman.

@@ -557,7 +557,8 @@ test('a cut-off interview is flagged "too short", cannot be drafted, and the res
 
 test('marking an article published emails the doctor a link to the live article, and the dashboard shows it', () => {
   const live = router.nodes.find((node) => node.name === 'Record Live on Website').parameters.sqlQuery;
-  assert.match(live, /'\/resources\/blog\/'/);
+  assert.match(live, /'\/blog\/'/);
+  assert.doesNotMatch(live, /resources/, 'the live page is <practice website>/blog/<slug>/');
   // The live link is built exactly as the dashboard builds it (the slug pattern ends in $, the domain loses trailing slashes).
   const liveUrlSql = (sql) => sql.match(/CONCAT\(REGEXP_REPLACE\(TRIM\(p\.website_domain\)[^\n]*?AS live_url/)?.[0];
   assert.ok(liveUrlSql(live), 'the live link expression is present');
@@ -566,14 +567,14 @@ test('marking an article published emails the doctor a link to the live article,
   assert.equal(router.connections['Return Live on Website Result'].main[0][0].node, 'Compose Article Live Email');
   assert.equal(router.connections['Compose Article Live Email'].main[0][0].node, 'Email Article Live');
   const compose = router.nodes.find((node) => node.name === 'Compose Article Live Email').parameters.jsCode;
-  const email = new Function('$json', compose)({ doctor_id: 'd1', article_id: 'a1', campaign_id: 'c1', doctor_name: 'Dr. Test', practice_name: 'Audubon Dental', article_title: 'Cracked Tooth', live_url: 'https://audubondentalcare.com/resources/blog/cracked-tooth-no-pain/' })[0].json;
+  const email = new Function('$json', compose)({ doctor_id: 'd1', article_id: 'a1', campaign_id: 'c1', doctor_name: 'Dr. Test', practice_name: 'Audubon Dental', article_title: 'Cracked Tooth', live_url: 'https://audubondentalcare.com/blog/cracked-tooth-no-pain/' })[0].json;
   assert.equal(email.communication_type, 'ARTICLE_LIVE');
   assert.match(email.message_text, /Thank you for sharing your voice and your expertise/);
   assert.match(email.message_text, /If you have ideas for future topics, just reply to this email/);
-  assert.equal(JSON.parse(email.email_json).items[0].url, 'https://audubondentalcare.com/resources/blog/cracked-tooth-no-pain/');
+  assert.equal(JSON.parse(email.email_json).items[0].url, 'https://audubondentalcare.com/blog/cracked-tooth-no-pain/');
   assert.deepEqual(new Function('$json', compose)({ live_url: '' }), [], 'no email without a valid live link');
   assert.equal(router.nodes.find((node) => node.name === 'Email Article Live').parameters.workflowId.value, 'cZtS9x6kbI46Q2Bi');
-  assert.match(admin, /'\/resources\/blog\/'[\s\S]*AS live_url/);
+  assert.match(admin, /'\/blog\/'[\s\S]*AS live_url/);
   assert.match(client, /<dt>Live article<\/dt>/);
 });
 
@@ -618,8 +619,8 @@ test('before launch, the campaign builder checks image links and slugs and asks 
   assert.match(admin, /export async function handleAdminCampaignChecks/);
   assert.match(admin, /did not open as an image/);
   assert.match(admin, /was already used by an earlier campaign/);
-  assert.match(admin, /\/resources\/blog\/\$\{slug\}\//);
-  assert.match(admin, /finalPath\.endsWith\(`\/resources\/blog\/\$\{page\.slug\}`\)/, 'a redirect to the blog list is not a match');
+  assert.match(admin, /\/blog\/\$\{slug\}\//);
+  assert.match(admin, /finalPath\.endsWith\(`\/blog\/\$\{page\.slug\}`\)/, 'a redirect to the blog list is not a match');
   assert.match(admin, /could not be checked for an existing page/);
   assert.match(admin, /!actionEmails\(adminEnv\)\.includes\(viewer\.email\)\) return Response\.json\(\{ error: 'FORBIDDEN'/);
   assert.match(client, /fetch\('\/api\/admin\/campaign-checks'/);

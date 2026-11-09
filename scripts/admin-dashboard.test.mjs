@@ -538,7 +538,7 @@ test('the dashboard shows rows the latest doctor sync skipped, so they can be fi
 });
 
 test('a cut-off interview is flagged "too short", cannot be drafted, and the resend email can carry a note to the doctor', () => {
-  assert.match(admin, /ARRAY_LENGTH\(REGEXP_EXTRACT_ALL\(TRIM\(COALESCE\(i\.transcript, ''\)\), r'\\S\+'\)\)\) AS transcript_words/);
+  assert.match(admin, /ARRAY_LENGTH\(REGEXP_EXTRACT_ALL\(TRIM\(COALESCE\(i\.transcript, ''\)\), r'\\\\S\+'\)\)\) AS transcript_words/);
   assert.match(client, /const MIN_INTERVIEW_WORDS = 300;/);
   assert.match(client, /if \(isTooShort\(item\)\) return 'too_short';/);
   assert.match(client, /Too short to write an article: resend the interview link/);
@@ -626,4 +626,14 @@ test('before launch, the campaign builder checks image links and slugs and asks 
   assert.match(client, /fetch\('\/api\/admin\/campaign-checks'/);
   assert.match(client, /click the launch button once more to launch anyway/);
   assert.match(client, /form\.dataset\.checkedLaunch !== checksKey/);
+});
+
+test('dashboard SQL patterns keep their backslashes (a template literal turns \\S into S)', () => {
+  // In the Worker, SQL is written inside JavaScript template literals, where a single backslash before a letter is dropped:
+  // r'\S+' would reach BigQuery as r'S+' and count runs of the letter S instead of words.
+  const singleBackslash = admin.match(/r'(?:[^'\\]|\\\\.)*\\[A-Za-z](?:[^']*)'/g) || [];
+  assert.deepEqual(singleBackslash.filter((pattern) => /(^|[^\\])\\[A-Za-z]/.test(pattern)), []);
+  assert.equal((admin.match(/REGEXP_EXTRACT_ALL\(TRIM\(COALESCE\(i\.transcript, ''\)\), r'\\\\S\+'\)/g) || []).length, 2, 'both word counts use \\\\S+');
+  // What BigQuery receives: evaluate the pattern the way the template literal does.
+  assert.equal(eval("`r'\\\\S+'`"), "r'\\S+'");
 });

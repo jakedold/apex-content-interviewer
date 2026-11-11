@@ -706,9 +706,10 @@ function campaignChecksQuery(project: string, dataset: string): string {
   return `
 WITH slugs AS (SELECT DISTINCT LOWER(slug) AS slug FROM UNNEST(JSON_VALUE_ARRAY(PARSE_JSON(@slugs_json))) slug WHERE NULLIF(TRIM(slug), '') IS NOT NULL),
 topic_uses AS (
-  SELECT LOWER(t.wordpress_slug) AS slug, STRING_AGG(DISTINCT c.campaign_name, ', ' LIMIT 3) AS used_by
+  -- Read the slug through TO_JSON_STRING: the wordpress_slug column is only added when the first campaign with slugs launches.
+  SELECT LOWER(JSON_VALUE(TO_JSON_STRING(t), '$.wordpress_slug')) AS slug, STRING_AGG(DISTINCT c.campaign_name, ', ' LIMIT 3) AS used_by
   FROM ${table('campaign_topics')} t JOIN ${table('campaigns')} c ON c.campaign_id = t.campaign_id
-  WHERE LOWER(t.wordpress_slug) IN (SELECT slug FROM slugs)
+  WHERE LOWER(JSON_VALUE(TO_JSON_STRING(t), '$.wordpress_slug')) IN (SELECT slug FROM slugs)
   GROUP BY 1
 ),
 published_uses AS (

@@ -619,6 +619,10 @@ test('before launch, the campaign builder checks image links and slugs and asks 
   assert.match(admin, /export async function handleAdminCampaignChecks/);
   assert.match(admin, /did not open as an image/);
   assert.match(admin, /was already used by an earlier campaign/);
+  // The wordpress_slug column only exists after a campaign with slugs has launched, so it is read through TO_JSON_STRING.
+  const checks = admin.slice(admin.indexOf('function campaignChecksQuery'), admin.indexOf('async function fetchWithTimeout'));
+  assert.doesNotMatch(checks, /\bt\.wordpress_slug\b/);
+  assert.match(checks, /JSON_VALUE\(TO_JSON_STRING\(t\), '\$\.wordpress_slug'\)/);
   assert.match(admin, /\/blog\/\$\{slug\}\//);
   assert.match(admin, /finalPath\.endsWith\(`\/blog\/\$\{page\.slug\}`\)/, 'a redirect to the blog list is not a match');
   assert.match(admin, /could not be checked for an existing page/);

@@ -94,6 +94,23 @@ test('router accepts a valid topic slug and rejects malformed or repeated slugs'
   assert.deepEqual(shared.map((topic) => topic.wordpress_slug), ['monthly-theme', 'monthly-theme', 'monthly-theme']);
 });
 
+test('campaign launch accepts a training video link without the URL class (n8n Code steps do not have it)', () => {
+  const normalizer = router.nodes.find((node) => node.name === 'Validate and Normalize Command').parameters.jsCode;
+  const topic = (number) => ({ title: `Topic ${number}`, featured_image_source_url: `https://apexparent.hostmanpowered.com/wp-content/uploads/topic-${number}.jpg`,
+    featured_image_alt_text: `Featured image for topic ${number}`, wordpress_slug: 'shared-slug' });
+  const launch = (training) => new Function('$json', 'URL', normalizer)({ body: {
+    action: 'launch_campaign', actor_email: 'admin@apexdp.com', idempotency_key: 'test_idempotency_key_0002',
+    audience: 'Linked doctors', campaign_name: 'Training link test', campaign_month: '2027-01', send_mode: 'now',
+    doctor_ids: ['doctor_1'], topics: [topic(1), topic(2), topic(3)], training_resource_url: training,
+  } }, undefined)[0].json;
+  const vimeo = 'https://vimeo.com/1242819679/1bcbc759c6?share=copy&fl=sv&fe=ci';
+  assert.equal(launch(vimeo).training_resource_url, vimeo);
+  assert.equal(launch('').training_resource_url, '');
+  assert.throws(() => launch('http://vimeo.com/123'), /must use HTTPS/);
+  assert.throws(() => launch('https://user:pass@vimeo.com/123'), /embedded credentials/);
+  assert.throws(() => launch('https://not a link'), /is invalid/);
+});
+
 test('campaign builder and AAC-24 no longer use image source type or rights reference', () => {
   const normalizer = router.nodes.find((node) => node.name === 'Validate and Normalize Command').parameters.jsCode;
   const topic = (number) => ({

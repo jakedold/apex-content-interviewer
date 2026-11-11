@@ -266,3 +266,14 @@ test('no n8n Code step uses btoa, atob, or Buffer, which n8n does not provide', 
     }
   }
 });
+
+test('n8n Code steps in use do not depend on the URL class, which n8n does not provide', () => {
+  // The 01-* exports are inactive earlier launchers, replaced by workflow 24.
+  for (const file of fs.readdirSync(new URL('../n8n/', import.meta.url)).filter((name) => name.endsWith('.json') && !name.startsWith('01-'))) {
+    const exported = JSON.parse(fs.readFileSync(new URL(`../n8n/${file}`, import.meta.url), 'utf8'));
+    for (const step of exported.nodes || []) {
+      if (step.type !== 'n8n-nodes-base.code') continue;
+      assert.doesNotMatch(step.parameters.jsCode || '', /\bnew URL\s*\(|\bURLSearchParams\b/, `${file}: ${step.name}`);
+    }
+  }
+});

@@ -611,8 +611,9 @@ test('one article per practice per campaign: a later doctor\'s interview is held
   const held = new Function('$', n6('Compose Held Interview Email').parameters.jsCode)(() => ({ first: () => ({ json: {
     doctor_id: 'd2', doctor_name: 'Dr. Second', campaign_id: 'c1', practice_name: 'Audubon Dental', topic_title: 'Cracked teeth', covered_by_doctor_name: 'Dr. First' } }) }))[0].json;
   assert.equal(held.communication_type, 'INTERVIEW_HELD_PRACTICE_COVERED');
-  assert.match(held.message_text, /We have saved your interview for an upcoming month, and we will send your article to you for review before anything is published\./);
-  assert.doesNotMatch(held.message_text, /Dr\. First|feature/, 'does not say whose article will be featured');
+  assert.match(held.message_text, /Thank you for recording your interview on "Cracked teeth"!/);
+  assert.match(held.message_text, /Keep an eye out for an email from us when your article is ready for your review\./);
+  assert.doesNotMatch(held.message_text, /Dr\. First|colleague|feature|month/i, 'no colleague, featured article, or timing');
   const colleagues = n6('Find Colleagues to Notify').parameters.sqlQuery;
   assert.match(colleagues, /done\.doctor_id IS NULL AND told\.doctor_id IS NULL/, 'only colleagues who have not finished, told once');
   assert.match(colleagues, /@practice_id != 'practice_test_001'/);

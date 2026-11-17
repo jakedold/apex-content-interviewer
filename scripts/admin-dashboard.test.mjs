@@ -658,3 +658,68 @@ test('dashboard SQL patterns keep their backslashes (a template literal turns \\
   // What BigQuery receives: evaluate the pattern the way the template literal does.
   assert.equal(eval("`r'\\\\S+'`"), "r'\\S+'");
 });
+
+test('a transcript recorded outside the voice interview can be added and drafted like any interview', () => {
+  const normalizer = router.nodes.find((node) => node.name === 'Validate and Normalize Command').parameters.jsCode;
+  const run = (body) => new Function('$json', normalizer)({ body: { actor_email: 'admin@apexdp.com', idempotency_key: 'test_idempotency_key_0003', ...body } })[0].json;
+  const words = (count) => Array.from({ length: count }, (_, index) => (index % 2 ? 'Doctor:' : 'patients')).join(' ');
+  const added = run({ action: 'import_transcript', campaign_id: 'c1', doctor_id: 'd1', topic_id: 'c1_topic_1', transcript: `  ${words(320)}\r\n` });
+  assert.equal(added.topic_id, 'c1_topic_1');
+  assert.equal(added.transcript.split(/\s+/).length, 320);
+  assert.throws(() => run({ action: 'import_transcript', campaign_id: 'c1', doctor_id: 'd1', topic_id: 'c1_topic_1', transcript: words(120) }), /120 words/);
+  assert.throws(() => run({ action: 'import_transcript', campaign_id: 'c1', doctor_id: 'd1', transcript: words(400) }), /Missing topic_id/);
+
+  // Routing: its own branch, which records the interview, replies, and then starts the draft (06).
+  const rules = router.nodes.find((node) => node.name === 'Route Narrow Command').parameters.rules.values;
+  const index = rules.findIndex((rule) => rule.outputKey === 'import_transcript');
+  assert.ok(index >= 0);
+  assert.equal(router.connections['Route Narrow Command'].main[index][0].node, 'Add Transcript and Record');
+  assert.equal(router.connections['Add Transcript and Record'].main[0][0].node, 'Return Transcript Result');
+  assert.equal(router.connections['Return Transcript Result'].main[0][0].node, 'Draft From Added Transcript');
+  const draft = router.nodes.find((node) => node.name === 'Draft From Added Transcript').parameters;
+  assert.equal(draft.workflowId.value, 'MJDpbf6RMnUgkzyg');
+  assert.match(draft.workflowInputs.value.interview_id, /\$json\.interview_id/);
+  const sql = router.nodes.find((node) => node.name === 'Add Transcript and Record').parameters.sqlQuery;
+  assert.match(sql, /^DECLARE v_interview_id STRING DEFAULT CONCAT\('interview_import_'/);
+  assert.match(sql, /'INTERVIEW_COMPLETED'/);
+  assert.match(sql, /'admin_import' AS capture_source/);
+  assert.match(sql, /r'\\S\+'\)\) >= 300/);
+  assert.match(sql, /This doctor is not part of this campaign/);
+  assert.match(sql, /fully set up for WordPress publishing/);
+  assert.match(sql, /doctor profile is incomplete/);
+  assert.match(sql, /'interview\.transcript_added_by_admin'/);
+  assert.doesNotMatch(sql, /@interview_id/);
+  assert.doesNotMatch(sql.slice(sql.indexOf('INSERT INTO `apex-marketing-n8n.automated_article_creation.admin_commands`')), /@transcript/, 'the audit record does not copy the transcript');
+  const params = router.nodes.find((node) => node.name === 'Add Transcript and Record').parameters.options.queryParameters.namedParameters.map((param) => param.name);
+  assert.deepEqual(params.sort(), ['actor_email', 'campaign_id', 'doctor_id', 'idempotency_key', 'reason', 'topic_id', 'transcript']);
+
+  assert.match(admin, /'import_transcript'/);
+  assert.match(client, /function addTranscriptPanel/);
+  assert.match(client, /action: 'import_transcript'/);
+  assert.match(client, /Add transcript and write the draft/);
+});
+
+test('a campaign can be created without invitations (one to three topics) so transcripts can be added', () => {
+  const normalizer = router.nodes.find((node) => node.name === 'Validate and Normalize Command').parameters.jsCode;
+  const topic = (number) => ({ title: `Topic ${number}`, featured_image_source_url: `https://apexparent.hostmanpowered.com/wp-content/uploads/t${number}.jpg`,
+    featured_image_alt_text: `Featured image for topic ${number}`, wordpress_slug: `topic-${number}` });
+  const launch = (sendMode, topics) => new Function('$json', normalizer)({ body: {
+    action: 'launch_campaign', actor_email: 'admin@apexdp.com', idempotency_key: 'test_idempotency_key_0004', audience: 'Linked doctors',
+    campaign_name: 'Transcript campaign', campaign_month: '2026-12', send_mode: sendMode, doctor_ids: ['d1'], topics,
+  } })[0].json;
+  assert.equal(launch('none', [topic(1)]).send_mode, 'none');
+  assert.equal(JSON.parse(launch('none', [topic(1), topic(2)]).topics_json).length, 2);
+  assert.throws(() => launch('now', [topic(1)]), /Exactly three distinct topics/);
+  assert.throws(() => launch('none', []), /one to three distinct topics/);
+  const sql = router.nodes.find((node) => node.name === 'Create Audited Campaign').parameters.sqlQuery;
+  assert.match(sql, /ASSERT @send_mode IN \('now', 'in_10', 'scheduled', 'none'\)/);
+  assert.match(sql, /IF\(@send_mode = 'none', 'NO_INVITATION', IF\(v_scheduled, 'SCHEDULED', 'READY'\)\)/);
+  assert.match(sql, /IF\(@send_mode = 'none', 'CREATED'/);
+  // Nothing is emailed: the dispatcher sends only READY doctors, and reminders need an invitation.
+  const dispatch = JSON.parse(read('n8n/02-dispatch-campaign-invitations.json')).nodes.find((node) => node.name === 'Create three topic links').parameters.sqlQuery;
+  assert.match(dispatch, /WHERE cd\.status = 'READY'/);
+  const reminders = JSON.parse(read('n8n/26-interview-reminders.json')).nodes.find((node) => node.name === 'Prepare Interview Reminders').parameters.sqlQuery;
+  assert.match(reminders, /cd\.invited_at <= TIMESTAMP_SUB/);
+  assert.match(client, /<option value="none">Don't send invitations: we'll add transcripts<\/option>/);
+  assert.match(client, /noInvitations \? 'CREATE CAMPAIGN' : 'SEND INVITATIONS'/);
+});

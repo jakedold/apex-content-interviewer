@@ -1225,7 +1225,9 @@ function renderDashboard(data: AdminResponse): void {
                 <option value="now">As soon as the campaign launches</option>
                 <option value="in_10">In about 10 minutes</option>
                 <option value="scheduled">Schedule for a specific time</option>
+                <option value="none">Don't send invitations: we'll add transcripts</option>
               </select>
+              <small id="campaign-no-invitation-note" hidden>No email goes to the doctors. Use this for conversations recorded outside the voice interview: after the campaign is created, open each doctor's row and use “Add a transcript”. One topic is enough; Topics 2 and 3 are optional.</small>
             </label>
             <div id="campaign-schedule-fields" hidden>
               <label>Scheduled local date and time<input name="scheduled_send_local" id="campaign-scheduled-local" type="datetime-local" /></label>
@@ -1283,7 +1285,7 @@ function renderDashboard(data: AdminResponse): void {
             </div>
           </fieldset>
 
-          <label>Type <strong>SEND INVITATIONS</strong> to confirm
+          <label>Type <strong id="campaign-confirm-phrase">SEND INVITATIONS</strong> to confirm
             <input name="launch_confirmation" required autocomplete="off" placeholder="SEND INVITATIONS" />
           </label>
 
@@ -1384,7 +1386,22 @@ function renderDashboard(data: AdminResponse): void {
 
   const syncSendMode = (): void => {
     const scheduled = campaignSendMode?.value === 'scheduled';
+    const noInvitations = campaignSendMode?.value === 'none';
     if (scheduleFields) scheduleFields.hidden = !scheduled;
+    // Without invitations (transcripts added by the team), one topic is enough: Topics 2 and 3 become optional.
+    const noInvitationNote = document.querySelector<HTMLElement>('#campaign-no-invitation-note');
+    if (noInvitationNote) noInvitationNote.hidden = !noInvitations;
+    document.querySelectorAll<HTMLElement>('[data-campaign-topic="2"], [data-campaign-topic="3"]').forEach((fieldset) => {
+      fieldset.querySelectorAll<HTMLInputElement>('input').forEach((input) => {
+        if (input.dataset.requiredByDefault === undefined) input.dataset.requiredByDefault = input.required ? 'true' : 'false';
+        input.required = !noInvitations && input.dataset.requiredByDefault === 'true';
+      });
+    });
+    const phrase = noInvitations ? 'CREATE CAMPAIGN' : 'SEND INVITATIONS';
+    const confirmPhrase = document.querySelector<HTMLElement>('#campaign-confirm-phrase');
+    if (confirmPhrase) confirmPhrase.textContent = phrase;
+    const confirmInput = document.querySelector<HTMLInputElement>('input[name="launch_confirmation"]');
+    if (confirmInput) confirmInput.placeholder = phrase;
     if (scheduledLocal) scheduledLocal.required = scheduled;
     if (campaignTimezone) campaignTimezone.required = scheduled;
   };
@@ -1747,6 +1764,56 @@ function resendLinksPanel(detail: WorkItemDetail, enabledActions: string[]): str
     </form>`;
 }
 
+const MIN_TRANSCRIPT_WORDS = 300;
+const countWords = (text: string): number => (text.trim() ? text.trim().split(/\s+/).length : 0);
+
+// Add a conversation recorded outside the voice interview (for example, a call with the doctor). It is saved as a
+// completed interview for one campaign topic and then drafted, sent to the doctor for review, and published like any
+// other interview. Offered on a doctor's row that has no interview yet.
+function addTranscriptPanel(detail: WorkItemDetail, enabledActions: string[]): string {
+  const item = detail.item;
+  const topics = (detail.topics ?? []).filter((topic) => !topic.approved);
+  if (!enabledActions.includes('import_transcript') || workItemArchiveState(detail).archived || item.interview_id || !topics.length) return '';
+  const options = topics.map((topic) => `<option value="${escapeHtml(topic.topic_id)}">${escapeHtml(topic.topic_title)}</option>`).join('');
+  return `
+    <form id="admin-add-transcript-form" class="admin-archive-panel">
+      <strong>Add a transcript</strong>
+      <p>Paste a conversation with this doctor that was recorded outside the voice interview, for example a phone or video call. It is saved as this doctor's interview for the topic you choose, then the article is drafted and sent to the doctor for review, and continues to marketing review and WordPress as usual. About ${MIN_TRANSCRIPT_WORDS} words or more are needed. Remove any patient-identifying information first.</p>
+      <label>Topic<select name="topic_id" required>${options}</select></label>
+      <label>Transcript<textarea name="transcript" rows="12" required placeholder="Interviewer: …&#10;Doctor: …"></textarea></label>
+      <p class="admin-muted" id="add-transcript-word-count">0 words</p>
+      <label>Internal note (optional, not sent)<textarea name="reason" rows="2" maxlength="2000" placeholder="Phone conversation with the doctor on…"></textarea></label>
+      <button class="admin-secondary-button" type="submit">Add transcript and write the draft</button>
+      <p class="admin-form-message" id="add-transcript-form-message" role="status"></p>
+    </form>`;
+}
+
+async function submitAddTranscript(event: SubmitEvent, detail: WorkItemDetail): Promise<void> {
+  event.preventDefault();
+  const item = detail.item;
+  const form = event.currentTarget as HTMLFormElement;
+  const message = form.querySelector<HTMLElement>('#add-transcript-form-message');
+  const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+  const data = new FormData(form);
+  const transcript = String(data.get('transcript') ?? '').trim();
+  const words = countWords(transcript);
+  if (words < MIN_TRANSCRIPT_WORDS) {
+    if (message) message.textContent = `The transcript is ${words} words. About ${MIN_TRANSCRIPT_WORDS} or more are needed to write an article.`;
+    return;
+  }
+  if (submit) submit.disabled = true;
+  if (message) message.textContent = 'Saving…';
+  try {
+    await postAdminCommand({ action: 'import_transcript', campaign_id: item.campaign_id, doctor_id: item.doctor_id,
+      topic_id: String(data.get('topic_id') ?? ''), transcript, reason: String(data.get('reason') ?? '').trim() });
+    if (message) message.textContent = 'Saved. The draft is being written (a few minutes), then it goes to the doctor for review.';
+    await initializeAdmin();
+  } catch (error) {
+    if (message) message.textContent = friendlyCommandError(error);
+    if (submit) submit.disabled = false;
+  }
+}
+
 async function submitResendLinks(event: SubmitEvent, detail: WorkItemDetail): Promise<void> {
   event.preventDefault();
   const item = detail.item;
@@ -1952,6 +2019,7 @@ function renderWorkItemDetail(response: WorkItemDetailResponse): void {
     </section>
     ${nextStepPanel(detail, response.capabilities.enabledActions)}
     ${resendPanel(detail, response.capabilities.enabledActions)}
+    ${addTranscriptPanel(detail, response.capabilities.enabledActions)}
     ${resendLinksPanel(detail, response.capabilities.enabledActions)}
     ${archivePanel(detail, response.capabilities.enabledActions)}`;
 
@@ -1968,6 +2036,13 @@ function renderWorkItemDetail(response: WorkItemDetailResponse): void {
   content.querySelector<HTMLFormElement>('#admin-change-form')?.addEventListener('submit', (event) => void submitChangeRequest(event, detail));
   content.querySelector<HTMLFormElement>('#admin-resend-form')?.addEventListener('submit', (event) => void submitResend(event, detail));
   content.querySelector<HTMLFormElement>('#admin-resend-links-form')?.addEventListener('submit', (event) => void submitResendLinks(event, detail));
+  const addTranscriptForm = content.querySelector<HTMLFormElement>('#admin-add-transcript-form');
+  addTranscriptForm?.addEventListener('submit', (event) => void submitAddTranscript(event, detail));
+  addTranscriptForm?.querySelector<HTMLTextAreaElement>('textarea[name="transcript"]')?.addEventListener('input', (event) => {
+    const words = countWords((event.currentTarget as HTMLTextAreaElement).value);
+    const counter = addTranscriptForm.querySelector<HTMLElement>('#add-transcript-word-count');
+    if (counter) counter.textContent = `${words} word${words === 1 ? '' : 's'}${words < MIN_TRANSCRIPT_WORDS ? ` (about ${MIN_TRANSCRIPT_WORDS} needed)` : ''}`;
+  });
   content.querySelector<HTMLFormElement>('#admin-archive-form')?.addEventListener('submit', (event) => void submitArchive(event, detail));
 }
 
@@ -2078,11 +2153,12 @@ async function submitCampaign(event: SubmitEvent): Promise<void> {
       throw new Error('Choose a supported campaign audience.');
     }
 
-    const confirmation = String(data.get('launch_confirmation') ?? '').trim();
-    if (confirmation !== 'SEND INVITATIONS') throw new Error('Type SEND INVITATIONS exactly to launch.');
-
     const sendMode = String(data.get('send_mode') ?? '').trim();
-    if (!['now', 'in_10', 'scheduled'].includes(sendMode)) throw new Error('Choose when the invitations should send.');
+    if (!['now', 'in_10', 'scheduled', 'none'].includes(sendMode)) throw new Error('Choose when the invitations should send.');
+    const noInvitations = sendMode === 'none';
+    const confirmPhrase = noInvitations ? 'CREATE CAMPAIGN' : 'SEND INVITATIONS';
+    const confirmation = String(data.get('launch_confirmation') ?? '').trim();
+    if (confirmation !== confirmPhrase) throw new Error(`Type ${confirmPhrase} exactly to ${noInvitations ? 'create the campaign' : 'launch'}.`);
     const scheduledSendLocal = String(data.get('scheduled_send_local') ?? '').trim();
     const scheduledSendTimezone = String(data.get('scheduled_send_timezone') ?? '').trim();
     const interviewDeadline = String(data.get('interview_deadline') ?? '').trim();
@@ -2116,7 +2192,9 @@ async function submitCampaign(event: SubmitEvent): Promise<void> {
         featured_image_alt_text: value('featured_image_alt_text'),
       };
     };
-    const topics = [1, 2, 3].map((number) => {
+    // Without invitations, only the topics that have a title are used (Topic 1 is required).
+    const topicNumbers = [1, 2, 3].filter((number) => !noInvitations || number === 1 || String(data.get(`topic_${number}`) ?? '').trim());
+    const topics = topicNumbers.map((number) => {
       const image = topicImage(number);
       if (!image.featured_image_source_url.startsWith('https://apexparent.hostmanpowered.com/wp-content/uploads/')) {
         throw new Error(`Topic ${number} featured image must use the direct Apex Parent Media Library file URL.`);
@@ -2173,7 +2251,9 @@ async function submitCampaign(event: SubmitEvent): Promise<void> {
     });
 
     const resultStatus = String(result.status ?? '').toUpperCase();
-    if (message) message.textContent = resultStatus === 'SCHEDULED'
+    if (message) message.textContent = resultStatus === 'CREATED'
+      ? 'Campaign created without invitations. Open a doctor\'s row (Awaiting interview filter) and use “Add a transcript”.'
+      : resultStatus === 'SCHEDULED'
       ? 'Campaign scheduled. Invitations will be released at the selected local time and sent by the active dispatcher.'
       : 'Campaign launched. Invitations are queued for the active dispatcher.';
     form.reset();

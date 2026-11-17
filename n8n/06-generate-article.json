@@ -370,99 +370,6 @@
     },
     {
       "parameters": {
-        "jsCode": "// Thank-you to a doctor whose interview is saved for an upcoming month because a colleague already recorded this month's\n// article for the practice (one article per practice per month).\nconst row = $('Load Next Completed Interview').first().json;\nconst colleague = String(row.covered_by_doctor_name || 'A colleague');\nconst practice = String(row.practice_name || 'your practice');\nconst thanks = 'Thank you for recording your interview on \"' + row.topic_title + '\"!';\nconst saved = colleague + '\\'s article is this month\\'s feature for ' + practice + ', so we have saved yours for an upcoming month. We will send it to you for review before anything is published.';\nreturn [{ json: {\n  doctor_id: row.doctor_id, article_id: '', campaign_id: row.campaign_id, communication_type: 'INTERVIEW_HELD_PRACTICE_COVERED',\n  subject: 'Thank you for your interview',\n  message_text: ['Hello ' + row.doctor_name + ',', '', thanks, '', saved, '', 'Apex Dental Partners'].join(String.fromCharCode(10)),\n  action_url: '',\n  email_json: JSON.stringify({ greeting: 'Hello ' + row.doctor_name + ',', intro: [thanks], items: [], after: [saved] }),\n} }];"
-      },
-      "id": "aac-06-compose-held-email",
-      "name": "Compose Held Interview Email",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        20,
-        -140
-      ]
-    },
-    {
-      "parameters": {
-        "workflowId": {
-          "__rl": true,
-          "value": "cZtS9x6kbI46Q2Bi",
-          "mode": "list",
-          "cachedResultName": "AAC - 16 - Send Doctor Message"
-        },
-        "workflowInputs": {
-          "mappingMode": "defineBelow",
-          "value": {
-            "doctor_id": "={{ $json.doctor_id }}",
-            "article_id": "={{ $json.article_id }}",
-            "campaign_id": "={{ $json.campaign_id }}",
-            "communication_type": "={{ $json.communication_type }}",
-            "subject": "={{ $json.subject }}",
-            "message_text": "={{ $json.message_text }}",
-            "action_url": "={{ $json.action_url }}",
-            "email_json": "={{ $json.email_json || '' }}"
-          },
-          "matchingColumns": [],
-          "schema": [
-            {
-              "id": "doctor_id",
-              "displayName": "doctor_id",
-              "type": "string"
-            },
-            {
-              "id": "article_id",
-              "displayName": "article_id",
-              "type": "string"
-            },
-            {
-              "id": "campaign_id",
-              "displayName": "campaign_id",
-              "type": "string"
-            },
-            {
-              "id": "communication_type",
-              "displayName": "communication_type",
-              "type": "string"
-            },
-            {
-              "id": "subject",
-              "displayName": "subject",
-              "type": "string"
-            },
-            {
-              "id": "message_text",
-              "displayName": "message_text",
-              "type": "string"
-            },
-            {
-              "id": "action_url",
-              "displayName": "action_url",
-              "type": "string"
-            },
-            {
-              "id": "email_json",
-              "displayName": "email_json",
-              "type": "string"
-            }
-          ],
-          "attemptToConvertTypes": false,
-          "convertFieldsToString": true
-        },
-        "options": {
-          "waitForSubWorkflow": true
-        },
-        "mode": "each"
-      },
-      "id": "aac-06-email-held",
-      "name": "Email Held Interview Thank You",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.2,
-      "position": [
-        240,
-        -140
-      ]
-    },
-    {
-      "parameters": {
         "projectId": {
           "__rl": true,
           "value": "apex-marketing-n8n",
@@ -731,28 +638,6 @@
           },
           {
             "node": "Find Colleagues to Notify",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Hold Interview for Practice": {
-      "main": [
-        [
-          {
-            "node": "Compose Held Interview Email",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Compose Held Interview Email": {
-      "main": [
-        [
-          {
-            "node": "Email Held Interview Thank You",
             "type": "main",
             "index": 0
           }

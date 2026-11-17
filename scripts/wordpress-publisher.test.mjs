@@ -126,7 +126,7 @@ test('FAQ 1 becomes the answer box and FAQs 2 to 4 become collapsible sidebar qu
   assert.match(main, /^<div class="aac-article-main"[^>]*><section class="aac-featured-answer"[^>]*><h2[^>]*>Why do my gums bleed when I brush\?<\/h2>/);
   assert.equal((sidebar.match(/<details class="aac-faq-item"/g) || []).length, 3);
   assert.ok(sidebar.indexOf('aac-article-faq-box') < sidebar.indexOf('aac-author-bio-card'));
-  assert.match(sidebar, /<summary[^>]*>Can \[sc name="practice_name"\]\[\/sc\] help\?<\/summary>/);
+  assert.match(sidebar, /<summary[^>]*>Can \[hh_short name="practice_name"\] help\?<\/summary>/);
   assert.doesNotMatch(main, /Frequently Asked Questions/);
 });
 
@@ -276,4 +276,37 @@ test('n8n Code steps in use do not depend on the URL class, which n8n does not p
       assert.doesNotMatch(step.parameters.jsCode || '', /\bnew URL\s*\(|\bURLSearchParams\b/, `${file}: ${step.name}`);
     }
   }
+});
+
+test('Brenna\'s publishing rules: Headless Hostman shortcodes only, and the bio heading reads "About Dr. [Full Name]"', () => {
+  for (const file of ['article-generation-master-prompt.md', 'article-revision-master-prompt.md', 'marketing-revision-master-prompt.md', 'local-seo-review-prompt.md']) {
+    const prompt = fs.readFileSync(new URL(`../prompts/${file}`, import.meta.url), 'utf8');
+    // The older format may only be named as something never to use.
+    for (const use of prompt.match(/\[sc name="[a-z_]+"\]/g) || []) assert.fail(`${file} still uses ${use}`);
+    assert.doesNotMatch(prompt, /practice_address|practice_email|"practice_city"/, `${file}: only the three verified fields`);
+  }
+  const generation = fs.readFileSync(new URL('../prompts/article-generation-master-prompt.md', import.meta.url), 'utf8');
+  assert.match(generation, /about 35 to 55 words/);
+  assert.match(generation, /sentence case/);
+  assert.match(generation, /about 5 to 9 words/);
+  assert.match(generation, /at most one H2 heading and at most one FAQ/);
+  const localSeo = fs.readFileSync(new URL('../prompts/local-seo-review-prompt.md', import.meta.url), 'utf8');
+  assert.match(localSeo, /at most ONE H2/);
+  assert.match(localSeo, /at most ONE FAQ/);
+  for (const file of ['06-generate-article.json', '10-revise-article-from-doctor-feedback.json', '20-revise-article-from-marketing-feedback.json', '15-publish-approved-article-to-wordpress.json']) {
+    const text = fs.readFileSync(new URL(`../n8n/${file}`, import.meta.url), 'utf8');
+    assert.doesNotMatch(text, /\[sc name=\\"practice_[a-z_]+\\"\]\[\/sc\]`/, `${file} still tells the writer to use the older format`);
+  }
+  // Older articles are converted when they are published or re-sent.
+  const prepare = workflow.nodes.find((node) => node.name === 'Prepare WordPress Publication').parameters.jsCode;
+  assert.match(prepare, /'\{\{PRACTICE_NAME\}\}': '\[hh_short name="practice_name"\]'/);
+  const convert = prepare.match(/html = html\.replace\((\/\\\[sc[\s\S]*?\/gi), \(match, field\)/);
+  assert.ok(convert, 'the publisher converts older shortcodes');
+  const pattern = new Function(`return ${convert[1]};`)();
+  assert.equal('Call [sc name="practice_phone_number"][/sc] at [sc name="practice_name"][/sc]'.replace(pattern, (match, field) => `[hh_short name="${field.toLowerCase()}"]`),
+    'Call [hh_short name="practice_phone_number"] at [hh_short name="practice_name"]');
+  const layout = workflow.nodes.find((node) => node.name === 'Set Featured Image and Prepare Post').parameters.jsCode;
+  assert.match(layout, /\.replace\(\/<h2>\\s\*About\\s\+\(\?!Dr\\\.\?\\s\|the author\)\/i, '<h2>About Dr\. '\)/);
+  const parse = JSON.parse(fs.readFileSync(new URL('../n8n/06-generate-article.json', import.meta.url), 'utf8')).nodes.find((node) => node.name === 'Validate and Parse Article Package').parameters.jsCode;
+  assert.match(parse, /const bioHeadingName = \/\^dr\\\.\?\\s\/i\.test\(authorName\) \? authorName : 'Dr\. ' \+ authorName;/);
 });

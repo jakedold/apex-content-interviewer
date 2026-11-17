@@ -28,6 +28,7 @@ The generation and revision prompts in `prompts/` require:
 
 - an H1 and most H2 headings phrased as natural patient questions;
 - exactly 4 FAQs at the end, wrapped in `<section class="aac-article-faq">` with `<h3>` questions and `<p>` answers, FAQ 1 being the most important question answered in 2 to 4 sentences;
+- FAQ questions in sentence case; FAQ 2 to 4 answers of about 35 to 55 words; headings of about 5 to 9 words without keyword stuffing; the practice location in at most one H2 and one FAQ (Brenna's revised instructions, November 2026);
 - the practice name field in the opening and the closing call to action, and `[hh_short name="practice_city_and_state"]` once where natural; no website fields in the H1.
 
 Articles written before this format are formatted the same way when they have an "FAQ" or "Frequently Asked Questions" H2 followed by H3 questions or by collapsible `<details><summary>` questions. Re-sending such an article from the dashboard applies this layout without changing its approved wording.

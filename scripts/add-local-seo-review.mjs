@@ -60,7 +60,7 @@ const applyCode = String.raw`// Applies only safe local SEO changes. Medical wor
 // short additions; anything else is skipped. If the review fails, the draft continues unchanged.
 const response = $json;
 const { local_seo_body, ...article } = $('Prepare Local SEO Review').first().json;
-const allowedFields = ['[hh_short name="practice_city_and_state"]', '[sc name="practice_name"][/sc]', '[sc name="practice_phone_number"][/sc]'];
+const allowedFields = ['[hh_short name="practice_city_and_state"]', '[hh_short name="practice_name"]', '[hh_short name="practice_phone_number"]'];
 const withoutAllowedFields = (value) => allowedFields.reduce((text, field) => text.split(field).join(' '), String(value));
 const hasUnknownShortcode = (value) => /\[\/?[A-Za-z_][^\]]*\]/.test(withoutAllowedFields(value));
 const tagsOf = (value) => (String(value).match(/<[^>]+>/g) || []).join('|');

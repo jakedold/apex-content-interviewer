@@ -1,20 +1,14 @@
-# WordPress Shortcoder fields for article publishing
+# Website fields (Headless Hostman shortcodes) for article publishing
 
-The WordPress editing sites use Shortcoder. The names below come from the September 23, 2026 Shortcoder list supplied by Apex; they are not interchangeable with the older `{{...}}` placeholders in earlier article drafts.
+Brenna's revised blog instructions (November 2026) allow only these three verified shortcodes in articles:
 
-| Purpose | Shortcoder tag |
+| Purpose | Shortcode |
 | --- | --- |
-| Practice name | `[sc name="practice_name"][/sc]` |
-| Phone | `[sc name="practice_phone_number"][/sc]` |
-| Address | `[sc name="practice_address"][/sc]` |
-| City | `[sc name="practice_city"][/sc]` |
-| Email | `[sc name="practice_email"][/sc]` |
-
-Marketing's expert-blog process (Brenna's "AEO/SEO Page Updates" GPT, confirmed by Nicole on November 4, 2026) also uses this field, which renders as the practice's city and state on the blog pages:
-
-| Purpose | Field |
-| --- | --- |
+| Practice name | `[hh_short name="practice_name"]` |
 | Practice city and state | `[hh_short name="practice_city_and_state"]` |
+| Practice phone number | `[hh_short name="practice_phone_number"]` |
+
+Never use the older Shortcoder format (`[sc name="..."][/sc]`), and do not use other practice fields such as an address, email, or city on its own. The writer and revision prompts follow this, and workflow 15 converts any older `[sc name="practice_name"][/sc]`, `[sc name="practice_phone_number"][/sc]`, or `[sc name="practice_city_and_state"][/sc]` tag to the matching `[hh_short ...]` shortcode when an article is published or re-sent.
 
 No website field may appear in an article's H1, because the H1 becomes the WordPress post title, which does not run shortcodes.
 

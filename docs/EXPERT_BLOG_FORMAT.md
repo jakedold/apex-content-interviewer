@@ -48,3 +48,7 @@ Right after the first draft is written, and before the doctor sees it, workflow 
 - That the theme's own title is hidden on each practice theme (`h1.entry-title`, `.page-header h1`, `.wp-block-post-title`, and the Elementor post-title widget are covered).
 - The byline uses the verified interview doctor name rather than the generic `doctor_01` Shortcoder field (see `docs/SHORTCODER.md`).
 - That `[hh_short name="practice_city_and_state"]` renders on each practice site, including TEST001.
+
+## Type scale and spacing
+
+Every article uses the same font sizes and spacing, whatever the practice theme sets (each site keeps its own font and colors). Desktop: body text and list items 17px with 1.7 line height and 20px between paragraphs; H2 26px (36px above, 12px below); H3 20px; featured answer heading 24px; sidebar FAQ 15px; bio text 14px. Phones (767px and narrower): body 16px, H2 22px, H3 18px; at 400px and narrower, H2 20px.

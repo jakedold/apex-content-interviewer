@@ -345,3 +345,13 @@ test('every article goes in the site\'s Blog category, and the Yoast SEO fields 
     assert.match(text, /'focus_keyphrase', 'word_count'\]/, `${file}: the writer returns a focus keyphrase`);
   }
 });
+
+test('one type scale and spacing for every article, whatever the site theme sets (phones slightly smaller)', () => {
+  const layoutCode = workflow.nodes.find((node) => node.name === 'Set Featured Image and Prepare Post').parameters.jsCode;
+  assert.match(layoutCode, /\.aac-article-main p,\.aac-article-main li\{font-size:1\.0625rem!important;line-height:1\.7!important\}/);
+  assert.match(layoutCode, /\.aac-article-main h2\{font-size:1\.625rem!important;line-height:1\.3!important;margin:2\.25rem 0 0\.75rem!important\}/);
+  assert.match(layoutCode, /\.aac-article-main h3\{font-size:1\.25rem!important/);
+  assert.match(layoutCode, /@media\(max-width:767px\)\{\.aac-article-main p,\.aac-article-main li\{font-size:1rem!important/);
+  assert.match(layoutCode, /@media\(max-width:400px\)/);
+  assert.doesNotMatch(layoutCode.match(/One type scale[\s\S]*?\.aac-faq-item summary\{list-style:none\}/)[0], /font-family/, 'each site keeps its own font');
+});

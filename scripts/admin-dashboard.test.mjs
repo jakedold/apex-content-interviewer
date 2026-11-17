@@ -595,7 +595,7 @@ test('marking an article published emails the doctor a link to the live article,
   assert.match(client, /<dt>Live article<\/dt>/);
 });
 
-test('one article per practice per campaign: a later doctor\'s interview is held quietly, and colleagues are told', () => {
+test('one article per practice per campaign: a later doctor\'s interview is held with a thank-you, and colleagues are told', () => {
   const w6 = JSON.parse(read('n8n/06-generate-article.json'));
   const n6 = (name) => w6.nodes.find((entry) => entry.name === name);
   const load = n6('Load Next Completed Interview').parameters;
@@ -608,10 +608,11 @@ test('one article per practice per campaign: a later doctor\'s interview is held
   assert.deepEqual(w6.connections['Is Practice Already Covered?'].main[0].map((c) => c.node), ['Hold Interview for Practice']);
   assert.deepEqual(w6.connections['Is Practice Already Covered?'].main[1].map((c) => c.node), ['Prepare Article Generation Request', 'Find Colleagues to Notify']);
   assert.match(n6('Hold Interview for Practice').parameters.sqlQuery, /SET status = 'ON_HOLD_PRACTICE_COVERED'/);
-  // No email to the doctor whose interview is held: nothing promises whose article will be featured.
-  assert.equal(n6('Compose Held Interview Email'), undefined);
-  assert.equal(n6('Email Held Interview Thank You'), undefined);
-  assert.equal(w6.connections['Hold Interview for Practice'], undefined);
+  const held = new Function('$', n6('Compose Held Interview Email').parameters.jsCode)(() => ({ first: () => ({ json: {
+    doctor_id: 'd2', doctor_name: 'Dr. Second', campaign_id: 'c1', practice_name: 'Audubon Dental', topic_title: 'Cracked teeth', covered_by_doctor_name: 'Dr. First' } }) }))[0].json;
+  assert.equal(held.communication_type, 'INTERVIEW_HELD_PRACTICE_COVERED');
+  assert.match(held.message_text, /Dr\. First's article is this month's feature for Audubon Dental, so we have saved yours for an upcoming month/);
+  assert.match(held.message_text, /We will send it to you for review before anything is published/);
   const colleagues = n6('Find Colleagues to Notify').parameters.sqlQuery;
   assert.match(colleagues, /done\.doctor_id IS NULL AND told\.doctor_id IS NULL/, 'only colleagues who have not finished, told once');
   assert.match(colleagues, /@practice_id != 'practice_test_001'/);
@@ -619,7 +620,7 @@ test('one article per practice per campaign: a later doctor\'s interview is held
   assert.equal(notices[0].json.communication_type, 'PRACTICE_COVERED_NOTICE');
   assert.match(notices[0].json.message_text, /Dr\. First has already recorded this month's article for Audubon Dental\./);
   assert.match(notices[0].json.message_text, /You are welcome to record yours too, and we will save it for an upcoming month/);
-  assert.equal(n6('Email Colleague Notice').parameters.mode, 'each');
+  for (const name of ['Email Held Interview Thank You', 'Email Colleague Notice']) assert.equal(n6(name).parameters.mode, 'each');
   // Reminders also stop once the practice is covered (workflow 26 checks practice_covered).
   assert.match(read('n8n/26-interview-reminders.json'), /practice_covered/);
   // "Write the draft anyway" drafts a held interview on purpose.

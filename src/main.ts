@@ -23,6 +23,8 @@ type InterviewContext = {
   topic_description: string | null;
   interview_guidance: string | null;
   expires_at: string | null;
+  // Set when a colleague at the same practice already recorded this campaign's article (one article per practice per month).
+  practice_covered_by?: string | null;
 };
 
 type StartSessionResponse = { value?: string; error?: string; };
@@ -385,6 +387,33 @@ async function waitForTranscriptSettle(session: RealtimeSession, maxWaitMs = 250
   return session.history;
 }
 
+// A colleague at the practice already recorded this month's article. The doctor is still welcome to record theirs: it is
+// saved and planned for an upcoming month.
+function renderPracticeCoveredNotice(context: InterviewContext, token: string): void {
+  const doctorDisplay = [context.doctor_name, context.credentials].filter(Boolean).join(', ');
+  const practice = context.practice_name?.trim() || 'your practice';
+  app.innerHTML = `
+    <main class="page"><section class="card">
+      ${renderBrand()}
+      <div class="eyebrow">AI Content Interview</div>
+      <h1>Hi, ${escapeHtml(doctorDisplay)}</h1>
+      <div class="topic-card">
+        <h2>Good news: ${escapeHtml(context.practice_covered_by ?? 'a colleague')} has already recorded this month's article for ${escapeHtml(practice)}.</h2>
+        <p>You're still welcome to record your interview today. We'll save it and plan your article for an upcoming month, so your patients hear from you too.</p>
+      </div>
+      <div class="interview-controls">
+        <button id="covered-continue" class="primary-button" type="button">Record my interview</button>
+        <button id="covered-later" class="secondary-button" type="button">Maybe later</button>
+      </div>
+      <div id="covered-status" class="status" aria-live="polite"></div>
+    </section></main>`;
+  document.querySelector<HTMLButtonElement>('#covered-continue')?.addEventListener('click', () => renderInterview(context, token));
+  document.querySelector<HTMLButtonElement>('#covered-later')?.addEventListener('click', () => {
+    const status = document.querySelector<HTMLElement>('#covered-status');
+    if (status) status.textContent = 'No problem. You can close this page and come back to this link later if you change your mind.';
+  });
+}
+
 function renderInterview(context: InterviewContext, token: string): void {
   const doctorDisplay = [context.doctor_name, context.credentials].filter(Boolean).join(', ');
   const title = context.topic_title?.trim() ?? '';
@@ -592,7 +621,8 @@ async function initializeInterview(): Promise<void> {
       renderInvalid('This link may have expired or is no longer available.');
       return;
     }
-    renderInterview(context, token);
+    if (context.practice_covered_by) renderPracticeCoveredNotice(context, token);
+    else renderInterview(context, token);
   } catch (error) {
     console.error(error);
     renderInvalid(error instanceof Error ? error.message : 'We were unable to load this interview.');

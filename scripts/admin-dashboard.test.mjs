@@ -329,7 +329,7 @@ test('a completed interview with no draft can have its draft written from the da
   assert.match(admin, /COALESCE\(i\.interview_id, ''\) AS interview_id/);
   assert.match(client, /action: 'generate_article',/);
   assert.match(client, /Write the draft now/);
-  assert.match(client, /\['drafting', 'on_hold'\]\.includes\(queueStage\(item\)\)\) step = 'generate_article'/);
+  assert.match(client, /queueStage\(item\) === 'drafting'\) step = 'generate_article'/, 'saved (on hold) interviews are drafted from their own view, with a new slug and image');
   const source = router.nodes.find((node) => node.name === 'Validate and Normalize Command').parameters.jsCode;
   const run = (body) => new Function('$json', source)({ body: { actor_email: 'admin@apexdp.com', idempotency_key: 'abcdefghijklmnop1234', action: 'generate_article', campaign_id: 'campaign_1', doctor_id: 'doctor_1', ...body } });
   assert.equal(run({ interview_id: 'interview_1' })[0].json.interview_id, 'interview_1');
@@ -611,14 +611,16 @@ test('one article per practice per campaign: a later doctor\'s interview is held
   const held = new Function('$', n6('Compose Held Interview Email').parameters.jsCode)(() => ({ first: () => ({ json: {
     doctor_id: 'd2', doctor_name: 'Dr. Second', campaign_id: 'c1', practice_name: 'Audubon Dental', topic_title: 'Cracked teeth', covered_by_doctor_name: 'Dr. First' } }) }))[0].json;
   assert.equal(held.communication_type, 'INTERVIEW_HELD_PRACTICE_COVERED');
-  assert.match(held.message_text, /Dr\. First at Audubon Dental already completed this month's interview/);
-  assert.match(held.message_text, /We have saved your interview/);
+  assert.match(held.message_text, /Thank you for recording your interview on "Cracked teeth"!/);
+  assert.match(held.message_text, /Keep an eye out for an email from us when your article is ready for your review\./);
+  assert.doesNotMatch(held.message_text, /Dr\. First|colleague|feature|month/i, 'no colleague, featured article, or timing');
   const colleagues = n6('Find Colleagues to Notify').parameters.sqlQuery;
   assert.match(colleagues, /done\.doctor_id IS NULL AND told\.doctor_id IS NULL/, 'only colleagues who have not finished, told once');
   assert.match(colleagues, /@practice_id != 'practice_test_001'/);
   const notices = new Function('$input', n6('Compose Colleague Notice').parameters.jsCode)({ all: () => [{ json: { doctor_id: 'd3', doctor_name: 'Dr. Third', campaign_id: 'c1', campaign_name: 'January', practice_name: 'Audubon Dental', covered_by_doctor_name: 'Dr. First' } }] });
   assert.equal(notices[0].json.communication_type, 'PRACTICE_COVERED_NOTICE');
-  assert.match(notices[0].json.message_text, /there is nothing you need to do for January/);
+  assert.match(notices[0].json.message_text, /Dr\. First has already recorded this month's article for Audubon Dental\./);
+  assert.match(notices[0].json.message_text, /You are welcome to record yours too, and we will save it for an upcoming month/);
   for (const name of ['Email Held Interview Thank You', 'Email Colleague Notice']) assert.equal(n6(name).parameters.mode, 'each');
   // Reminders also stop once the practice is covered (workflow 26 checks practice_covered).
   assert.match(read('n8n/26-interview-reminders.json'), /practice_covered/);
@@ -722,4 +724,43 @@ test('a campaign can be created without invitations (one to three topics) so tra
   assert.match(reminders, /cd\.invited_at <= TIMESTAMP_SUB/);
   assert.match(client, /<option value="none">Don't send invitations: we'll add transcripts<\/option>/);
   assert.match(client, /noInvitations \? 'CREATE CAMPAIGN' : 'SEND INVITATIONS'/);
+});
+
+test('more than one doctor at a practice: a friendly heads-up, saved interviews, and their own slug and image', () => {
+  // Interview page: told before starting when a colleague already recorded this month's article.
+  const validate = JSON.parse(read('n8n/03-validate-interview-link.json')).nodes.find((node) => node.name === 'Validate Token and Load Interview Context').parameters.sqlQuery;
+  assert.match(validate, /cov\.covered_by_doctor_name AS practice_covered_by/);
+  assert.match(validate, /AND cov\.doctor_id != v\.doctor_id\n  AND d\.practice_id != 'practice_test_001'/);
+  const page = read('src/main.ts');
+  assert.match(page, /if \(context\.practice_covered_by\) renderPracticeCoveredNotice\(context, token\);/);
+  assert.match(page, /has already recorded this month's article for/);
+  assert.match(page, /We'll save it and plan your article for an upcoming month, so your patients hear from you too\./);
+  assert.match(page, />Record my interview</);
+
+  // Invitation: one extra line only where more than one doctor at the practice is invited.
+  const w02 = JSON.parse(read('n8n/02-dispatch-campaign-invitations.json'));
+  assert.match(w02.nodes.find((node) => node.name === 'Create three topic links').parameters.sqlQuery, /AS invited_at_practice/);
+  const compose = w02.nodes.find((node) => node.name === 'Compose three-topic invitation').parameters.jsCode;
+  const rows = (count) => [1, 2, 3].map((n) => ({ json: { campaign_id: 'c1', doctor_id: 'd1', campaign_name: 'January', doctor_name: 'Dr. Test', preview_only: false,
+    invited_at_practice: count, topic_title: 'Topic ' + n, topic_sort_order: n, interview_url: 'https://apex-content-interviewer.jdold.workers.dev/interview/t' + n } }));
+  const invite = (count) => new Function('$input', compose)({ all: () => rows(count) })[0].json;
+  assert.match(invite(3).message_text, /We feature one doctor article per practice each month\. If more than one doctor at your practice joins in, we will schedule the additional articles for upcoming months, so nothing you record goes to waste\./);
+  assert.match(JSON.parse(invite(3).email_json).after.join(' '), /nothing you record goes to waste/);
+  assert.doesNotMatch(invite(1).message_text, /one doctor article per practice/);
+
+  // Dashboard: a saved interview needs its own slug and hero image before its draft is written.
+  assert.match(client, /Saved for an upcoming month: needs its own slug and hero image/);
+  assert.match(client, /needsOwnSlugAndImage: true/);
+  assert.match(client, /name="wordpress_slug" required/);
+  const normalizer = router.nodes.find((node) => node.name === 'Validate and Normalize Command').parameters.jsCode;
+  const draft = (extra) => new Function('$json', normalizer)({ body: { action: 'generate_article', actor_email: 'admin@apexdp.com', idempotency_key: 'test_idempotency_key_0005', interview_id: 'i1', campaign_id: 'c1', doctor_id: 'd1', ...extra } })[0].json;
+  assert.equal(draft({}).wordpress_slug, '');
+  const own = draft({ wordpress_slug: 'oral-health-habits', featured_image_source_url: 'https://apexparent.hostmanpowered.com/wp-content/uploads/2026/11/habits.png', featured_image_alt_text: 'Smiling patient brushing' });
+  assert.equal(own.wordpress_slug, 'oral-health-habits');
+  assert.throws(() => draft({ wordpress_slug: 'oral-health-habits' }), /both a new slug and a new hero image/);
+  assert.throws(() => draft({ wordpress_slug: 'x', featured_image_source_url: 'https://example.com/a.png', featured_image_alt_text: 'Smiling patient' }), /Apex Parent Media Library/);
+  const sql = router.nodes.find((node) => node.name === 'Check and Record Draft Request').parameters.sqlQuery;
+  assert.match(sql, /status = 'ON_HOLD_PRACTICE_COVERED'\) = 0\n  OR \(NULLIF\(@wordpress_slug, ''\) IS NOT NULL AND NULLIF\(@featured_image_source_url, ''\) IS NOT NULL\)/);
+  assert.match(sql, /Choose a slug that is different from the topic slug/);
+  assert.match(sql, /'interview\.publishing_override_set'/);
 });

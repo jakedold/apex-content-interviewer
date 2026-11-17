@@ -465,7 +465,8 @@ function canAct(action: string): boolean {
 function queueNextStep(item: WorkItem): QueueStep | null {
   let step: QueueStep | null = null;
   if (item.archived) step = null;
-  else if (!item.article_id && item.interview_id && ['drafting', 'on_hold'].includes(queueStage(item))) step = 'generate_article';
+  // A saved (on hold) interview needs its own slug and hero image first, so it is drafted from its article view only.
+  else if (!item.article_id && item.interview_id && queueStage(item) === 'drafting') step = 'generate_article';
   // A too-short interview has no next step here; resend the interview link from the article view.
   else if (!item.article_id || !item.current_version) step = null;
   else if (item.status === 'DOCTOR_REVIEW_PENDING') step = 'approve_for_doctor';
@@ -485,7 +486,7 @@ function autoApprovalFlag(item: { marketing_auto_approved?: boolean; doctor_auto
 }
 
 function stalledFlag(item: WorkItem): string {
-  if (queueStage(item) === 'on_hold') return '<span class="admin-flag" title="Another doctor at this practice already completed this campaign\'s interview. This one is saved without a draft. Open it to write the draft anyway.">On hold: practice already has this campaign\'s article</span>';
+  if (queueStage(item) === 'on_hold') return '<span class="admin-flag" title="Another doctor at this practice already recorded this campaign\'s article, which uses the topic slug and hero image. This interview is saved for an upcoming month. To use it, open it, add a new slug and hero image, and write the draft.">Saved for an upcoming month: needs its own slug and hero image</span>';
   if (isTooShort(item)) return `<span class="admin-flag admin-flag-stalled" title="The interview is under ${MIN_INTERVIEW_WORDS} words, which is too short to write an article. Open it and resend the interview link.">Too short to write an article: resend the interview link</span>`;
   const reason = stalledReason(item);
   return reason ? `<span class="admin-flag admin-flag-stalled" title="This item has not moved for a while. Open it to see what it is waiting for.">Stalled: ${escapeHtml(reason)}</span>` : '';
@@ -1565,6 +1566,8 @@ function stageVisual(detail: WorkItemDetail): string {
 
 type NextStepAction = {
   action: 'generate_article' | 'approve_for_doctor' | 'approve_for_marketing' | 'mark_live_on_website';
+  // A saved interview on a topic the practice already has: it needs its own slug and hero image before drafting.
+  needsOwnSlugAndImage?: boolean;
   reasonRequired?: boolean;
   title: string;
   description: string;
@@ -1634,8 +1637,9 @@ function nextStepAction(detail: WorkItemDetail, enabledActions: string[]): { act
   if (item.interview_status === 'ON_HOLD_PRACTICE_COVERED' && !m.articleDrafted && item.interview_id) {
     return offer({
       action: 'generate_article',
+      needsOwnSlugAndImage: true,
       title: 'Write the draft anyway',
-      description: 'Another doctor at this practice already completed this campaign\u2019s interview, so this one was saved without a draft and the doctor was thanked. Write the draft when you want to use it, for example for a mid-month or later article. It then goes to the doctor for review as usual.',
+      description: 'Another doctor at this practice already recorded this campaign\u2019s article, which uses the topic\u2019s slug and hero image. This interview was saved for an upcoming month and the doctor was thanked. To use it, give it its own WordPress slug and hero image (so it does not repeat the first article), then write the draft. It goes to the doctor for review as usual.',
       reasonLabel: 'Note (optional)',
       reasonPlaceholder: 'Using this one for the mid-month article…',
       confirmation: 'I confirm this held interview should be written up as an article.',
@@ -1909,6 +1913,10 @@ function nextStepPanel(detail: WorkItemDetail, enabledActions: string[]): string
       <strong>Push to the next step: ${escapeHtml(action.title)}</strong>
       <p>${escapeHtml(action.description)}</p>
       <form id="admin-next-step-form" data-action="${escapeHtml(action.action)}">
+        ${action.needsOwnSlugAndImage ? `
+        <label>New WordPress URL slug<input name="wordpress_slug" required maxlength="${WORDPRESS_SLUG_MAX_LENGTH}" pattern="[a-z0-9]+(-[a-z0-9]+)*" autocomplete="off" spellcheck="false" placeholder="Example: oral-health-routine-habits" /><small>Lowercase letters, numbers, and hyphens. Must differ from the topic\u2019s slug.</small></label>
+        <label>New hero image (Apex Parent Media Library file URL)<input name="featured_image_source_url" type="url" required placeholder="https://apexparent.hostmanpowered.com/wp-content/uploads/..." /></label>
+        <label>Hero image alt text<input name="featured_image_alt_text" required minlength="8" /></label>` : ''}
         <label>${escapeHtml(action.reasonLabel)}<textarea name="reason" ${/^approve_for_/.test(action.action) ? 'required minlength="12"' : ''} rows="3" placeholder="${escapeHtml(action.reasonPlaceholder)}"></textarea></label>
         <label class="admin-confirm-check"><input name="confirmation" type="checkbox" required /> ${escapeHtml(action.confirmation)}</label>
         <button class="admin-primary-button" type="submit">${escapeHtml(action.button)}</button>
@@ -2126,8 +2134,13 @@ async function submitNextStep(event: SubmitEvent, detail: WorkItemDetail, enable
   if (submit) submit.disabled = true;
   if (message) message.textContent = action.pending;
   try {
+    const ownSlugAndImage = action.needsOwnSlugAndImage
+      ? { wordpress_slug: String(data.get('wordpress_slug') ?? '').trim().toLowerCase(),
+        featured_image_source_url: String(data.get('featured_image_source_url') ?? '').trim(),
+        featured_image_alt_text: String(data.get('featured_image_alt_text') ?? '').trim() }
+      : {};
     await postAdminCommand(action.action === 'generate_article'
-      ? { action: action.action, interview_id: item.interview_id, campaign_id: item.campaign_id, doctor_id: item.doctor_id, reason: String(data.get('reason') ?? '').trim() }
+      ? { action: action.action, interview_id: item.interview_id, campaign_id: item.campaign_id, doctor_id: item.doctor_id, reason: String(data.get('reason') ?? '').trim(), ...ownSlugAndImage }
       : { action: action.action, article_id: item.article_id, campaign_id: item.campaign_id, doctor_id: item.doctor_id,
         expected_status: item.article_status, expected_version: item.current_version, reason: String(data.get('reason') ?? '').trim() });
     if (message) message.textContent = action.success;

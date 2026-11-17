@@ -61,7 +61,10 @@ test('an invalid topic slug fails closed instead of publishing an unexpected URL
 test('the publisher loads the topic slug from the campaign topic', () => {
   const query = workflow.nodes.find((node) => node.name === 'Load Approved WordPress Article').parameters.query
     ?? workflow.nodes.find((node) => node.name === 'Load Approved WordPress Article').parameters.sqlQuery;
-  assert.match(query, /'\$\.wordpress_slug'\) AS topic_wordpress_slug/);
+  assert.match(query, /COALESCE\(NULLIF\(own\.wordpress_slug, ''\), JSON_VALUE\(TO_JSON_STRING\(t\), '\$\.wordpress_slug'\)\) AS topic_wordpress_slug/);
+  // A saved interview drafted later uses its own slug and hero image, set in the dashboard.
+  assert.match(query, /event_type = 'interview\.publishing_override_set'/);
+  assert.match(query, /COALESCE\(NULLIF\(own\.featured_image_source_url, ''\), t\.featured_image_source_url\) AS featured_image_source_url/);
 });
 
 test('the doctor bio sits in the left sidebar directly under the FAQ, not below the article', () => {

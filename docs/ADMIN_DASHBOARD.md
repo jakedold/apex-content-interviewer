@@ -208,7 +208,9 @@ boundary.
 - **One article per practice per campaign:** the first doctor at a practice to finish a campaign interview (300+ words) gets the practice's article. Workflow 06 handles the rest:
   - A later doctor's interview from the same practice is held (`ON_HOLD_PRACTICE_COVERED`) without a draft, and that doctor gets a thank-you naming their colleague.
   - Colleagues who have not done theirs are told once that there is nothing they need to do, and their interview reminders stop.
-  - Held interviews appear under **On hold**. **Write the draft anyway** drafts one on purpose, for example for a mid-month or later article.
+  - Held interviews appear under **On hold**, flagged "Saved for an upcoming month: needs its own slug and hero image". They share their topic with the practice's first article, so **Write the draft anyway** asks for a new WordPress slug and hero image (Apex Parent Media Library URL and alt text). Workflow 24 records them as `interview.publishing_override_set`, and the publisher (15) uses them instead of the topic's. These interviews are drafted from their article view only, not from the queue's bulk action.
+  - The interview page tells a doctor before they start when a colleague already recorded this month's article (workflow 03 returns `practice_covered_by`). The doctor can still record theirs, which is saved for an upcoming month.
+  - Invitations to practices with more than one invited doctor add one line: one doctor article per practice each month, with additional articles scheduled for upcoming months (workflow 02).
   - The shared test practice is exempt.
 - **Pre-launch checks:** before a campaign launches, the builder (through `/api/admin/campaign-checks`) checks:
   - that each featured image link opens as an image;

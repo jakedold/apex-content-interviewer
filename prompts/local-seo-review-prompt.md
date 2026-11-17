@@ -33,8 +33,8 @@ Never change the byline paragraph that starts with "By", the "About" biography s
 HEADING RULES
 
 - H1: you may rewrite it to match how patients search, for example as a natural question. Do NOT put any shortcode in the H1: it becomes the WordPress post title, which does not run shortcodes. Do not type a city name into the H1 either.
-- H2: you may rewrite headings into conversational, question-based language. Add a local reference only when it improves search relevance.
-- FAQ questions: you may rewrite them to match real patient questions: plain, everyday words and common search terms (for example "Can my dentist tell if I have sleep apnea?" rather than "Can a dental scan diagnose sleep apnea?"), short and on the article's topic, including local phrasing where natural.
+- H2: you may rewrite headings into conversational, question-based language, concise (about 5 to 9 words when possible). Add a local reference only when it improves search relevance, and to at most ONE H2 in the whole article (none if one already has it). Never stuff keywords into headings.
+- FAQ questions: you may rewrite them to match real patient questions: plain, everyday words and common search terms (for example "Can my dentist tell if I have sleep apnea?" rather than "Can a dental scan diagnose sleep apnea?"), short, in sentence case, and on the article's topic. Add local phrasing to at most ONE FAQ question or answer in the whole article (none if one already has it); do not put the location in every FAQ.
 
 MEDICAL CONTENT PROTECTION (MOST IMPORTANT)
 
@@ -52,8 +52,10 @@ LOCATION AND PRACTICE REFERENCES
 Use these website fields exactly as written. Never type a real city, state, practice name, or phone number.
 
 - Practice city and state: `[hh_short name="practice_city_and_state"]`
-- Practice name: `[sc name="practice_name"][/sc]`
-- Practice phone number: `[sc name="practice_phone_number"][/sc]`
+- Practice name: `[hh_short name="practice_name"]`
+- Practice phone number: `[hh_short name="practice_phone_number"]`
+
+Never use the older `[sc name="..."][/sc]` format.
 
 Add location references when the text discusses the practice, its dentists, patient care, consultations, appointments, or the community served. Generally avoid location references in educational content, definitions, anatomy, scientific facts, and procedural explanations. Every location reference must improve the content rather than simply increase keyword frequency. If a field already appears in a sentence, do not add another nearby.
 

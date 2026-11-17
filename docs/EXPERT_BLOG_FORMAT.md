@@ -28,6 +28,7 @@ The generation and revision prompts in `prompts/` require:
 
 - an H1 and most H2 headings phrased as natural patient questions;
 - exactly 4 FAQs at the end, wrapped in `<section class="aac-article-faq">` with `<h3>` questions and `<p>` answers, FAQ 1 being the most important question answered in 2 to 4 sentences;
+- FAQ questions in sentence case; FAQ 2 to 4 answers of about 35 to 55 words; headings of about 5 to 9 words without keyword stuffing; the practice location in at most one H2 and one FAQ (Brenna's revised instructions, November 2026);
 - the practice name field in the opening and the closing call to action, and `[hh_short name="practice_city_and_state"]` once where natural; no website fields in the H1.
 
 Articles written before this format are formatted the same way when they have an "FAQ" or "Frequently Asked Questions" H2 followed by H3 questions or by collapsible `<details><summary>` questions. Re-sending such an article from the dashboard applies this layout without changing its approved wording.
@@ -47,3 +48,7 @@ Right after the first draft is written, and before the doctor sees it, workflow 
 - That the theme's own title is hidden on each practice theme (`h1.entry-title`, `.page-header h1`, `.wp-block-post-title`, and the Elementor post-title widget are covered).
 - The byline uses the verified interview doctor name rather than the generic `doctor_01` Shortcoder field (see `docs/SHORTCODER.md`).
 - That `[hh_short name="practice_city_and_state"]` renders on each practice site, including TEST001.
+
+## Type scale and spacing
+
+Every article uses the same font sizes and spacing, whatever the practice theme sets (each site keeps its own font and colors). Desktop: body text and list items 17px with 1.7 line height and 20px between paragraphs; H2 26px (36px above, 12px below); H3 20px; featured answer heading 24px; sidebar FAQ 15px; bio text 14px. Phones (767px and narrower): body 16px, H2 22px, H3 18px; at 400px and narrower, H2 20px.

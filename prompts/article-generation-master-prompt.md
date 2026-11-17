@@ -556,6 +556,14 @@ Both must accurately represent the article.
 
 Do not stuff either with geographic terms or keywords.
 
+These also become the article's Yoast SEO settings, so in `metadata`:
+
+- `seo_title`: concise and descriptive, with the main topic included naturally and no repeated keywords. Do not add the practice name; the site name is added automatically.
+- `meta_description`: unique, about 140 to 155 characters, accurately summarizing what the reader will learn, with the main topic included naturally. Never leave it blank.
+- `focus_keyphrase`: one relevant primary search phrase (usually 2 to 5 words) based on the article's content and search intent, the way patients would search for it, for example "bleeding gums when brushing". Do not choose an unnaturally long phrase, and do not repeat it in the article just to satisfy an SEO tool.
+
+Never place shortcodes in these fields.
+
 ==================================================
 STEP 15: OPEN STRONGLY
 ==================================================
@@ -833,7 +841,7 @@ AND
 
 as a source from which search systems can accurately extract useful passages.
 
-House format for Apex expert blogs: phrase most H2 headings as the natural, specific questions patients ask (for example "Is Bleeding Gums a Sign of Gingivitis or Periodontitis?" or "When Should You See a Dentist for Bleeding Gums?"), and answer each question directly in the first sentences of its section. A heading that is clearer as a statement may stay a statement. Do not repeat the same keyword in every heading.
+House format for Apex expert blogs: phrase most H2 headings as the natural, specific questions patients ask (for example "Is Bleeding Gums a Sign of Gingivitis or Periodontitis?" or "When Should You See a Dentist for Bleeding Gums?"), and answer each question directly in the first sentences of its section. A heading that is clearer as a statement may stay a statement. Do not repeat the same keyword in every heading. Keep headings concise, about 5 to 9 words when possible (for example "Does Sensitive Toothpaste Work?" rather than "Can Toothpaste for Sensitive Teeth Help, or Do I Need Dental Treatment?"), but only shorten a heading when the shorter wording still represents the whole section. Never stuff keywords into headings.
 
 ==================================================
 STEP 25: FAQ
@@ -842,18 +850,19 @@ STEP 25: FAQ
 Every Apex expert blog includes an FAQ with EXACTLY 4 items, ordered from highest to lowest priority for the reader and for search.
 
 - FAQ 1 is the single most important question the reader came with, usually the article's core search question. Its answer must be a direct, self-contained 2 to 4 sentence answer. The website shows FAQ 1 as a highlighted answer box at the top of the article.
-- FAQs 2 to 4 answer important secondary questions. The website shows them as collapsible questions in the sidebar. Keep each answer to 1 to 3 sentences.
-- At least one answer, usually FAQ 4, naturally mentions the practice using the confirmed website fields, for example `[sc name="practice_name"][/sc]` or `[hh_short name="practice_city_and_state"]`.
+- FAQs 2 to 4 answer important secondary questions. The website shows them as collapsible questions in the sidebar. Keep each of these answers to about 35 to 55 words; go longer only when clinical accuracy or safety requires it.
+- At least one answer, usually FAQ 4, naturally mentions the practice using the confirmed website fields, for example `[hh_short name="practice_name"]`. Mention the practice location in at most one FAQ question or answer.
 
 FAQ questions:
 
 - Every question must be about this article's topic: a question a reader of this article would naturally ask next. Do not add loosely related questions.
 - Write questions the way patients type them into a search box or ask an AI assistant: plain, everyday words and common search terms, not clinical or technical wording. Prefer "Can my dentist tell if I have sleep apnea?" over "Can a dental scan diagnose sleep apnea?", and "Why do my gums bleed?" over "What causes gingival bleeding?".
 - Keep each question short and direct, ideally under 12 words, with one question per item.
+- Write each question in sentence case (capitalize only the first word and proper nouns), for example "How long does sensitive toothpaste take to work?"
 
 FAQ answers:
 
-- Answer the question in the first sentence, plainly, then add only what helps. Keep answers brief, as above.
+- Answer the question in the first sentence, plainly, then add useful clinical context, any important limits or differences, and a practical next step where relevant. Keep answers to the lengths above, and do not repeat the article word for word.
 - Where it fits naturally, show the value of seeing a dentist: what a dentist can notice that a patient cannot see on their own, what the dentist checks, or when to come in. Even when the honest answer is no, explain the dentist's role. For example, a dentist cannot diagnose sleep apnea, but can often spot signs of it, such as worn teeth or a narrow airway, and will refer the patient to their physician or a sleep specialist for testing and a diagnosis.
 - Stay within what the doctor said in the interview and widely accepted dental guidance. Do not invent statistics, treatments, or promises.
 
@@ -913,16 +922,13 @@ A focused interview may justify a shorter one.
 STEP 27: LOCALIZATION AND DYNAMIC TOKENS
 ==================================================
 
-The WordPress sites use the Shortcoder plugin for reusable practice details. In publication-ready article HTML, use only the confirmed Shortcoder tags below when the detail is relevant:
+The websites fill in practice details through Headless Hostman shortcodes. In publication-ready article HTML, use only these three verified shortcodes, and only when the detail is relevant:
 
-- Practice name: `[sc name="practice_name"][/sc]`
-- Practice phone number: `[sc name="practice_phone_number"][/sc]`
-- Practice address: `[sc name="practice_address"][/sc]`
-- Practice city: `[sc name="practice_city"][/sc]`
-- Practice city and state (the field marketing uses on expert blogs; prefer it for location references): `[hh_short name="practice_city_and_state"]`
-- Practice email: `[sc name="practice_email"][/sc]`
+- Practice name: `[hh_short name="practice_name"]`
+- Practice city and state (use it for every location reference): `[hh_short name="practice_city_and_state"]`
+- Practice phone number: `[hh_short name="practice_phone_number"]`
 
-Preserve each tag exactly, including its closing `[/sc]`. Do not replace it with a guessed value. Do not invent other Shortcoder names. The interviewed doctor's name and credentials come from the interview context, not the site's generic `doctor_01` or `doctor_02` tags. Use a site-specific booking shortcode only when that subsite's intended placement and behavior have been verified. Never place a Shortcoder tag in an HTML attribute or metadata field, and never in the H1: the H1 becomes the WordPress post title, which does not run shortcodes.
+Never use the older `[sc name="..."][/sc]` format, and do not use any other practice field (such as an address, email, or city on its own). Preserve each shortcode exactly. Do not replace it with a guessed value. Do not invent other Shortcoder names. The interviewed doctor's name and credentials come from the interview context, not the site's generic `doctor_01` or `doctor_02` tags. Use a site-specific booking shortcode only when that subsite's intended placement and behavior have been verified. Never place a Shortcoder tag in an HTML attribute or metadata field, and never in the H1: the H1 becomes the WordPress post title, which does not run shortcodes.
 
 Use them naturally where relevant.
 
@@ -940,7 +946,7 @@ In every Apex expert blog, mention the practice by its Shortcoder tag at least o
 
 Do not mechanically repeat city or state names throughout the article.
 
-Do not create headings solely to include a city keyword.
+Do not create headings solely to include a city keyword. Use the practice location in at most one H2 heading and at most one FAQ, and only where it reads naturally.
 
 Do not append geographic terms to unrelated sentences.
 
@@ -1187,7 +1193,7 @@ AUTHOR
 
 PRACTICE
 
-`[sc name="practice_name"][/sc]`
+`[hh_short name="practice_name"]`
 
 ESTIMATED WORD COUNT
 

@@ -126,7 +126,7 @@ test('FAQ 1 becomes the answer box and FAQs 2 to 4 become collapsible sidebar qu
   assert.match(main, /^<div class="aac-article-main"[^>]*><section class="aac-featured-answer"[^>]*><h2[^>]*>Why do my gums bleed when I brush\?<\/h2>/);
   assert.equal((sidebar.match(/<details class="aac-faq-item"/g) || []).length, 3);
   assert.ok(sidebar.indexOf('aac-article-faq-box') < sidebar.indexOf('aac-author-bio-card'));
-  assert.match(sidebar, /<summary[^>]*>Can \[sc name="practice_name"\]\[\/sc\] help\?<\/summary>/);
+  assert.match(sidebar, /<summary[^>]*>Can \[hh_short name="practice_name"\] help\?<\/summary>/);
   assert.doesNotMatch(main, /Frequently Asked Questions/);
 });
 
@@ -237,7 +237,8 @@ test('"Book appointment" opens the site\'s NexHealth scheduling pop-up when the 
   assert.equal(lookup.onError, 'continueRegularOutput');
   assert.match(lookup.parameters.url, /\/elementor_library\?search=NexHealth/);
   assert.equal(workflow.connections['Choose WordPress Create or Update'].main[0][0].node, 'Find Scheduling Popup');
-  assert.equal(workflow.connections['Find Scheduling Popup'].main[0][0].node, 'Download Featured Image');
+  assert.equal(workflow.connections['Find Scheduling Popup'].main[0][0].node, 'Find Blog Category');
+  assert.equal(workflow.connections['Find Blog Category'].main[0][0].node, 'Download Featured Image');
 });
 
 test('the article writers follow the FAQ rules: on-topic, plain search terms, brief answers that show the value of a dentist', () => {
@@ -276,4 +277,81 @@ test('n8n Code steps in use do not depend on the URL class, which n8n does not p
       assert.doesNotMatch(step.parameters.jsCode || '', /\bnew URL\s*\(|\bURLSearchParams\b/, `${file}: ${step.name}`);
     }
   }
+});
+
+test('Brenna\'s publishing rules: Headless Hostman shortcodes only, and the bio heading reads "About Dr. [Full Name]"', () => {
+  for (const file of ['article-generation-master-prompt.md', 'article-revision-master-prompt.md', 'marketing-revision-master-prompt.md', 'local-seo-review-prompt.md']) {
+    const prompt = fs.readFileSync(new URL(`../prompts/${file}`, import.meta.url), 'utf8');
+    // The older format may only be named as something never to use.
+    for (const use of prompt.match(/\[sc name="[a-z_]+"\]/g) || []) assert.fail(`${file} still uses ${use}`);
+    assert.doesNotMatch(prompt, /practice_address|practice_email|"practice_city"/, `${file}: only the three verified fields`);
+  }
+  const generation = fs.readFileSync(new URL('../prompts/article-generation-master-prompt.md', import.meta.url), 'utf8');
+  assert.match(generation, /about 35 to 55 words/);
+  assert.match(generation, /sentence case/);
+  assert.match(generation, /about 5 to 9 words/);
+  assert.match(generation, /at most one H2 heading and at most one FAQ/);
+  const localSeo = fs.readFileSync(new URL('../prompts/local-seo-review-prompt.md', import.meta.url), 'utf8');
+  assert.match(localSeo, /at most ONE H2/);
+  assert.match(localSeo, /at most ONE FAQ/);
+  for (const file of ['06-generate-article.json', '10-revise-article-from-doctor-feedback.json', '20-revise-article-from-marketing-feedback.json', '15-publish-approved-article-to-wordpress.json']) {
+    const text = fs.readFileSync(new URL(`../n8n/${file}`, import.meta.url), 'utf8');
+    assert.doesNotMatch(text, /\[sc name=\\"practice_[a-z_]+\\"\]\[\/sc\]`/, `${file} still tells the writer to use the older format`);
+  }
+  // Older articles are converted when they are published or re-sent.
+  const prepare = workflow.nodes.find((node) => node.name === 'Prepare WordPress Publication').parameters.jsCode;
+  assert.match(prepare, /'\{\{PRACTICE_NAME\}\}': '\[hh_short name="practice_name"\]'/);
+  const convert = prepare.match(/html = html\.replace\((\/\\\[sc[\s\S]*?\/gi), \(match, field\)/);
+  assert.ok(convert, 'the publisher converts older shortcodes');
+  const pattern = new Function(`return ${convert[1]};`)();
+  assert.equal('Call [sc name="practice_phone_number"][/sc] at [sc name="practice_name"][/sc]'.replace(pattern, (match, field) => `[hh_short name="${field.toLowerCase()}"]`),
+    'Call [hh_short name="practice_phone_number"] at [hh_short name="practice_name"]');
+  const layout = workflow.nodes.find((node) => node.name === 'Set Featured Image and Prepare Post').parameters.jsCode;
+  assert.match(layout, /\.replace\(\/<h2>\\s\*About\\s\+\(\?!Dr\\\.\?\\s\|the author\)\/i, '<h2>About Dr\. '\)/);
+  const parse = JSON.parse(fs.readFileSync(new URL('../n8n/06-generate-article.json', import.meta.url), 'utf8')).nodes.find((node) => node.name === 'Validate and Parse Article Package').parameters.jsCode;
+  assert.match(parse, /const bioHeadingName = \/\^dr\\\.\?\\s\/i\.test\(authorName\) \? authorName : 'Dr\. ' \+ authorName;/);
+});
+
+test('every article goes in the site\'s Blog category, and the Yoast SEO fields are sent and checked', () => {
+  const lookup = workflow.nodes.find((node) => node.name === 'Find Blog Category');
+  assert.equal(lookup.onError, 'continueRegularOutput');
+  assert.match(lookup.parameters.url, /\/categories\?slug=blog/);
+  const layoutCode = workflow.nodes.find((node) => node.name === 'Set Featured Image and Prepare Post').parameters.jsCode;
+  const context = { wordpress_body: { title: 'T', status: 'publish' }, content: '' };
+  const run = (categories) => new Function('$json', '$', layoutCode)({ id: 7, source_url: 'https://apexparent.hostmanpowered.com/wp-content/uploads/a.jpg' },
+    (name) => name === 'Find Blog Category' ? { all: () => categories.map((json) => ({ json })) }
+      : name === 'Find Scheduling Popup' ? { all: () => [] } : { first: () => ({ json: context }) })[0].json;
+  assert.deepEqual(run([{ id: 31, slug: 'blog', name: 'Blog' }]).wordpress_body.categories, [31]);
+  assert.equal(run([{ code: 'rest_forbidden' }]).wordpress_body.categories, undefined, 'left as before when the lookup fails');
+
+  const prepare = workflow.nodes.find((node) => node.name === 'Prepare WordPress Publication').parameters.jsCode;
+  for (const key of ['_yoast_wpseo_title', '_yoast_wpseo_metadesc', '_yoast_wpseo_focuskw', "'_yoast_wpseo_opengraph-title'", "'_yoast_wpseo_twitter-description'"]) assert.ok(prepare.includes(key), key);
+  assert.match(prepare, /status: 'publish', meta: yoastMeta,/);
+  assert.match(prepare, /seoTitle \+ ' %%sep%% %%sitename%%'/);
+
+  const validateCode = workflow.nodes.find((node) => node.name === 'Validate WordPress Publication').parameters.jsCode;
+  const validate = (response) => new Function('$json', '$', validateCode)({ id: 5, status: 'publish', link: 'https://x.test/blog/a/', featured_media: 9, categories: [31], ...response },
+    (name) => ({ first: () => ({ json: name === 'Set Featured Image and Prepare Post'
+      ? { expected_meta_description: 'Why gums bleed & what helps.', blog_category_id: '31' } : { article_id: 'a1', current_version: 1 } }) }))[0].json;
+  assert.equal(validate({ yoast_head_json: { description: 'Why gums bleed &amp; what helps.' } }).yoast_saved, 'true');
+  assert.equal(validate({ yoast_head_json: { description: 'Something else' } }).yoast_saved, 'false');
+  assert.equal(validate({}).yoast_saved, 'unknown');
+  assert.equal(validate({}).blog_category, 'true');
+  const record = workflow.nodes.find((node) => node.name === 'Record Successful Publication').parameters;
+  assert.match(record.sqlQuery, /@yoast_saved AS yoast_saved, @blog_category AS blog_category/);
+
+  for (const file of ['06-generate-article.json', '10-revise-article-from-doctor-feedback.json', '20-revise-article-from-marketing-feedback.json']) {
+    const text = fs.readFileSync(new URL(`../n8n/${file}`, import.meta.url), 'utf8');
+    assert.match(text, /'focus_keyphrase', 'word_count'\]/, `${file}: the writer returns a focus keyphrase`);
+  }
+});
+
+test('one type scale and spacing for every article, whatever the site theme sets (phones slightly smaller)', () => {
+  const layoutCode = workflow.nodes.find((node) => node.name === 'Set Featured Image and Prepare Post').parameters.jsCode;
+  assert.match(layoutCode, /\.aac-article-main p,\.aac-article-main li\{font-size:1\.0625rem!important;line-height:1\.7!important\}/);
+  assert.match(layoutCode, /\.aac-article-main h2\{font-size:1\.625rem!important;line-height:1\.3!important;margin:2\.25rem 0 0\.75rem!important\}/);
+  assert.match(layoutCode, /\.aac-article-main h3\{font-size:1\.25rem!important/);
+  assert.match(layoutCode, /@media\(max-width:767px\)\{\.aac-article-main p,\.aac-article-main li\{font-size:1rem!important/);
+  assert.match(layoutCode, /@media\(max-width:400px\)/);
+  assert.doesNotMatch(layoutCode.match(/One type scale[\s\S]*?\.aac-faq-item summary\{list-style:none\}/)[0], /font-family/, 'each site keeps its own font');
 });

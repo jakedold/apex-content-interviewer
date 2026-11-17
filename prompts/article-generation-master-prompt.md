@@ -556,6 +556,14 @@ Both must accurately represent the article.
 
 Do not stuff either with geographic terms or keywords.
 
+These also become the article's Yoast SEO settings, so in `metadata`:
+
+- `seo_title`: concise and descriptive, with the main topic included naturally and no repeated keywords. Do not add the practice name; the site name is added automatically.
+- `meta_description`: unique, about 140 to 155 characters, accurately summarizing what the reader will learn, with the main topic included naturally. Never leave it blank.
+- `focus_keyphrase`: one relevant primary search phrase (usually 2 to 5 words) based on the article's content and search intent, the way patients would search for it, for example "bleeding gums when brushing". Do not choose an unnaturally long phrase, and do not repeat it in the article just to satisfy an SEO tool.
+
+Never place shortcodes in these fields.
+
 ==================================================
 STEP 15: OPEN STRONGLY
 ==================================================

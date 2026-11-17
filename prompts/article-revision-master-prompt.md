@@ -39,7 +39,7 @@ Return a complete two-artifact publication package:
 1. `article_html`: the full revised production HTML, not a diff.
 2. `author_bio`: the complete reviewed 2–4 sentence third-person author bio.
 3. `review_document_markdown`: the full revised human-readable review document, not a change summary.
-4. `metadata`: the canonical H1, SEO title, slug, meta description, primary search intent, and word count.
+4. `metadata`: the canonical H1, SEO title, slug, meta description (about 140 to 155 characters), primary search intent, focus keyphrase (one natural primary search phrase, usually 2 to 5 words), and word count. These become the Yoast SEO settings; keep them accurate for the revised article and never put shortcodes in them.
 
 The article shown in the review document must match `article_html` exactly in wording. Update the review document's sourcing, editorial notes, and expert-review checklist when the revision changes them.
 

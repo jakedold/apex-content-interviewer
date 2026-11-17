@@ -237,7 +237,8 @@ test('"Book appointment" opens the site\'s NexHealth scheduling pop-up when the 
   assert.equal(lookup.onError, 'continueRegularOutput');
   assert.match(lookup.parameters.url, /\/elementor_library\?search=NexHealth/);
   assert.equal(workflow.connections['Choose WordPress Create or Update'].main[0][0].node, 'Find Scheduling Popup');
-  assert.equal(workflow.connections['Find Scheduling Popup'].main[0][0].node, 'Download Featured Image');
+  assert.equal(workflow.connections['Find Scheduling Popup'].main[0][0].node, 'Find Blog Category');
+  assert.equal(workflow.connections['Find Blog Category'].main[0][0].node, 'Download Featured Image');
 });
 
 test('the article writers follow the FAQ rules: on-topic, plain search terms, brief answers that show the value of a dentist', () => {
@@ -309,4 +310,38 @@ test('Brenna\'s publishing rules: Headless Hostman shortcodes only, and the bio 
   assert.match(layout, /\.replace\(\/<h2>\\s\*About\\s\+\(\?!Dr\\\.\?\\s\|the author\)\/i, '<h2>About Dr\. '\)/);
   const parse = JSON.parse(fs.readFileSync(new URL('../n8n/06-generate-article.json', import.meta.url), 'utf8')).nodes.find((node) => node.name === 'Validate and Parse Article Package').parameters.jsCode;
   assert.match(parse, /const bioHeadingName = \/\^dr\\\.\?\\s\/i\.test\(authorName\) \? authorName : 'Dr\. ' \+ authorName;/);
+});
+
+test('every article goes in the site\'s Blog category, and the Yoast SEO fields are sent and checked', () => {
+  const lookup = workflow.nodes.find((node) => node.name === 'Find Blog Category');
+  assert.equal(lookup.onError, 'continueRegularOutput');
+  assert.match(lookup.parameters.url, /\/categories\?slug=blog/);
+  const layoutCode = workflow.nodes.find((node) => node.name === 'Set Featured Image and Prepare Post').parameters.jsCode;
+  const context = { wordpress_body: { title: 'T', status: 'publish' }, content: '' };
+  const run = (categories) => new Function('$json', '$', layoutCode)({ id: 7, source_url: 'https://apexparent.hostmanpowered.com/wp-content/uploads/a.jpg' },
+    (name) => name === 'Find Blog Category' ? { all: () => categories.map((json) => ({ json })) }
+      : name === 'Find Scheduling Popup' ? { all: () => [] } : { first: () => ({ json: context }) })[0].json;
+  assert.deepEqual(run([{ id: 31, slug: 'blog', name: 'Blog' }]).wordpress_body.categories, [31]);
+  assert.equal(run([{ code: 'rest_forbidden' }]).wordpress_body.categories, undefined, 'left as before when the lookup fails');
+
+  const prepare = workflow.nodes.find((node) => node.name === 'Prepare WordPress Publication').parameters.jsCode;
+  for (const key of ['_yoast_wpseo_title', '_yoast_wpseo_metadesc', '_yoast_wpseo_focuskw', "'_yoast_wpseo_opengraph-title'", "'_yoast_wpseo_twitter-description'"]) assert.ok(prepare.includes(key), key);
+  assert.match(prepare, /status: 'publish', meta: yoastMeta,/);
+  assert.match(prepare, /seoTitle \+ ' %%sep%% %%sitename%%'/);
+
+  const validateCode = workflow.nodes.find((node) => node.name === 'Validate WordPress Publication').parameters.jsCode;
+  const validate = (response) => new Function('$json', '$', validateCode)({ id: 5, status: 'publish', link: 'https://x.test/blog/a/', featured_media: 9, categories: [31], ...response },
+    (name) => ({ first: () => ({ json: name === 'Set Featured Image and Prepare Post'
+      ? { expected_meta_description: 'Why gums bleed & what helps.', blog_category_id: '31' } : { article_id: 'a1', current_version: 1 } }) }))[0].json;
+  assert.equal(validate({ yoast_head_json: { description: 'Why gums bleed &amp; what helps.' } }).yoast_saved, 'true');
+  assert.equal(validate({ yoast_head_json: { description: 'Something else' } }).yoast_saved, 'false');
+  assert.equal(validate({}).yoast_saved, 'unknown');
+  assert.equal(validate({}).blog_category, 'true');
+  const record = workflow.nodes.find((node) => node.name === 'Record Successful Publication').parameters;
+  assert.match(record.sqlQuery, /@yoast_saved AS yoast_saved, @blog_category AS blog_category/);
+
+  for (const file of ['06-generate-article.json', '10-revise-article-from-doctor-feedback.json', '20-revise-article-from-marketing-feedback.json']) {
+    const text = fs.readFileSync(new URL(`../n8n/${file}`, import.meta.url), 'utf8');
+    assert.match(text, /'focus_keyphrase', 'word_count'\]/, `${file}: the writer returns a focus keyphrase`);
+  }
 });

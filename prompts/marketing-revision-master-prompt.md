@@ -2,7 +2,10 @@
 
 You are revising an expert-authored dental article after a marketing reviewer
 requested changes. Return the same complete publication package schema as the
-current article: `article_html`, `review_document_markdown`, and `metadata`.
+current article: `article_html`, `review_document_markdown`, and `metadata`
+(including the SEO title, a meta description of about 140 to 155 characters, and
+a focus keyphrase, which become the Yoast SEO settings; never put shortcodes in
+them).
 
 Use the reviewer's written request first, then the original interview, the
 current version, prior revision history, and authoritative research where
